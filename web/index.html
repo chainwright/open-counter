@@ -53,13 +53,19 @@
     </div>
 
     <div class="phone" id="phone" aria-live="polite">
+      <div class="wall"></div>
       <div class="notch"></div>
+      <div class="lock-date">Monday, October 26</div>
       <div class="lock-time">10:42</div>
+      <div class="lock-who"><span class="dot"></span>Small Garage · open to every agent</div>
+      <div class="notif idle" id="idle"><b>Open Counter</b><span>Waiting for the next order. Your counter is visible to shopping agents right now.</span></div>
       <div class="sold" id="sold">
-        <div class="sold-k">SOLD TO AN<br>AI AGENT</div>
-        <div class="sold-amt"><span id="amt">$0</span></div>
-        <div class="sold-l">Green Fastback, 1968 · ship by Fri<br>buyer in Denver, CO</div>
+        <div class="sold-app"><i></i>OPEN COUNTER · now</div>
+        <div class="sold-k">SOLD TO AN AI AGENT</div>
+        <div class="sold-row"><img src="/media/green_fastback.jpg" alt=""><div><div class="sold-amt"><span id="amt">$0</span></div>
+        <div class="sold-l">Green Fastback, 1968<br>buyer in Denver · ship by Fri</div></div></div>
       </div>
+      <div class="lock-hint">Lena's phone</div>
     </div>
 
     <div class="hint">move the light</div>
@@ -69,14 +75,17 @@
     <div class="sec-head"><span class="label cyan">01 · TRY IT</span><h2>Be the stranger's AI.</h2>
       <p>This is a real agent (NVIDIA Nemotron) shopping Lena's counter with the same six tools any outside agent gets. It can find, compare and prepare a PayPal checkout. It cannot pay.</p></div>
     <div class="chat" id="chat">
-      <div class="chat-log" id="log"></div>
+      <div class="chat-bar"><span class="av"></span><div><b>Shopper's AI</b><small>NVIDIA Nemotron · shopping Lena's counter</small></div><span class="live">● live</span></div>
+      <div class="chat-log" id="log">
+        <div class="msg a">Hi, I'm a shopping agent. Tell me who the gift is for and where it has to go. I'll find it on Lena's counter, check stock and delivery, and hand you a PayPal button. I can't pay. You do that.</div>
+      </div>
       <div class="chips" id="chips">
         <button type="button">A gift for my dad who loved his '68 green fastback. Under $60, Denver, by Friday.</button>
-        <button type="button">Do you have anything yellow from the 70s?</button>
-        <button type="button">How big is the orange coupe, and what is it made of?</button>
+        <button type="button">Anything yellow from the 70s?</button>
+        <button type="button">How big is the orange coupe?</button>
       </div>
-      <form class="ask" id="askform"><input id="askin" autocomplete="off" placeholder="Ask the shopper's AI…"><button>Send</button></form>
-      <p class="sandbox">Sandbox: PayPal test buyer <code>sb-yi0xc53507798@personal.example.com</code> · password in the README. No real money moves.</p>
+      <form class="ask" id="askform"><input id="askin" autocomplete="off" placeholder="Ask the shopper's AI…"><button aria-label="Send">↑</button></form>
+      <details class="sandbox"><summary>Test buyer for PayPal sandbox</summary><code>sb-yi0xc53507798@personal.example.com</code> · password in the README · no real money moves</details>
     </div>
   </section>
 

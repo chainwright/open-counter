@@ -164,3 +164,45 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .sheet .msg2{font-size:13px;color:#FF8A7A;margin-top:10px}
 .demo-tag{display:block;text-align:center;font:11px "Geist Mono";color:var(--mute);padding:0 10px 10px}
 @media (hover:none){.card .l{opacity:1}}
+
+/* ---------- Lena's phone v2 ---------- */
+.phone{overflow:hidden}
+.phone .wall{position:absolute;inset:0;background:url(/media/hero.jpg) 60% 50%/cover;filter:brightness(.35) blur(2px) saturate(.8);transform:scale(1.08)}
+.phone>*:not(.wall){position:relative}
+.lock-date{text-align:center;font:500 13px "Geist";color:rgba(242,243,241,.75);margin-top:20px}
+.phone .lock-time{margin-top:2px;font-size:64px;font-weight:600;color:#fff}
+.lock-who{display:flex;gap:6px;align-items:center;justify-content:center;font:500 11px "Geist Mono";color:var(--cyan);margin-top:2px}
+.lock-who .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pl 1.6s infinite}
+.notif{margin-top:20px;border-radius:18px;padding:12px 14px;background:rgba(30,32,36,.62);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.08);font-size:12.5px;color:#D5D8DB;line-height:1.4}
+.notif b{display:block;font-size:12px;margin-bottom:2px;color:#fff}
+.sold{position:absolute!important;left:14px;right:14px;top:150px;margin:0;background:rgba(14,15,17,.86);backdrop-filter:blur(20px);border:1px solid rgba(255,233,199,.25);border-radius:20px;padding:14px}
+.sold-app{display:flex;gap:6px;align-items:center;font:500 10.5px "Geist Mono";color:var(--mute);letter-spacing:.06em}
+.sold-app i{width:14px;height:14px;border-radius:4px;background:var(--lamp)}
+.sold-k{font:900 26px/.95 "Big Shoulders Display";margin-top:8px}
+.sold-row{display:flex;gap:10px;align-items:center;margin-top:10px}
+.sold-row img{width:64px;height:48px;object-fit:cover;border-radius:8px}
+.sold-amt{font:900 40px/1 "Big Shoulders Display";color:var(--lamp)}
+.sold-l{font:11px/1.45 "Geist Mono";color:var(--mute);margin-top:2px}
+.lock-hint{position:absolute!important;left:0;right:0;bottom:16px;text-align:center;font:500 10px "Geist Mono";letter-spacing:.2em;text-transform:uppercase;color:rgba(242,243,241,.45)}
+/* ---------- chat v2 ---------- */
+.chat{padding:0;overflow:hidden;background:linear-gradient(180deg,#101315,#0B0D0E)}
+.chat-bar{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--hair)}
+.chat-bar .av{width:34px;height:34px;border-radius:50%;background:conic-gradient(from 0deg,var(--cyan),#3D7BFF,var(--cyan));box-shadow:0 0 18px rgba(56,242,229,.35)}
+.chat-bar b{display:block;font-size:15px}.chat-bar small{font-size:12px;color:var(--mute)}
+.chat-bar .live{margin-left:auto;font:500 11px "Geist Mono";color:var(--cyan)}
+.chat-log{min-height:0;max-height:520px;padding:18px 18px 4px;margin:0}
+.chips{flex-wrap:nowrap;overflow-x:auto;padding:8px 18px 4px;margin:0;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{white-space:nowrap;flex:none;background:rgba(56,242,229,.06);border-color:rgba(56,242,229,.22)}
+.ask{padding:10px 18px 14px}
+.ask input{border-radius:999px;padding:13px 18px}
+.ask button{width:46px;height:46px;border-radius:50%;padding:0;font-size:20px;font-weight:700}
+.sandbox{padding:0 18px 16px;margin:0}
+.sandbox summary{cursor:pointer;color:var(--mute);font-size:12px}
+.sandbox code{display:inline-block;margin-top:6px}
+@media (max-width:900px){
+  .phone{height:430px;max-width:300px;align-self:center;width:100%;border-radius:38px;padding:14px}
+  .phone .notch{display:block}.phone .lock-time{display:block;font-size:56px}
+  .sold{top:150px}
+  .chat{margin:0 -4px}
+}

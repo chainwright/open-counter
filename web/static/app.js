@@ -50,6 +50,7 @@
     const card = document.getElementById("sold"), amt = document.getElementById("amt");
     document.getElementById("scene").classList.add("flash");
     setTimeout(() => document.getElementById("scene").classList.remove("flash"), 200);
+    const idle = document.getElementById("idle"); if (idle) gsap.to(idle, { opacity: 0, duration: 0.2 });
     gsap.fromTo(card, { opacity: 0, y: -40 }, { opacity: 1, y: 0, duration: 0.55, ease: "back.out(1.4)" });
     const n = { v: 0 };
     gsap.to(n, { v: 59, duration: 0.8, ease: "expo.out", onUpdate: () => (amt.textContent = "$" + Math.round(n.v)) });
