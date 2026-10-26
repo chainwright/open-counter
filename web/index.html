@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Counter — Small Garage</title>
+<meta name="description" content="A one-person maker's shop that any AI shopping agent can buy from, paid through PayPal and approved by a human.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main>
+  <section class="hero" id="hero">
+    <div class="scene" id="scene">
+      <img class="photo dark" src="/media/hero.jpg" alt="">
+      <div class="big num dark-num" aria-hidden="true">1:43</div>
+      <div class="lit" id="lit">
+        <img class="photo" src="/media/hero.jpg" alt="A hand-built 1:43 green fastback on Lena's workbench, under her bench lamp">
+        <div class="big num lit-num" aria-hidden="true">1:43</div>
+      </div>
+      <div class="grain"></div>
+    </div>
+
+    <header class="top">
+      <span class="label cyan">SHOPPER'S AI</span>
+      <span class="brand">Open Counter</span>
+      <span class="label warm">LENA'S COUNTER · <em>Small Garage, Columbus OH</em></span>
+    </header>
+
+    <aside class="agent" id="agent" aria-live="polite">
+      <div class="agent-head"><i class="pulse"></i>Shopper's AI <span class="model">any agent · MCP</span></div>
+      <div class="bubble me" id="ask">A gift for my dad. He had a green fastback in '68 and still talks about it. Under $60, Denver by Friday.</div>
+      <ol class="steps" id="steps"></ol>
+      <div class="approve" id="approve" hidden>
+        <div class="ap-top">
+          <img src="/media/green_fastback.jpg" alt="">
+          <div><b>Green Fastback, 1968</b><span>1:43 · resin + brass · 108 mm</span><span>Hand-built by Lena · Small Garage</span></div>
+        </div>
+        <div class="ap-pair">
+          <div><small>You asked for</small>green '68 fastback · under $60 · Denver by Fri</div>
+          <div><small>You're approving</small>1 replica · $59.00 + $6.50 shipping</div>
+        </div>
+        <button class="pp" id="ppbtn" type="button" aria-label="Pay with PayPal"><span class="pp-a">Pay</span><span class="pp-b">Pal</span></button>
+        <p class="fine">Nothing is charged until you approve in PayPal.</p>
+      </div>
+    </aside>
+
+    <div class="headline">
+      <h1>Her shop is now open<br>to every AI agent.</h1>
+      <p>Lena builds one 1:43 car at a time in her spare room. Open Counter makes her shop readable and payable for anyone's AI shopping agent — and every order still needs a human's yes in PayPal.</p>
+    </div>
+
+    <div class="phone" id="phone" aria-live="polite">
+      <div class="notch"></div>
+      <div class="lock-time">10:42</div>
+      <div class="sold" id="sold">
+        <div class="sold-k">SOLD TO AN<br>AI AGENT</div>
+        <div class="sold-amt"><span id="amt">$0</span></div>
+        <div class="sold-l">Green Fastback, 1968 · ship by Fri<br>buyer in Denver, CO</div>
+      </div>
+    </div>
+
+    <div class="hint">move the light</div>
+  </section>
+
+  <section class="try" id="try">
+    <div class="sec-head"><span class="label cyan">01 · TRY IT</span><h2>Be the stranger's AI.</h2>
+      <p>This is a real agent (NVIDIA Nemotron) shopping Lena's counter with the same six tools any outside agent gets. It can find, compare and prepare a PayPal checkout. It cannot pay.</p></div>
+    <div class="chat" id="chat">
+      <div class="chat-log" id="log"></div>
+      <div class="chips" id="chips">
+        <button type="button">A gift for my dad who loved his '68 green fastback. Under $60, Denver, by Friday.</button>
+        <button type="button">Do you have anything yellow from the 70s?</button>
+        <button type="button">How big is the orange coupe, and what is it made of?</button>
+      </div>
+      <form class="ask" id="askform"><input id="askin" autocomplete="off" placeholder="Ask the shopper's AI…"><button>Send</button></form>
+      <p class="sandbox">Sandbox: PayPal test buyer <code>sb-yi0xc53507798@personal.example.com</code> · password in the README. No real money moves.</p>
+    </div>
+  </section>
+
+  <section class="bench" id="bench">
+    <div class="sec-head"><span class="label warm">02 · ON THE BENCH</span><h2>One car at a time.</h2>
+      <p>Resin bodies, photo-etched brass trim, paint mixed by hand. Every listing is written once and read two ways: by people, and by agents.</p></div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section class="how" id="how">
+    <div class="sec-head"><span class="label">03 · HOW IT WORKS</span><h2>Legible. Payable. Still hers.</h2></div>
+    <div class="beats">
+      <article><b>Legible</b><p>Lena's listings become a public counter: a page for people, a JSON card and an MCP server for agents. Agents get facts only — size, paint, stock, delivery — never guesses.</p></article>
+      <article><b>Payable</b><p>An agent can start a PayPal order (Orders v2) with the exact item, price and shipping, recomputed on our server. The person sees "you asked for" next to "you're approving".</p></article>
+      <article><b>Still hers</b><p>Nothing is charged until a human approves in PayPal. Lena's rules hold: ships to the US only, at most 2 per order, stock is checked again at capture.</p></article>
+    </div>
+  </section>
+
+  <section class="agents" id="agents">
+    <div class="sec-head"><span class="label cyan">04 · FOR AGENTS</span><h2>Point any agent here.</h2></div>
+    <div class="endpoint"><span>MCP</span><code id="mcpurl"></code><button type="button" id="copy">copy</button></div>
+    <div class="endpoint"><span>JSON</span><code id="jsonurl"></code></div>
+    <p class="tools">Tools: <code>about_counter</code> <code>search_counter</code> <code>item_details</code> <code>delivery_estimate</code> <code>start_checkout</code> <code>order_status</code></p>
+  </section>
+
+  <footer class="foot"><span>Open Counter · built for the PayPal AI Hackathon by Elite Product LLC</span><a href="/maker">Lena's side →</a></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

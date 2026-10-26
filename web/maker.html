@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lena's counter — Small Garage</title>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/maker.css">
+</head>
+<body>
+<div class="device">
+  <header><div><span class="k">LENA'S COUNTER</span><h1>Small Garage</h1></div><span class="live" id="live">● live</span></header>
+  <div class="stats"><div><b id="s-sold">0</b><span>sold to AI agents</span></div><div><b id="s-wait">0</b><span>awaiting approval</span></div><div><b id="s-rev">$0</b><span>paid today</span></div></div>
+  <div class="k sec">ORDERS</div>
+  <div id="feed" class="feed"><p class="empty">No orders yet. When a shopper's AI starts a checkout, it shows up here.</p></div>
+  <div class="k sec">STOCK</div>
+  <div id="stock" class="stock"></div>
+  <p class="rules" id="rules"></p>
+</div>
+<div class="toast" id="toast"><div class="t-k">SOLD TO AN<br>AI AGENT</div><div class="t-a" id="t-a">$59</div><div class="t-l" id="t-l"></div></div>
+<script src="/static/maker.js"></script>
+</body>
+</html>
