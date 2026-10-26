@@ -122,13 +122,33 @@
         <div class="yr">${esc(yr.slice(2))}</div>
         <div class="meta"><h3>${esc(x.title.replace(/, \d{4}$/, ""))}</h3>
           <div class="spec"><span class="chip" style="background:${paint[code] || "#888"}"></span>${esc(code)} · ${esc(x.scale)} · ${x.length_mm} mm · ${x.build_hours} h</div>
-          <div class="row"><span class="price">$${x.price_usd.toFixed(0)}</span><span class="stock ${x.stock > 0 ? "" : "out"}">${x.stock > 0 ? x.stock + " IN STOCK" : "SOLD OUT · COMMISSION"}</span></div></div></article>`;
+          <div class="row"><span class="price">$${x.price_usd.toFixed(0)}</span><span class="stock ${x.stock > 0 ? "" : "out"}">${x.stock > 0 ? x.stock + " IN STOCK" : "SOLD OUT · COMMISSION"}</span></div>
+          <button class="buy" data-buy="${esc(x.id)}" data-title="${esc(x.title)}" ${x.stock > 0 ? "" : "disabled"}>${x.stock > 0 ? "Buy · $" + x.price_usd.toFixed(0) : "Sold out"}</button></div></article>`;
     }).join("");
     document.querySelectorAll(".card").forEach((c) => c.addEventListener("pointermove", (e) => {
       const r = c.getBoundingClientRect();
       c.style.setProperty("--cx", ((e.clientX - r.left) / r.width * 100) + "%");
       c.style.setProperty("--cy", ((e.clientY - r.top) / r.height * 100) + "%");
     }));
+  });
+  // a person can buy directly too: same rules, same PayPal approval
+  const STATES = "AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-buy]"); if (!b || b.disabled) return;
+    const bg = document.createElement("div"); bg.className = "sheet-bg";
+    bg.innerHTML = `<div class="sheet"><h3>${esc(b.dataset.title)}</h3><p>$59 + $6.50 shipping · Lena ships Mon–Fri from Columbus, OH. You approve in PayPal; nothing is charged before that.</p>
+      <select id="st"><option value="">Ship to which state?</option>${STATES.map((s) => `<option>${s}</option>`).join("")}</select>
+      <div class="row2"><button type="button" class="cx">Cancel</button><button type="button" class="go"><span style="color:#003087">Pay</span><span style="color:#009CDE">Pal</span></button></div><div class="msg2" id="m2"></div></div>`;
+    document.body.appendChild(bg);
+    bg.addEventListener("click", async (ev) => {
+      if (ev.target === bg || ev.target.classList.contains("cx")) return bg.remove();
+      if (!ev.target.closest(".go")) return;
+      const st = bg.querySelector("#st").value; if (!st) { bg.querySelector("#m2").textContent = "Pick a state first."; return; }
+      const r = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ item_id: b.dataset.buy, quantity: 1, us_state: st, asked_for: "Bought directly on the counter page", channel: "web" }) });
+      const j = await r.json();
+      if (j.ok) location.href = j.approve_url; else bg.querySelector("#m2").textContent = j.reason || "Couldn't start checkout.";
+    });
   });
   document.getElementById("copy").addEventListener("click", () => navigator.clipboard?.writeText(document.getElementById("mcpurl").textContent));
 })();

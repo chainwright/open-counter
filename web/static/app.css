@@ -82,9 +82,18 @@ body{overflow-x:hidden}
 @keyframes fl{0%{filter:brightness(2.2)}100%{filter:none}}
 
 @media (max-width:900px){
-  .agent{width:calc(100% - 32px);left:16px;top:64px}
-  .headline{display:none}.phone{transform:scale(.7);transform-origin:bottom right;right:8px}
-  .big{font-size:42vw;top:auto;bottom:22vh}
+  .hero{height:auto;min-height:0;cursor:auto;display:flex;flex-direction:column;padding:70px 16px 24px}
+  .scene{position:relative;height:62vw;min-height:240px;margin:0 -16px;order:1}
+  .photo{object-position:62% 55%}
+  .big{font-size:34vw;top:auto;bottom:-2vw;right:2vw}
+  .top{padding:16px}.top .brand{display:none}.top .label em{display:none}
+  .headline{position:relative;left:auto;top:auto;order:2;margin-top:18px;max-width:none}
+  .headline h1{font-size:38px}
+  .agent{position:relative;left:auto;top:auto;bottom:auto;width:auto;order:3;margin-top:22px}
+  .phone{position:relative;right:auto;bottom:auto;order:4;width:auto;height:auto;margin:22px 0 0;border-radius:26px;padding:16px;transform:none}
+  .phone .notch,.phone .lock-time{display:none}
+  .sold{margin-top:0}
+  .hint{display:none}
 }
 @media (prefers-reduced-motion:reduce){.steps li.active{animation:none}}
 
@@ -142,3 +151,16 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .foot{display:flex;justify-content:space-between;padding:34px 6vw;border-top:1px solid var(--hair);color:var(--mute);font-size:13px}
 .foot a{color:var(--lamp);text-decoration:none}
 @media (max-width:900px){.beats{grid-template-columns:1fr}section:not(.hero){padding:80px 16px}}
+
+.buy{margin-top:12px;width:100%;border:0;border-radius:10px;padding:11px;background:var(--paper);color:#111;font:600 14px "Geist";cursor:pointer}
+.buy[disabled]{opacity:.4;cursor:default}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+.sheet{width:min(460px,100%);background:#111316;border:1px solid var(--hair);border-radius:20px 20px 0 0;padding:22px;font-family:-apple-system,system-ui,sans-serif}
+.sheet h3{font:800 26px "Big Shoulders Display";text-transform:uppercase}
+.sheet p{color:#A9AEB4;font-size:14px;margin:6px 0 14px}
+.sheet select{width:100%;padding:12px;border-radius:10px;background:#08090A;color:#fff;border:1px solid var(--hair);font-size:15px}
+.sheet .row2{display:flex;gap:8px;margin-top:14px}.sheet .row2 button{flex:1;padding:12px;border-radius:10px;border:1px solid var(--hair);background:transparent;color:#fff;cursor:pointer}
+.sheet .row2 .go{background:#FFC439;color:#003087;border:0;font:italic 800 16px Verdana,sans-serif}
+.sheet .msg2{font-size:13px;color:#FF8A7A;margin-top:10px}
+.demo-tag{display:block;text-align:center;font:11px "Geist Mono";color:var(--mute);padding:0 10px 10px}
+@media (hover:none){.card .l{opacity:1}}

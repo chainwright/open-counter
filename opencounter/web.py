@@ -231,12 +231,19 @@ async def maker_feed():
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
+def _stamped(name: str) -> HTMLResponse:
+    """The page with each static file stamped by its modification time, so phones never keep an old copy."""
+    html = (WEB / name).read_text()
+    for f in (WEB / "static").iterdir():
+        html = html.replace(f"/static/{f.name}", f"/static/{f.name}?v={int(f.stat().st_mtime)}")
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
 def index():
-    p = WEB / "index.html"
-    return FileResponse(p) if p.exists() else HTMLResponse("<p>Open Counter</p>")
+    return _stamped("index.html")
 
 
 @app.get("/maker")
 def maker():
-    return FileResponse(WEB / "maker.html", headers={"Cache-Control": "no-cache"})
+    return _stamped("maker.html")

@@ -18,7 +18,7 @@ h1{font:900 46px/.9 "Big Shoulders Display";text-transform:uppercase;margin-top:
 .o h3{font:800 19px/1 "Big Shoulders Display";text-transform:uppercase}
 .o .m{font:12px/1.55 "Geist Mono";color:#A9AEB4;margin-top:5px}
 .o .asked{font-size:12.5px;color:#C9CDD1;margin-top:6px;font-style:italic}
-.badge{position:absolute;right:10px;top:10px;font:600 10.5px "Geist Mono";letter-spacing:.1em;padding:4px 7px;border-radius:6px;border:1px solid var(--hair);color:var(--mute)}
+.badge{display:inline-block;margin-bottom:6px;font:600 10.5px "Geist Mono";letter-spacing:.1em;padding:4px 7px;border-radius:6px;border:1px solid var(--hair);color:var(--mute)}
 .badge.paid{color:#041214;background:var(--cyan);border-color:var(--cyan)}
 .badge.shipped{color:var(--lamp);border-color:var(--lamp)}
 .badge.cancelled,.badge.refunded_out_of_stock{color:#FF8A7A;border-color:#5a2a25}
@@ -37,3 +37,6 @@ h1{font:900 46px/.9 "Big Shoulders Display";text-transform:uppercase;margin-top:
 .toast.on{transform:translate(-50%,0)}
 .t-k{font:900 34px/.9 "Big Shoulders Display"}.t-a{font:900 56px/1 "Big Shoulders Display";color:var(--lamp);margin-top:6px}
 .t-l{font:12px/1.5 "Geist Mono";color:var(--mute);margin-top:6px}
+
+.shoplink{display:block;text-align:center;margin:0 0 18px;padding:10px;border:1px solid var(--hair);border-radius:12px;color:var(--lamp);text-decoration:none;font-size:14px}
+.s{color:inherit;text-decoration:none}

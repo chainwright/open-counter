@@ -30,17 +30,18 @@
       return `<div class="o"><img src="${esc(photos[o.listing_id] || "")}" alt=""><div>
         <span class="badge ${esc(o.status)}">${st}</span>
         <h3>${esc(o.title)}</h3>
-        <div class="m">$${o.total_usd.toFixed(2)} · ${esc(where)} · via ${o.channel === "mcp" ? "AI agent (MCP)" : o.channel === "demo-shopper" || o.channel === "web-agent" ? "AI agent" : esc(o.channel)}</div>
+        <div class="m">$${o.total_usd.toFixed(2)} · ${esc(where)} · via ${o.channel === "web" ? "shop page (human)" : o.channel === "mcp" ? "AI agent (MCP)" : o.channel === "demo-shopper" || o.channel === "web-agent" ? "AI agent" : esc(o.channel)}</div>
         <div class="asked">"${esc((o.asked_for || "").slice(0, 140))}"</div>${acts}</div></div>`;
     }).join("");
   }
 
   function renderStock(c) {
-    document.getElementById("stock").innerHTML = c.listings.map((l) => `<div class="s"><img src="${esc(l.photo_url)}" alt=""><div><b>${esc(l.title.replace(/, \d{4}$/, ""))}</b><span>${l.stock > 0 ? l.stock + " left" : "sold out"} · $${l.price_usd.toFixed(0)}</span></div></div>`).join("");
+    document.getElementById("stock").innerHTML = c.listings.map((l) => `<a class="s" href="/#${esc(l.id)}"><img src="${esc(l.photo_url)}" alt=""><div><b>${esc(l.title.replace(/, \d{4}$/, ""))}</b><span>${l.stock > 0 ? l.stock + " left" : "sold out"} · $${l.price_usd.toFixed(0)}</span></div></a>`).join("");
     document.getElementById("rules").textContent = `Rules agents must follow: ships to ${c.ships_to} only · max ${c.max_per_order} per order · $${c.shipping_usd.toFixed(2)} shipping · commissions ${c.commissions} · every order approved by the buyer in PayPal.`;
   }
 
   function toast(o) {
+    document.querySelector(".t-k").innerHTML = o.channel === "web" ? "SOLD ON<br>YOUR COUNTER" : "SOLD TO AN<br>AI AGENT";
     document.getElementById("t-a").textContent = "$" + o.total_usd.toFixed(2);
     document.getElementById("t-l").textContent = `${o.title} · ${o.ship_to?.city || o.ship_state} · ship by ${o.estimate?.ships_on || ""}`;
     const t = document.getElementById("toast");
