@@ -8,6 +8,9 @@ import json
 import time
 from pathlib import Path
 
+from urllib.parse import urlparse
+
+from mcp.server.transport_security import TransportSecuritySettings
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -19,7 +22,14 @@ ROOT = Path(__file__).resolve().parent.parent
 MEDIA = ROOT / "demo" / "media"
 WEB = ROOT / "web"
 
-mcp_app = mcp.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True)
+# The counter is public on purpose: any agent may call it. Keep DNS-rebinding protection, but allow our own host.
+_host = urlparse(counter.PUBLIC_URL).netloc
+mcp_app = mcp.streamable_http_app(
+    streamable_http_path="/", stateless_http=True, json_response=True,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[_host, "127.0.0.1:*", "localhost:*"],
+        allowed_origins=[counter.PUBLIC_URL, "http://127.0.0.1:*", "http://localhost:*"]))
 _listeners: set[asyncio.Queue] = set()
 
 
