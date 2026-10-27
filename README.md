@@ -2,7 +2,7 @@
 
 **A one-person maker's shop that any AI shopping agent can buy from. Paid through PayPal, approved by a human.**
 
-Lena builds 1:43 replica cars in her spare room,  each. People now ask their AI assistant for gifts, and those
+Lena builds 1:43 replica cars in her spare room, $59 each. People now ask their AI assistant for gifts, and those
 assistants never find her. PayPal's agentic-commerce program exists, but it is invite-only and built for platform stores.
 Open Counter makes her shop *legible* to any agent (a page, a JSON card and an MCP server), *payable* through PayPal
 Orders v2, and still *hers*: nothing is charged until a person approves in PayPal, and her rules hold in code.
@@ -10,13 +10,14 @@ Orders v2, and still *hers*: nothing is charged until a person approves in PayPa
 Built for the PayPal AI Hackathon 2026 by Elite Product LLC.
 
 ## Try it in two minutes
-- Live demo: _(Render URL)_
+- Live demo: https://open-counter.onrender.com (Lena's side: https://open-counter.onrender.com/maker)
 - Chat with the built-in shopper's AI in section 01, or point your own agent at the MCP endpoint (section 04).
 - When it gives you a PayPal link, log in with the **sandbox** test buyer:
   - email: `sb-yi0xc53507798@personal.example.com`
   - password: `2dt_AD6W`
   - This is PayPal's test environment. No real money moves.
 - Watch Lena's side at `/maker`: the order appears, then "SOLD TO AN AI AGENT" when you pay.
+- The demo shop has one or two of each car. If you buy the last one, it shows as sold out and comes back ten minutes later, so the next visitor can buy it too.
 
 ## What uses PayPal, and where
 | PayPal API | What for | Code |
