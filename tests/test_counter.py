@@ -54,3 +54,23 @@ def test_public_listing_has_no_private_fields():
     item = counter.item_details("sg-014")
     assert "keywords" not in item and item["availability"] == "in stock"
     assert json.dumps(counter.about_counter()).count("PayPal") >= 1
+
+
+def test_demo_restock_brings_a_sold_out_car_back_later_not_sooner(monkeypatch):
+    monkeypatch.setattr(shop, "DEMO", True)
+    assert shop.take_stock("sg-014", 1)
+    sold = shop.listing("sg-014")
+    assert sold["stock"] == 0 and sold["sold_out_at"]
+    s = shop.shop()
+    assert not shop._demo_restock(s, now=sold["sold_out_at"] + shop.RESTOCK_AFTER_S - 1)
+    assert shop._demo_restock(s, now=sold["sold_out_at"] + shop.RESTOCK_AFTER_S)
+    back = next(x for x in s["listings"] if x["id"] == "sg-014")
+    assert back["stock"] == 1 and "sold_out_at" not in back
+    seeded_zero = next(x for x in s["listings"] if x["id"] == "sg-009")
+    assert seeded_zero["stock"] == 0  # the commission example stays sold out
+
+
+def test_order_log_is_capped():
+    shop._save_orders([{"id": i} for i in range(shop.MAX_ORDERS + 50)])
+    kept = shop.orders()
+    assert len(kept) == shop.MAX_ORDERS and kept[-1]["id"] == shop.MAX_ORDERS + 49

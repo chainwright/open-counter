@@ -17,6 +17,13 @@ DATA = Path(os.environ.get("OPENCOUNTER_DATA", ROOT / "data"))
 SEED = ROOT / "demo" / "shop.json"
 _lock = threading.RLock()
 
+# The public demo is a fictional shop with 1-2 of each car, so one judge's purchase would empty it for everyone after.
+# In demo mode a car that sold out comes back after a while ("Lena finished another one"); the sold-out state is
+# still visible in between. Items seeded at 0 stay at 0: they show the commission path.
+DEMO = os.environ.get("OPENCOUNTER_DEMO", "1") != "0"
+RESTOCK_AFTER_S = float(os.environ.get("OPENCOUNTER_DEMO_RESTOCK_MIN", "10")) * 60
+MAX_ORDERS = 300
+
 # USPS Ground Advantage from Columbus, OH, in business days after drop-off. A planning estimate, shown as one.
 _ZONE_DAYS = {
     "near": (1, 3, {"OH", "IN", "MI", "KY", "WV", "PA", "IL", "NY", "TN", "VA", "MD", "DC", "DE", "NJ", "WI"}),
@@ -45,7 +52,24 @@ def seed(force: bool = False):
 
 def shop() -> dict:
     seed()
-    return json.loads(_path("shop.json").read_text())
+    with _lock:
+        s = json.loads(_path("shop.json").read_text())
+        if DEMO and _demo_restock(s):
+            save_shop(s)
+        return s
+
+
+def _demo_restock(s: dict, now: float | None = None) -> bool:
+    now = now or time.time()
+    seeded = {x["id"]: x["stock"] for x in json.loads(SEED.read_text())["listings"]}
+    changed = False
+    for item in s["listings"]:
+        sold_at = item.get("sold_out_at")
+        if sold_at and item["stock"] <= 0 and now - sold_at >= RESTOCK_AFTER_S:
+            item["stock"] = seeded.get(item["id"], 1)
+            item.pop("sold_out_at")
+            changed = True
+    return changed
 
 
 def save_shop(s: dict):
@@ -137,7 +161,7 @@ def orders() -> list[dict]:
 
 
 def _save_orders(o: list[dict]):
-    _path("orders.json").write_text(json.dumps(o, indent=2, ensure_ascii=False))
+    _path("orders.json").write_text(json.dumps(o[-MAX_ORDERS:], indent=2, ensure_ascii=False))
 
 
 def new_order(lid: str, qty: int, state: str, asked_for: str, channel: str) -> dict:
@@ -189,5 +213,7 @@ def take_stock(lid: str, qty: int) -> bool:
         if item["stock"] < qty:
             return False
         item["stock"] -= qty
+        if item["stock"] <= 0:
+            item["sold_out_at"] = time.time()
         save_shop(s)
         return True
