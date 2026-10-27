@@ -17,7 +17,10 @@ def _public(item: dict) -> dict:
     d = {k: item[k] for k in FIELDS}
     d["photo_url"] = f"{PUBLIC_URL}/media/{item['photo']}"
     d["page_url"] = f"{PUBLIC_URL}/c/{shop.shop()['slug']}#{item['id']}"
-    d["availability"] = "in stock" if item["stock"] > 0 else "sold out (can be commissioned)"
+    r = shop.shop()["rules"]
+    d["availability"] = ("in stock" if item["stock"] > 0 else
+                         f"sold out; a commission from ${r['commission_from_usd']}, about {r['commission_lead_weeks']} "
+                         "weeks, confirmed by the maker herself" if r["commissions"] else "sold out")
     return d
 
 

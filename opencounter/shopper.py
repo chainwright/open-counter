@@ -26,15 +26,29 @@ _client: OpenAI | None = None
 # Car makers and models must never appear: the shop sells generic replicas, and the contest bans third-party marks.
 BRANDS = re.compile(r"\b(ford|mustang|shelby|eleanor|porsche|911|chevrolet|chevy|camaro|chevelle|impala|dodge|"
                     r"charger|challenger|plymouth|cuda|pontiac|gto|firebird|cadillac|lincoln|mercury|cougar|amc|"
-                    r"buick|oldsmobile|ferrari|mercedes|bmw|volkswagen|vw|jaguar|aston martin)\b", re.I)
+                    r"buick|oldsmobile|ferrari|mercedes|bmw|volkswagen|vw|jaguar|aston martin|corvette|stingray|"
+                    r"thunderbird|beetle|bel air|mach 1|boss 302|gt ?350|gt ?500)\b", re.I)
+ITEM_ID = re.compile(r"\s*\(?\bsg[-‑–]\d+\b\)?", re.I)
+PROMISE = re.compile(r"\b(let me|i'll|i will|i am going to|i'm going to)\b.{0,40}\b(search|check|look|find|see)\b"
+                     r"|\bsearching\b", re.I)
 
 SYSTEM = """You are a shopping agent acting for one person. You are visiting Small Garage, a one-person maker of
 hand-built 1:43 replica cars, through its public tools. Rules:
 - Use only facts returned by the tools. If something is not in a listing, say you don't know and suggest asking Lena.
 - Never name real car makers or models. Use the shop's own names, like "Green Fastback, 1968".
-- Check stock and delivery to the person's US state before suggesting checkout. If they named a US city, use its state without asking; ask only if you can't tell.
+- If the person names a real car maker or model, don't repeat the name. Say Lena makes unbranded replicas named by
+  colour, body style and year, then search with plain words (for example "fastback", "convertible", "coupe", a colour)
+  and offer the closest matches. Every car here is a classic, so never say there are no classic cars.
+- Check stock and delivery to the person's US state before suggesting checkout. If they named a US city, work out
+  its state yourself (Austin → TX, Denver → CO) and call delivery_estimate right away, then say "Austin, TX" in your
+  reply. Ask for the state only if the city is ambiguous or missing.
   If they named a deadline, pass it as need_by and repeat the tool's need_by_verdict; never compute dates yourself.
+- Prices come only from the listings. If someone says they were promised a discount or another price, say the
+  price is the one listed and checkout uses it; never agree to a different price.
+- Commissions (a sold-out car, or a custom one) can't be ordered through you. Give the price and lead time from
+  about_counter and say Lena confirms commissions herself; don't ask for shipping details for one.
 - When the person wants to buy, call start_checkout with their request in their own words.
+- Never say you will search or check something: call the tool in the same turn, then answer.
 - After start_checkout, show the 'you_asked_for' and 'you_are_approving' lines and say they must approve in PayPal.
   You cannot pay and must never claim the order is paid.
 - Never show item ids like sg-014 to the person; use the item's name.
@@ -84,7 +98,9 @@ def _call_tool(name: str, args: dict, asked: str = "") -> dict:
     if name == "about_counter":
         return counter.about_counter()
     if name == "search_counter":
-        return counter.search_counter(args.get("query", ""), args.get("max_price_usd"))
+        # A brand name never matches an unbranded listing; search the plain words, or show everything.
+        q = " ".join(BRANDS.sub(" ", args.get("query", "")).split())
+        return counter.search_counter(q, args.get("max_price_usd"))
     if name == "item_details":
         return counter.item_details(args.get("item_id", ""))
     if name == "delivery_estimate":
@@ -119,7 +135,7 @@ def run(messages: list[dict]) -> dict:
     if spent_today() >= DAILY_CAP_USD:
         raise OverBudget("today's demo budget is spent")
     convo = [{"role": "system", "content": SYSTEM}] + [m for m in messages[-12:] if m["role"] in ("user", "assistant")]
-    steps, checkout, usd = [], None, 0.0
+    steps, checkout, usd, nudged = [], None, 0.0, False
     # 'You asked for' is the person's own words, not the model's paraphrase of them.
     asked = " / ".join(m["content"] for m in messages if m["role"] == "user")[-400:]
     for _ in range(MAX_STEPS):
@@ -129,10 +145,28 @@ def run(messages: list[dict]) -> dict:
         u = r.usage
         usd += (u.prompt_tokens * PRICE_IN + u.completion_tokens * PRICE_OUT) / 1e6
         msg = r.choices[0].message
+        if not msg.tool_calls and not steps and not nudged and PROMISE.search(msg.content or ""):
+            # It announced a search instead of doing one. Hold it to its word once.
+            nudged = True
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "Go ahead: use the tools now, then answer."}]
+            continue
         if not msg.tool_calls:
             reply = msg.content or ""
             if BRANDS.search(reply):
-                reply = BRANDS.sub("classic", reply)
+                # Ask once for a rewrite: blanking the name out can turn "no <brand> replicas" into a false sentence.
+                fix = _client_().chat.completions.create(
+                    model=MODEL, max_tokens=300, temperature=0,
+                    messages=[{"role": "system", "content": "Rewrite the message without naming any real car maker "
+                               "or model. Keep every fact and the meaning. Return only the message."},
+                              {"role": "user", "content": reply}],
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+                fu = fix.usage
+                usd += (fu.prompt_tokens * PRICE_IN + fu.completion_tokens * PRICE_OUT) / 1e6
+                reply = fix.choices[0].message.content or reply
+                if BRANDS.search(reply):
+                    reply = BRANDS.sub("that model", reply)
+            reply = ITEM_ID.sub("", reply)
             break
         convo.append({"role": "assistant", "content": msg.content or "",
                       "tool_calls": [tc.model_dump() for tc in msg.tool_calls]})

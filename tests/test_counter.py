@@ -74,3 +74,31 @@ def test_order_log_is_capped():
     shop._save_orders([{"id": i} for i in range(shop.MAX_ORDERS + 50)])
     kept = shop.orders()
     assert len(kept) == shop.MAX_ORDERS and kept[-1]["id"] == shop.MAX_ORDERS + 49
+
+
+def test_shopper_search_drops_brand_words_and_never_comes_back_empty_for_them():
+    from opencounter import shopper
+    plain = shopper._call_tool("search_counter", {"query": "Ford Mustang Shelby GT500 fastback"})["results"]
+    assert plain and all("fastback" in x["matched"] for x in plain)
+    only_brand = shopper._call_tool("search_counter", {"query": "mustang shelby gt500"})["results"]
+    assert len(only_brand) == len(shop.shop()["listings"])  # nothing left to match: show the whole counter
+
+
+def test_item_ids_are_cut_from_replies():
+    from opencounter import shopper
+    s = "The Yellow Coupé, 1973 (sg‑009) is sold out; sg-014 is not."
+    assert "sg" not in shopper.ITEM_ID.sub("", s).lower()
+
+
+def test_promise_without_action_is_recognised():
+    from opencounter import shopper
+    for s in ["I'll search for similar fastbacks. Let me check what we have available.", "Searching now…",
+              "Let me look that up for you."]:
+        assert shopper.PROMISE.search(s), s
+    for s in ["We have the Green American Fastback, 1968 at $59.", "It ships Wednesday to Austin, TX."]:
+        assert not shopper.PROMISE.search(s), s
+
+
+def test_sold_out_listing_states_commission_terms_not_the_shelf_price():
+    a = counter.item_details("sg-009")["availability"]
+    assert "sold out" in a and "$89" in a and "3 weeks" in a
