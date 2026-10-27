@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import html
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 from urllib.parse import urlparse
@@ -171,10 +173,73 @@ def paypal_cancel(oc: str):
     return HTMLResponse("<p>Cancelled. Nothing was charged.</p>")
 
 
+def _day(s: str) -> str:
+    """'Wednesday 2026-10-28' -> 'Wed, Oct 28'."""
+    try:
+        d = datetime.strptime(s.split()[-1], "%Y-%m-%d")
+        return d.strftime("%a, %b ") + str(d.day)
+    except Exception:
+        return s or ""
+
+
 @app.get("/thanks/{oc}")
 def thanks(oc: str):
-    o = shop.order(oc) or {}
-    return HTMLResponse(f"<p>Order {oc}: {o.get('status', '?')}. You can close this tab.</p>")
+    """The page a person lands on after approving in PayPal: what they bought, what happens next."""
+    o = shop.order(oc)
+    if not o:
+        raise HTTPException(404)
+    e = html.escape
+    item = shop.listing(o.get("listing_id", "")) or {}
+    est = o.get("estimate") or {}
+    status = o.get("status", "")
+    total = f"${o.get('total_usd', 0):.2f}"
+    head, lead, steps = {
+        "paid": ("It's yours. Congratulations!", f"Paid {total} through PayPal. Lena has your order.",
+                 [("Lena packs it", f"She ships {_day(est.get('ships_on', ''))} from Columbus, Ohio, with a note in the box."),
+                  ("You get the tracking", "When she adds the USPS number, PayPal tells you it's on its way."),
+                  ("It arrives", f"Between {_day(est.get('arrives_earliest', ''))} and {_day(est.get('arrives_latest', ''))}.")]),
+        "shipped": ("On its way.", f"{total} through PayPal. Lena has shipped it.",
+                    [("USPS tracking", e((o.get("tracking") or {}).get("number", ""))),
+                     ("It arrives", f"Between {_day(est.get('arrives_earliest', ''))} and {_day(est.get('arrives_latest', ''))}.")]),
+        "refunded_out_of_stock": ("Sorry, it sold a moment before you paid.", "You've been refunded in full through PayPal.",
+                                  [("Nothing to do", "The refund is already on its way back to your PayPal account."),
+                                   ("Want one anyway?", "Lena takes commissions. Ask your agent for the same car in your colour.")]),
+        "pending": ("Payment is processing.", "PayPal is still confirming it. Nothing else to do.",
+                    [("What happens next", "As soon as PayPal confirms, Lena sees the order and ships it.")]),
+    }.get(status, ("Order received.", f"Status: {e(status)}.", []))
+    photo = f"/media/{e(item['photo'])}" if item.get("photo") else ""
+    rows = "".join(f'<li><b>{t}</b><span>{d}</span></li>' for t, d in steps)
+    asked = e(o.get("asked_for", ""))
+    return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(head)} · Small Garage</title>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{{--black:#0D0E10;--soot:#17191C;--hair:#2A2D31;--paper:#F2F3F1;--mute:#8C9096;--lamp:#FFE9C7;--cyan:#38F2E5}}
+*{{box-sizing:border-box}}body{{margin:0;min-height:100vh;background:var(--black);color:var(--paper);font-family:Geist,system-ui,sans-serif;display:grid;place-items:center;padding:28px 16px}}
+.wrap{{width:min(960px,100%);display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);background:var(--soot);border:1px solid var(--hair);border-radius:22px;overflow:hidden}}
+.pic{{position:relative;min-height:420px;background:#000 center/cover no-repeat}}
+.pic:after{{content:"";position:absolute;inset:0;background:radial-gradient(60% 55% at 45% 40%,transparent 0,rgba(13,14,16,.55) 70%,var(--black) 100%)}}
+.body{{padding:38px 36px 34px}}
+.k{{font:500 12px/1 'Geist Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--cyan)}}
+h1{{font:800 46px/1.02 'Big Shoulders Display',sans-serif;letter-spacing:.01em;margin:14px 0 10px;color:var(--lamp)}}
+.lead{{color:var(--paper);font-size:18px;margin:0 0 4px}}.item{{color:var(--mute);font-size:15px;margin:0 0 22px}}
+.asked{{border-left:3px solid var(--lamp);padding:8px 14px;margin:0 0 22px;color:#d9dcd7;font-size:15px;line-height:1.45}}
+.asked small{{display:block;font:500 11px/1 'Geist Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:6px}}
+ol{{list-style:none;margin:0;padding:0;display:grid;gap:14px;counter-reset:s}}
+li{{display:grid;grid-template-columns:30px 1fr;column-gap:12px;counter-increment:s}}
+li:before{{content:counter(s);grid-row:span 2;width:30px;height:30px;border-radius:50%;border:1px solid var(--hair);display:grid;place-items:center;font:500 13px 'Geist Mono',monospace;color:var(--lamp)}}
+li b{{font-weight:600}}li span{{color:var(--mute);font-size:15px;line-height:1.4}}
+.foot{{margin-top:26px;padding-top:18px;border-top:1px solid var(--hair);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font:400 13px 'Geist Mono',monospace;color:var(--mute)}}
+.foot a{{color:var(--cyan);text-decoration:none}}
+@media (max-width:760px){{.wrap{{grid-template-columns:1fr}}.pic{{min-height:260px}}.body{{padding:26px 22px}}h1{{font-size:38px}}}}
+</style></head><body><main class="wrap">
+<div class="pic" style="background-image:url('{photo}')" role="img" aria-label="{e(item.get('title', ''))}"></div>
+<div class="body"><div class="k">Small Garage · order {e(oc)}</div><h1>{e(head)}</h1>
+<p class="lead">{lead}</p><p class="item">{e(o.get('title', item.get('title', '')))} · qty {o.get('qty', 1)}</p>
+{f'<div class="asked"><small>You asked for</small>{asked}</div>' if asked else ''}
+<ol>{rows}</ol>
+<div class="foot"><span>PayPal sandbox · no real money</span><a href="/">Back to the counter</a></div></div>
+</main></body></html>""")
 
 
 @app.post("/paypal/webhook")
