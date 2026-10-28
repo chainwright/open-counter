@@ -389,6 +389,9 @@ def thanks(oc: str):
                                    ("Want one anyway?", "Lena takes commissions. Ask your agent for the same car in your colour.")]),
         "pending": ("Payment is processing.", "PayPal is still confirming it. Nothing else to do.",
                     [("What happens next", "As soon as PayPal confirms, Lena sees the order and ships it.")]),
+        "replaced": ("This order was replaced.", "You changed the order in the chat, so this one can't be paid.",
+                     [("Your current order", f"Pay the newer order from the same chat: {e(o.get('replaced_by', ''))}."),
+                      ("Nothing was charged", "No money moved for this one.")]),
     }.get(status, ("Order received.", f"Status: {e(status)}.", []))
     if o.get("kind") == "commission" and status == "paid":
         q = o.get("quote") or {}

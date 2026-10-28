@@ -233,3 +233,12 @@ def test_demo_visitors_cannot_change_the_shop_for_others():
     listed = c.get("/api/maker/orders", headers={"x-visitor": "bbb"}).json()
     assert all("approve_url" not in x and "paypal_order_id" not in x for x in listed)
     assert c.post("/api/shopper", json={"messages": [{"role": "user", "content": "  "}]}).status_code == 400
+
+
+def test_made_to_order_spec_is_read_in_code_english_and_russian():
+    from opencounter.shopper import parse_made_to_order as p
+    assert p("Хочу серую машинку как фастбек 1968 года, с двумя чёрными полосами, салон коричневый, две штуки.") == {
+        "model": "fastback", "year": "1968", "body_colour": "grey", "interior_colour": "brown", "quantity": 2,
+        "details": "с двумя чёрными полосами"}
+    assert p("the yellow rear-engine coupe, 1973, red body, black interior, 12 of them")["body_colour"] == "red"
+    assert p("I like Porsche") is None

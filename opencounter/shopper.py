@@ -54,7 +54,9 @@ How to answer
 3. Prices are fixed. Discounts exist only for made-to-order builds (10% from 10 cars, 15% from 25); say so kindly
    if asked, and never agree to another price.
 4. Shipping: every US state including Hawaii and Alaska (check with delivery_estimate; a city is enough to know the
-   state). Outside the US: not yet. If they gave a date, pass it as need_by and say the verdict plainly.
+   state). Outside the US: not yet. If they gave a date, pass it as need_by and say the verdict plainly. There is one
+   shipping method (USPS Ground Advantage): never offer faster or express shipping, gift wrap or anything not in the
+   tools; if they need it sooner, say so honestly and offer what exists.
 5. No real car makers or models: Lena makes unbranded replicas named by colour, body style and year; offer the
    closest listed car. Never refuse over a brand name.
 
@@ -80,6 +82,7 @@ Always
 - Never write personal details the person didn't type, and don't repeat their address back.
 - Talking to Lena: take their phone number and what it's about, call leave_contact; she calls them. Never give a number.
 - The shop asks about news emails itself after the first order; if they bring it up, call marketing_consent.
+- Never ask for the make or brand of a real car: Lena works from body style, year and colours.
 - Never show item ids like sg-014. Lines starting with "Tool results from your last turn" are notes for you only."""
 
 TOOLS = [
@@ -404,18 +407,74 @@ def _polish(reply: str, last_user: str) -> tuple[str, float]:
     return out, (u.prompt_tokens * PRICE_IN + u.completion_tokens * PRICE_OUT) / 1e6
 
 
+_COLOURS = {"grey": "grey", "gray": "grey", "сер": "grey", "black": "black", "чёрн": "black", "черн": "black",
+            "white": "white", "бел": "white", "red": "red", "красн": "red", "blue": "blue", "син": "blue", "голуб": "light blue",
+            "green": "green", "зелён": "green", "зелен": "green", "yellow": "yellow", "жёлт": "yellow", "желт": "yellow",
+            "orange": "orange", "оранж": "orange", "brown": "brown", "коричн": "brown", "tan": "tan", "beige": "beige",
+            "беж": "beige", "silver": "silver", "серебр": "silver", "cream": "cream", "кремов": "cream", "purple": "purple",
+            "фиолет": "purple", "burgundy": "burgundy", "бордов": "burgundy"}
+_STYLES = {"rear-engine": "rear-engine coupe", "rear engine": "rear-engine coupe", "muscle": "muscle coupe",
+           "fastback": "fastback", "фастб": "fastback", "convertible": "convertible", "кабриол": "convertible",
+           "coupe": "coupe", "coupé": "coupe", "купе": "coupe"}
+_NUMS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+         "одн": 1, "две": 2, "два": 2, "три": 3, "четыр": 4, "пять": 5, "шесть": 6, "семь": 7, "восем": 8, "девять": 9,
+         "десять": 10, "дюжин": 12}
+
+
+def parse_made_to_order(text: str) -> dict | None:
+    """A made-to-order spec written in plain words (English or Russian), read in code so a quote never depends on the
+    model noticing it: body style, year, body colour, interior colour, quantity, extras. None if anything is missing."""
+    t = text.lower()
+    style = next((v for k, v in _STYLES.items() if k in t), None)
+    year = re.search(r"\b(19[2-9]\d|20[0-2]\d)\b", t)
+    inner = re.search(r"(\w+)\s+(?:interior|inside|салон\w*)|(?:interior|inside|салон\w*)\s*(?:is\s*|-\s*)?(\w+)", t)
+    in_col = None
+    if inner:
+        w = inner.group(1) or inner.group(2) or ""
+        in_col = next((v for k, v in _COLOURS.items() if w.startswith(k)), None)
+    body = None
+    bm = re.search(r"(\w+)\s+(?:body|кузов\w*)|(?:body|кузов\w*)\s+(\w+)", t)
+    if bm:
+        w = bm.group(1) or bm.group(2) or ""
+        body = next((v for k, v in _COLOURS.items() if w.startswith(k)), None)
+    for m in ([] if body else re.finditer(r"[a-zа-яё]+", t)):
+        w = m.group(0)
+        if inner and inner.start() <= m.start() <= inner.end():
+            continue
+        body = next((v for k, v in _COLOURS.items() if w.startswith(k)), None)
+        if body:
+            break
+    qty = re.search(r"\b(\d{1,3})\s*(?:x\b|×|pcs|pieces|cars|of them|штук|шт|машин)", t)
+    q = int(qty.group(1)) if qty else next((n for k, n in _NUMS.items() if re.search(r"\b" + k + r"\w*\s+(штук|шт|машин|of them|cars)", t)
+                                             or re.search(r"(of them|штук)\W+" + k, t)), None)
+    if q is None:
+        q = next((n for k, n in _NUMS.items() if re.search(r"\b" + k + r"\w*\b", t) and k in ("две", "два", "two", "три", "three")), None)
+    extras = re.search(r"((?:two|2|две|с двумя)\s+\w+\s+(?:stripes|полос\w*)|(?:racing )?stripes|полос\w+)", t)
+    if not (style and year and body and in_col and q):
+        return None
+    return {"model": style, "year": year.group(1), "body_colour": body, "interior_colour": in_col, "quantity": q,
+            "details": extras.group(0) if extras else ""}
+
+
 def _must_say(reply: str, last_user: str, steps: list[dict]) -> str:
     """Two answers a shopper must never miss, added in code if the model left them out: the deadline verdict, and
     the answer to 'can I get a discount?'."""
     ru = bool(re.search(r"[а-яё]", last_user, re.I))
     v = next((m for m in (re.search(r"by ([\w ]+): (too late|possible, not certain)", st["result"]) for st in steps) if m), None)
-    if v and not re.search(r"late|won.?t|not (arrive|make|reach)|past|miss|might|may not|possible|не успе|позже|опозда", reply, re.I):
+    if v and not re.search(r"too late|\blate\b|won.?t (arrive|make|reach|get)|not (arrive|make|reach)|past your|miss(es)? (your|the)|"
+                           r"may not|not certain|не успе|опозда", reply, re.I):
         day = v.group(1).strip()
         day = {"mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thursday", "fri": "Friday", "sat": "Saturday",
                "sun": "Sunday"}.get(day.lower()[:3], day) if len(day) <= 4 else day
         reply = (("По расчёту доставки к этому сроку не успеем. " if v.group(2) == "too late" else "К этому сроку успеть можно, но без гарантии. ")
                  if ru else (f"Heads-up: it won't arrive by {day}. " if v.group(2) == "too late"
                              else f"It may arrive by {day}, but that isn't certain. ")) + reply
+    # the total the shopper pays, written by code from the tool, if the reply skipped it or gave a price without shipping
+    pv = next((st for st in steps if st["tool"] == "start_checkout" and "total $" in st["result"]), None)
+    if pv:
+        tot = re.search(r"total \$([\d,.]+)", pv["result"]).group(1)
+        if f"${tot}" not in reply.replace(" ", "") and f"{tot}$" not in reply.replace(" ", ""):
+            reply = (f"Итого с доставкой: ${tot}. " if ru else f"Total with shipping: ${tot}. ") + reply
     if (re.search(r"discount|% off|\d+ ?% |cheaper|скидк|дешевл", last_user, re.I)
             and not re.search(r"discount|fixed|скидк|фиксир", reply, re.I)):
         reply = ("Цены фиксированные; скидки есть только на сборку под заказ: 10% от 10 машинок и 15% от 25. " if ru else
@@ -535,6 +594,18 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                       {"role": "user", "content": "They asked about a discount: answer it first (prices are fixed; made-to-order "
                        "builds get 10% from 10 cars and 15% from 25), then continue."}]
             continue
+        spec = None if msg.tool_calls or checkout else parse_made_to_order(last_user)
+        if spec and not any(st["tool"] in ("quote_commission", "start_commission_checkout") for st in steps) \
+                and not any("made-to-order build" in (m.get("memo") or "") for m in messages if m["role"] == "assistant"):
+            # the person described a made-to-order build in full: quote it in code, then let the model answer
+            out = counter.quote_commission([spec], "")
+            steps.append({"tool": "quote_commission", "label": LABELS["quote_commission"], "args": {"cars": [spec]},
+                          "result": _summary("quote_commission", out), "ms": 0})
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "system", "content": "Quote from the shop (made to order, computed in code): " + json.dumps(out)[:2000]
+                       + " Give this total, the build time and ready date now, then ask in one message for name, phone, "
+                         "email and full address (street, city, state, ZIP)."}]
+            continue
         verdict = next((m for m in (re.search(r"by [\w ]+: (too late|possible, not certain|on time)", st["result"])
                                      for st in steps) if m), None)
         if (not msg.tool_calls and nudges > 0 and verdict and verdict.group(1) != "on time"
@@ -617,6 +688,9 @@ def run(messages: list[dict], visitor: str = "") -> dict:
     # after the first order with an email, the shop asks about news once (the model is told not to ask itself)
     asked_before = any(NEWS_Q in m.get("content", "") or NEWS_Q_RU in m.get("content", "") for m in messages
                        if m["role"] == "assistant")
+    if asked_before:   # the shop already asked; a model-written repeat of the question is dropped
+        reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply)
+                         if not re.search(r"(news|email|e-mail|почт|рассыл).{0,40}(\?|new models|offers|новы|акци)", x, re.I)) or reply
     if checkout and checkout.get("ship_to") and not asked_before:
         reply = reply.strip() + "\n\n" + (NEWS_Q_RU if re.search(r"[а-яё]", last_user, re.I) else NEWS_Q)
     if not reply.strip():
