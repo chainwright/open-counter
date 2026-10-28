@@ -89,6 +89,7 @@ def _hide_contact(t: str) -> str:
     t = _STREET.sub("••• (street)", t)
     t = re.sub(r"[\w.+-]+@[\w-]+\.[\w.]+", "•••@•••", t)
     t = re.sub(r"(?<![\d-])\+?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b", "•••", t)
+    t = re.sub(r"(?<![\w-])\+?1?\d{10}\b", "•••", t)   # a phone typed as one run of digits (+12796657833)
     return re.sub(r"(?<![\d-])\b\d{5}(?:-\d{4})?\b(?!-)", "•••••", t)
 
 

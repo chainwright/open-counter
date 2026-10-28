@@ -81,3 +81,8 @@ def test_one_search_covers_every_counter(c):
     every = c.get("/api/directory").json()["results"]
     assert len({x["card"] for x in every}) >= 2     # Lena's shop and the counters other makers opened
     assert all(x["price_usd"] <= 60 for x in c.get("/api/directory?max_price=60").json()["results"])
+
+
+def test_contacts_are_hidden_on_public_pages_in_any_phone_format():
+    t = web._hide_contact("Kim / +12796657833 / 4155550134 / (415) 555-0134 / kim@example.com / 95608")
+    assert not any(x in t for x in ("2796657833", "4155550134", "555-0134", "kim@", "95608"))
