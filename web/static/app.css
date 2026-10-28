@@ -113,6 +113,8 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .tl{align-self:flex-start;font:12.5px "Geist Mono";color:#9FB3B6;display:flex;gap:8px;align-items:center}
 .tl i{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
 .think{align-self:flex-start;font:12.5px "Geist Mono";color:var(--cyan);opacity:.8}
+.think::after{content:"";display:inline-block;width:1.5em;text-align:left;animation:dots 1.2s steps(4) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .chips button{background:transparent;border:1px solid var(--hair);color:#C9CDD1;border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer}
 .chips button:hover{border-color:var(--cyan);color:#fff}

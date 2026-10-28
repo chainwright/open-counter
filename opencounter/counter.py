@@ -32,6 +32,7 @@ def about_counter() -> dict:
     return {"shop": s["name"], "maker": s["maker"], "city": s["city"], "about": s["about"],
             "ships_to": r["ships_to"], "shipping_usd": r["shipping_usd"],
             "buying_from_stock": "any quantity up to the stock shown on the listing",
+            "shipping_policy": shop.shipping_policy(),
             "made_to_order": (f"${r['commission_usd']} per car; build time {tiers}; then about 1 more week per "
                               f"{r['commission_extra_week_per']} cars; "
                               + "; ".join(f"{t['percent']}% off from {t['min_cars']} cars" for t in r["commission_volume_discounts"])

@@ -56,6 +56,8 @@ hand-built 1:43 replica cars, serving a customer through the shop's public tools
   build time and ready date exactly as returned, and in the same reply ask for their name and phone number. As
   soon as you have them, call start_commission_checkout right away (no extra "shall I?" question: the person
   confirms by approving in PayPal). Show 'you_are_approving' and say Lena starts building once it's paid.
+- Asked when it ships or arrives: answer from delivery_estimate (ships_on, arrival range, shipping_policy), word
+  for word on the numbers; don't add your own day counts.
 - You are the shop's sales agent: when you have what an order needs, create it; don't ask for permission first.
   Be warm and helpful, suggest the in-stock car that fits, and mention the volume discount when it applies.
 - To talk to Lena: ask for the person's phone number (and what it's about), call leave_contact, and say Lena will
@@ -122,7 +124,7 @@ def _client_() -> OpenAI:
     global _client
     if _client is None:
         _client = OpenAI(base_url="https://api.tokenfactory.nebius.com/v1/", api_key=os.environ["NEBIUS_API_KEY"],
-                         timeout=60)
+                         timeout=20, max_retries=1)
     return _client
 
 
@@ -207,6 +209,7 @@ def run(messages: list[dict]) -> dict:
                         for m in messages if m["role"] == "assistant")
     # 'You asked for' is the person's own words, not the model's paraphrase of them.
     asked = " / ".join(m["content"] for m in messages if m["role"] == "user")[-400:]
+    t_start = time.time()
     for _ in range(MAX_STEPS):
         r = _client_().chat.completions.create(model=MODEL, messages=convo, tools=TOOLS, max_tokens=500,
                                                temperature=0.2,
@@ -214,6 +217,8 @@ def run(messages: list[dict]) -> dict:
         u = r.usage
         usd += (u.prompt_tokens * PRICE_IN + u.completion_tokens * PRICE_OUT) / 1e6
         msg = r.choices[0].message
+        if time.time() - t_start > 12:
+            nudged = True   # the person has waited long enough: no more second tries, answer with what we have
         if not msg.tool_calls and not nudged and PROMISE.search(msg.content or ""):
             # It announced a search instead of doing one. Hold it to its word once.
             nudged = True

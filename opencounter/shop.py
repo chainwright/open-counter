@@ -101,6 +101,13 @@ def search(query: str = "", max_price: float | None = None, in_stock_only: bool 
     return out
 
 
+def shipping_policy() -> str:
+    r = shop()["rules"]
+    days = ", ".join(r["ship_days"])
+    return (f"Paid orders from stock ship {r['handling_days']} business day after payment, on the next shipping day "
+            f"({days}); the tracking number comes by email when it ships. ships_on assumes payment today.")
+
+
 def next_ship_day(today: date | None = None) -> date:
     s = shop()["rules"]
     d = (today or date.today()) + timedelta(days=s["handling_days"])
@@ -146,7 +153,8 @@ def delivery_estimate(state: str, today: date | None = None, need_by: str = "") 
     day = lambda d: f"{d.strftime('%A')} {d.isoformat()}"
     out = {"ok": True, "today": day(today), "ships_on": day(ship), "arrives_earliest": day(early),
            "arrives_latest": day(late), "carrier": "USPS Ground Advantage",
-           "note": "Estimate from the carrier's published ranges, not a guarantee."}
+           "note": "Estimate from the carrier's published ranges, not a guarantee.",
+           "shipping_policy": shipping_policy()}
     nb = _need_by_date(need_by, today)
     if nb:  # decided in code, so the agent never does date arithmetic
         out["need_by"] = day(nb)

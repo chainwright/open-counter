@@ -89,11 +89,13 @@
     if (!text.trim()) return;
     history.push({ role: "user", content: text });
     add("msg u", esc(text));
-    const t = add("think", "Shopper's AI is working…");
+    const t = add("think", "Reading your message");
+    const stages = ["Reading your message", "Checking the shelf", "Working out delivery", "Almost there"];
+    let k = 0; const tick = setInterval(() => { k = Math.min(k + 1, stages.length - 1); t.textContent = stages[k]; }, 2200);
     try {
       const r = await fetch("/api/shopper", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history }) });
       const j = await r.json();
-      t.remove();
+      clearInterval(tick); t.remove();
       if (j.error) { add("msg a", esc(j.error)); return; }
       for (const s of j.steps) add("tl", `<i></i>${esc(s.label)} · ${esc(s.result)}`);
       add("msg a", md(j.reply));
@@ -104,7 +106,7 @@
           <a class="pp" href="${esc(c.approve_url)}" target="_blank" rel="noopener"><span class="pp-a">Pay</span><span class="pp-b">Pal</span></a>
           <p class="fine">${esc(c.delivery)}. Nothing is charged until you approve in PayPal.</p>`);
       }
-    } catch (e) { t.textContent = "Couldn't reach the counter. Try again."; }
+    } catch (e) { clearInterval(tick); t.textContent = "Couldn't reach the counter. Try again."; }
   }
   form.addEventListener("submit", (e) => { e.preventDefault(); const v = input.value; input.value = ""; ask(v); });
   document.querySelectorAll("#chips button").forEach((b) => b.addEventListener("click", () => ask(b.textContent)));
