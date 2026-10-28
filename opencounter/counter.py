@@ -21,6 +21,24 @@ def _media_url(name: str) -> str:
     return f"{PUBLIC_URL}/media/{name}{v}"
 
 
+def receipt(o: dict) -> dict:
+    """The order as a receipt: one row per car (qty × unit = sum), then discount, shipping and total (Roma 14551)."""
+    rows = []
+    if o.get("kind") == "commission":
+        q = o["quote"]
+        for c in q["cars"]:
+            rows.append({"name": f"Made to order: {c['model']} ({c['year']}), {c['body_colour']} body, "
+                                 f"{c['interior_colour']} interior", "qty": c["quantity"], "unit": q["unit_usd"],
+                         "sum": round(c["quantity"] * q["unit_usd"], 2)})
+        extra = [{"name": f"Volume discount {q['volume_discount_percent']}%", "sum": -q["discount_usd"]}] if q["discount_usd"] else []
+    else:
+        rows = [{"name": ln["title"], "qty": ln["qty"], "unit": ln["unit_usd"], "sum": round(ln["qty"] * ln["unit_usd"], 2)}
+                for ln in (o.get("lines") or [{"title": o["title"], "qty": o["qty"], "unit_usd": o["unit_usd"]}])]
+        extra = []
+    extra.append({"name": "Shipping" if o["shipping_usd"] else "Shipping (free)", "sum": o["shipping_usd"]})
+    return {"rows": rows, "extra": extra, "total": o["total_usd"]}
+
+
 def _ship_to(o: dict) -> str:
     c = o.get("customer") or {}
     if not c:
@@ -80,9 +98,14 @@ def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone:
     except ValueError as e:
         return {"ok": False, "reason": str(e)}
     s = shop.shop()
-    line = {"id": "MADE-TO-ORDER", "title": o["title"], "price_usd": round(o["total_usd"] - o["shipping_usd"], 2)}
+    # one invoice line per car spec (qty × unit), the volume discount shown separately (Roma 14551)
+    q = o["quote"]
+    lines = [({"id": f"MTO-{i + 1}", "price_usd": q["unit_usd"],
+               "title": f"Made to order: {c['model']} ({c['year']}), {c['body_colour']}/{c['interior_colour']}"}, c["quantity"])
+             for i, c in enumerate(q["cars"])]
     try:
-        pp = paypal.create_order(order_id=o["id"], shop=s, listing=line, qty=1, shipping_usd=o["shipping_usd"],
+        pp = paypal.create_order(order_id=o["id"], shop=s, listing=lines[0][0], qty=lines[0][1], lines=lines,
+                                 shipping_usd=o["shipping_usd"], discount_usd=q["discount_usd"],
                                  customer=o.get("customer"),
                                  return_url=f"{PUBLIC_URL}/paypal/return?oc={o['id']}",
                                  cancel_url=f"{PUBLIC_URL}/paypal/cancel?oc={o['id']}")
@@ -98,7 +121,7 @@ def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone:
                                  + f" + ${q['shipping_usd']:.2f} shipping = ${o['total_usd']:.2f}",
             "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}, arrives "
                         f"{q['delivery']['arrives_earliest']} to {q['delivery']['arrives_latest']} (estimate)",
-            "ship_to": _ship_to(o),
+            "ship_to": _ship_to(o), "receipt": receipt(o),
             "next_step": "Show both lines, then open approve_url. Nothing is charged until they approve in PayPal."}
 
 
@@ -161,7 +184,7 @@ def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_
                                  f"({s['maker']}, {s['city']})",
             "delivery": f"ships {est['ships_on']}, estimated arrival {est['arrives_earliest']} to "
                         f"{est['arrives_latest']} ({est['carrier']}; estimate, not a guarantee)",
-            "ship_to": _ship_to(o),
+            "ship_to": _ship_to(o), "receipt": receipt(o),
             "next_step": "Show both lines to the person, then open approve_url. Nothing is charged until they "
                          "approve in PayPal."}
 

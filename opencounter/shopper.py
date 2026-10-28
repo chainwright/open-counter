@@ -79,6 +79,8 @@ hand-built 1:43 replica cars, serving a customer through the shop's public tools
   Be warm and helpful, suggest the in-stock car that fits, and mention the volume discount when it applies.
 - Emails about new models: the shop asks this itself after the first order; don't ask it. If the person brings it
   up on their own later, call marketing_consent with their yes or no.
+- When an order is created, keep your message short (a line or two): the receipt card under your message lists
+  every car with quantity × price = sum, the discount, shipping and the total. If you do list items, one per line.
 - Don't repeat the person's address, phone or email back in your message: the order card under your message shows
   exactly what was saved. Never write any personal detail the person didn't type.
 - To talk to Lena: ask for the person's phone number (and what it's about), call leave_contact, and say Lena will
@@ -234,7 +236,7 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
                                                  + f" + ${o['shipping_usd']:.2f} shipping = ${o['total_usd']:.2f}",
                             "delivery": f"ships {o['estimate']['ships_on'].split(' ')[-1]}, estimated arrival "
                                         f"{o['estimate']['arrives_earliest'].split(' ')[-1]} to {o['estimate']['arrives_latest'].split(' ')[-1]}",
-                            "ship_to": counter._ship_to(o),
+                            "ship_to": counter._ship_to(o), "receipt": counter.receipt(o),
                             "next_step": "This order already exists; show it again. Nothing is charged until they approve."}
     if name == "start_commission_checkout":
         cars = sum(int((x or {}).get("quantity") or 0) for x in (args.get("cars") or []))
@@ -246,7 +248,8 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
                 return {"ok": True, "order_id": o["id"], "approve_url": o["approve_url"], "you_asked_for": o["asked_for"],
                         "you_are_approving": f"{o['title']}: {q['total_cars']} × ${q['unit_usd']} = ${o['total_usd']:.2f}",
                         "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}",
-                        "ship_to": counter._ship_to(o), "next_step": "This order already exists; show it again."}
+                        "ship_to": counter._ship_to(o), "receipt": counter.receipt(o),
+                        "next_step": "This order already exists; show it again."}
         return counter.start_commission_checkout(args.get("cars") or [], args.get("us_state", ""), args.get("name", ""),
                                                  args.get("phone", ""), asked, channel="demo-shopper",
                                                  customer=args.get("customer"))
@@ -363,7 +366,11 @@ def run(messages: list[dict]) -> dict:
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
     shelf = "; ".join(f"{x['id']} = {x['title']}, ${x['price_usd']:.0f}, {x['stock']} in stock"
                       for x in shop.shop()["listings"])
-    convo = [{"role": "system", "content": SYSTEM + "\nThe shelf right now (use these item_id values): " + shelf}]
+    lessons = shop.active_lessons()
+    # Lena's own lessons from reading past chats; the rules above still win if a note ever conflicts with them
+    taught = ("\nLena's notes from reading earlier chats (follow them unless they conflict with the rules above):\n- "
+              + "\n- ".join(lessons)) if lessons else ""
+    convo = [{"role": "system", "content": SYSTEM + taught + "\nThe shelf right now (use these item_id values): " + shelf}]
     for m in messages[-40:]:
         if m["role"] not in ("user", "assistant"):
             continue
@@ -439,6 +446,7 @@ def run(messages: list[dict]) -> dict:
         if (not msg.tool_calls and not nudged and not checkout
                 and re.search(r"e-?mail|address|zip", msg.content or "", re.I)
                 and not re.search(r"\$\s?\d", msg.content or "")
+                and re.search(r"\d|\b(one|two|three|four|five|six|seven|eight|nine|ten|a couple|a few)\b", typed, re.I)
                 and not any(st["tool"] in ("start_checkout", "quote_commission") for st in steps)):
             # It asks for the delivery details but hasn't priced the order: get the total and dates first.
             nudged = True

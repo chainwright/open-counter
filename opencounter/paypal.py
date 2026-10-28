@@ -69,12 +69,12 @@ def money(x) -> str:
 
 def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping_usd: float,
                  return_url: str, cancel_url: str, lines: list[tuple[dict, int]] | None = None,
-                 customer: dict | None = None) -> dict:
+                 customer: dict | None = None, discount_usd: float = 0.0) -> dict:
     """One purchase unit with the exact item, quantity and shipping. Amounts are recomputed here from the
     listing, never taken from the agent's words. The buyer's address comes from their PayPal account."""
     lines = lines or [(listing, qty)]
     item_total = sum(Decimal(money(li["price_usd"])) * q for li, q in lines)
-    total = item_total + Decimal(money(shipping_usd))
+    total = item_total - Decimal(money(discount_usd)) + Decimal(money(shipping_usd))
     body = {
         "intent": "CAPTURE",
         "purchase_units": [{
@@ -86,7 +86,8 @@ def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping
             "soft_descriptor": "SMALLGARAGE",
             "amount": {"currency_code": "USD", "value": money(total), "breakdown": {
                 "item_total": {"currency_code": "USD", "value": money(item_total)},
-                "shipping": {"currency_code": "USD", "value": money(shipping_usd)}}},
+                "shipping": {"currency_code": "USD", "value": money(shipping_usd)},
+                **({"discount": {"currency_code": "USD", "value": money(discount_usd)}} if discount_usd else {})}},
             "items": [{"name": li["title"][:127], "quantity": str(q), "sku": li["id"], "category": "PHYSICAL_GOODS",
                        "unit_amount": {"currency_code": "USD", "value": money(li["price_usd"])}} for li, q in lines],
         }],

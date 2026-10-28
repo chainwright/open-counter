@@ -499,3 +499,36 @@ def set_marketing(email: str, agrees: bool, said: str) -> dict:
 
 def customers() -> list[dict]:
     return sorted(_json("customers.json", {}).values(), key=lambda c: c.get("last_seen", 0), reverse=True)
+
+
+# ---- Lena teaches her shop's AI from a chat (Roma 14551) ----
+
+def coaching() -> list[dict]:
+    return _json("coaching.json", [])
+
+
+def add_coaching(chat_id: str, note: str, sample: bool = False) -> dict:
+    """A short lesson Lena writes after reading a chat; every new chat's AI reads the active ones."""
+    note = re.sub(r"https?://\S+", "", note or "").strip()
+    if len(note) < 5:
+        raise ValueError("Write what the AI should do next time.")
+    with _lock:
+        all_ = coaching()
+        n = {"id": "L-" + uuid.uuid4().hex[:6].upper(), "at": time.time(), "chat": (chat_id or "")[:40],
+             "note": note[:400], "active": True, "sample": sample}
+        all_.append(n)
+        _save_json("coaching.json", all_[-40:])
+        return n
+
+
+def set_coaching(lid: str, active: bool):
+    with _lock:
+        all_ = coaching()
+        for n in all_:
+            if n["id"] == lid:
+                n["active"] = bool(active)
+        _save_json("coaching.json", all_)
+
+
+def active_lessons(limit: int = 12) -> list[str]:
+    return [n["note"] for n in coaching() if n.get("active")][-limit:]

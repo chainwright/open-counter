@@ -129,7 +129,10 @@ window.OC = (() => {
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const dayName = (ms) => { const n = Math.round((today() - ms) / 864e5); return n === 0 ? "Today" : n === 1 ? "Yesterday" : new Date(ms).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }); };
   const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  let chats = [], custs = [], orders = [], calls = [], filter = "all";
+  let chats = [], custs = [], orders = [], calls = [], filter = "all", lessons = [];
+  const lessonRow = (n) => `<div class="lesson ${n.active ? "" : "off"}"><p>${esc(n.note)}</p><span>${esc(new Date(n.at * 1000).toLocaleDateString([], { month: "short", day: "numeric" }))}${n.sample ? " · sample" : ""}
+    · ${n.active ? "the AI follows this" : "paused"} <button data-lesson="${esc(n.id)}" data-on="${n.active ? 0 : 1}">${n.active ? "Pause" : "Turn on"}</button>${n.chat ? ` <a href="#chats/${esc(n.chat)}">from chat</a>` : ""}</span></div>`;
+  const lessonsFor = (cid) => lessons.filter((n) => n.chat === cid).map(lessonRow).join("");
 
   function show() {
     const [tab, id] = (location.hash.slice(1) || "today").split("/");
@@ -163,7 +166,11 @@ window.OC = (() => {
     if (!c) return;
     view.innerHTML = `<a class="back" href="#chats">← all chats</a>
       <div class="chead"><b>#${c.no || "–"} · ${c.name ? esc(c.name) : "Guest, no name"}</b><span>${esc(dayName(day(c.started)))}, ${esc(clock(c.started))} · ${!c.name ? (c.asked_name ? "the AI asked for a name, none given · " : "the AI never asked for a name · ") : ""}${c.turns.length} message${c.turns.length > 1 ? "s" : ""}${c.orders.length ? " · orders " + c.orders.map(esc).join(", ") : " · no order"}</span></div>
-      <div class="thread">${c.turns.map((t) => `<p class="q">${esc(t.user)}</p>${t.steps.length ? `<p class="s">${t.steps.map(esc).join("<br>")}</p>` : ""}<p class="a">${esc(t.reply)}</p>`).join("")}</div>`;
+      <div class="thread">${c.turns.map((t) => `<p class="q">${esc(t.user)}</p>${t.steps.length ? `<p class="s">${t.steps.map(esc).join("<br>")}</p>` : ""}<p class="a">${esc(t.reply)}</p>`).join("")}</div>
+      <div class="teach"><b>Teach the AI from this chat</b><span>What should it say or do differently next time? It reads your notes in every new chat.</span>
+        <textarea id="teach-note" maxlength="400" placeholder="e.g. When someone asks about gift wrap, say every car comes in two layers with a handwritten note."></textarea>
+        <button id="teach-save" data-chat="${esc(c.id)}">Save the lesson</button>
+        <div id="teach-list">${lessonsFor(c.id)}</div></div>`;
   }
 
   function renderCustomers() {
@@ -216,10 +223,27 @@ window.OC = (() => {
   }
 
   async function load() {
-    [chats, custs, orders, calls] = await Promise.all(["/api/maker/conversations", "/api/maker/customers", "/api/maker/orders", "/api/maker/requests"]
+    [chats, custs, orders, calls, lessons] = await Promise.all(["/api/maker/conversations", "/api/maker/customers", "/api/maker/orders", "/api/maker/requests", "/api/maker/coach"]
       .map((u) => fetch(u).then((r) => r.json()).catch(() => [])));
-    renderChats(); renderCustomers(); renderToday(); show();
+    renderChats(); renderCustomers(); renderToday(); renderLessons();
+    if (!document.activeElement || document.activeElement.id !== "teach-note") show();
   }
+  function renderLessons() {
+    const box = document.getElementById("lessons"); if (!box) return;
+    box.innerHTML = lessons.length ? lessons.map(lessonRow).join("") : `<p class="empty">No lessons yet. Open any chat and teach the AI what to do better.</p>`;
+  }
+  document.addEventListener("click", async (e) => {
+    const save = e.target.closest("#teach-save");
+    if (save) {
+      const note = document.getElementById("teach-note").value.trim(); if (note.length < 5) return;
+      save.disabled = true; save.textContent = "Saving…";
+      const r = await fetch("/api/maker/coach", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: save.dataset.chat, note }) });
+      if (r.ok) { document.getElementById("teach-note").value = ""; save.textContent = "Saved · the AI uses it from the next chat"; await load(); }
+      else { save.textContent = "Couldn't save, try again"; } save.disabled = false;
+    }
+    const l = e.target.closest("[data-lesson]");
+    if (l) { await fetch(`/api/maker/coach/${l.dataset.lesson}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ active: l.dataset.on === "1" }) }); load(); }
+  });
   document.addEventListener("oc-period", () => { renderChats(); renderCustomers(); renderToday(); show(); });
   load(); setInterval(load, 15000);
 })();

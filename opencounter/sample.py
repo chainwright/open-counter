@@ -157,6 +157,15 @@ def build(now: float | None = None):
                 steps = (["checking delivery · Lena ships inside the US only; 'ON' is not a US state code."]
                          if "Canada" in qn else [])
                 chat(t, [(qn, ans, steps)])
+        canada = next((k for k, c in convs.items() if "Canada" in c["turns"][0]["user"]), "")
+        returns = next((k for k, c in convs.items() if "returns" in c["turns"][0]["user"]), "")
+        lessons = [{"id": "L-S1", "at": now - 3 * 86400, "chat": canada, "active": True, "sample": True,
+                    "note": "If someone asks about shipping outside the US, say Lena ships inside the US only for now, "
+                            "and offer to take their email so she can tell them when that changes."},
+                   {"id": "L-S2", "at": now - 86400, "chat": returns, "active": True, "sample": True,
+                    "note": "Returns: if a car arrives damaged, Lena replaces it or refunds in full. Say that plainly "
+                            "instead of 'I'm not sure'."}]
+        shop._save_json("coaching.json", lessons)
         shop._save_orders(orders)
         shop._save_json("conversations.json", convs)
         shop._save_json("customers.json", custs)

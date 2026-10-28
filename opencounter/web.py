@@ -403,6 +403,28 @@ def maker_insights(days: int = 30):
             "answered_pct": round(100 * (1 - len(stuck) / turns)) if turns else 100}
 
 
+@app.get("/api/maker/coach")
+def coach_list():
+    """Lena's lessons for her shop's AI (newest first)."""
+    return list(reversed(shop.coaching()))
+
+
+@app.post("/api/maker/coach")
+async def coach_add(req: Request):
+    b = await req.json()
+    try:
+        return shop.add_coaching(str(b.get("chat_id") or ""), str(b.get("note") or ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/maker/coach/{lid}")
+async def coach_set(lid: str, req: Request):
+    b = await req.json()
+    shop.set_coaching(lid, bool(b.get("active")))
+    return {"ok": True}
+
+
 @app.get("/api/maker/customers")
 def maker_customers():
     """Buyers from orders; marketing is true only after their own yes in chat."""
