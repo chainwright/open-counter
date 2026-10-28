@@ -371,6 +371,9 @@ def paypal_return(oc: str, token: str = ""):
         return HTMLResponse("<p>This checkout link is no longer active, so nothing was charged. "
                             "Please go back to the shop and ask the agent for a fresh receipt.</p>"
                             '<p><a href="/#try">Back to the shop</a></p>', 410)
+    if o.get("visitor", "").startswith("webhook-only-test"):
+        # test path: the return page stays out of it, as if the buyer had closed the tab; PayPal's webhook settles it
+        return HTMLResponse(f"<p>Approved. Order {oc} is finished by PayPal's webhook, not by this page.</p>")
     try:
         _settle(oc)
     except paypal.PayPalError as e:
