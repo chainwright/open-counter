@@ -4,3 +4,4 @@ httpx==0.28.1
 mcp==2.3.0
 openai
 python-multipart
+pillow==13.0.0
