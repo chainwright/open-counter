@@ -363,6 +363,31 @@ def _sync_invoice(oc: str) -> dict:
     return o2
 
 
+@app.get("/api/paypal/config")
+def paypal_config():
+    """The public client id for PayPal's JS SDK buttons in the chat (the secret never leaves the server)."""
+    return {"client_id": os.environ.get("PAYPAL_CLIENT_ID", ""), "env": "sandbox"}
+
+
+@app.post("/api/paypal/approved")
+async def paypal_approved(req: Request):
+    """The buyer approved in the PayPal popup without leaving the chat: settle it through the same path as the
+    return page and the webhook (capture once, stock re-checked, Lena told)."""
+    b = await req.json()
+    oc, token = str(b.get("order_id", "")), str(b.get("paypal_order_id", ""))
+    o = shop.order(oc)
+    if not o or token != o.get("paypal_order_id"):
+        raise HTTPException(404, "Unknown order.")
+    if o.get("visitor", "").startswith("webhook-only-test"):
+        return {"status": o["status"]}
+    try:
+        o = _settle(oc)
+    except paypal.PayPalError as e:
+        shop.update_order(oc, status="error", error=str(e))
+        return JSONResponse({"error": "PayPal could not complete the payment. Nothing was charged."}, 502)
+    return {"status": o["status"], "thanks": f"/thanks/{oc}"}
+
+
 def _note(title: str, text: str, code: int = 200) -> HTMLResponse:
     """A small page in the shop's look for the PayPal return edge cases."""
     return HTMLResponse(

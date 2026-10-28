@@ -117,6 +117,39 @@
     requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
   }
 
+  // PayPal's own buttons inside the receipt: the buyer approves in PayPal's popup and never leaves the chat.
+  // The plain link stays as the fallback (no JS SDK, popup blocked, a chat restored after reload).
+  let sdk = null;
+  const loadSdk = () => sdk || (sdk = fetch("/api/paypal/config").then((r) => r.json()).then((cfg) => new Promise((ok, no) => {
+    if (!cfg.client_id) return no(new Error("no client id"));
+    const s = document.createElement("script");
+    s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(cfg.client_id)}&currency=USD&intent=capture&components=buttons&disable-funding=paylater,venmo,card`;
+    s.onload = () => ok(window.paypal); s.onerror = no; document.head.appendChild(s);
+  })));
+  function payInChat(card, c) {
+    const token = (String(c.approve_url).match(/token=([A-Z0-9]+)/) || [])[1]; if (!token) return;
+    const link = card.querySelector("a.pp"), box = document.createElement("div"); box.className = "ppsdk";
+    loadSdk().then((pp) => {
+      if (!card.isConnected || !link?.isConnected) return;
+      link.before(box);
+      return pp.Buttons({
+        fundingSource: pp.FUNDING.PAYPAL,   // one PayPal button, no extra funding rows
+        style: { layout: "horizontal", color: "gold", shape: "pill", label: "pay", height: 40, tagline: false },
+        createOrder: () => token,
+        onApprove: () => fetch("/api/paypal/approved", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ order_id: c.order_id, paypal_order_id: token }) }).then((r) => r.json()).then((j) => {
+            if (j.error) { box.innerHTML = `<p class="fine">${esc(j.error)}</p>`; return; }
+            box.innerHTML = `<p class="paidok">✓ Paid in PayPal · ${esc(c.order_id)}</p><a class="thx" href="${esc(j.thanks || "/thanks/" + c.order_id)}" target="_blank" rel="noopener">Your receipt and delivery dates →</a>`;
+            const k = items.findIndex((it) => it.html.includes(c.approve_url));
+            link.remove();
+            if (k >= 0) items[k].html = card.innerHTML;   // a reload shows it paid, not a stale button
+            persist();
+          }),
+        onError: () => { box.remove(); link.hidden = false; },
+      }).render(box).then(() => { link.hidden = true; });
+    }).catch(() => { box.remove(); if (link) link.hidden = false; });
+  }
+
   async function ask(text) {
     if (!text.trim()) return;
     history.push({ role: "user", content: text });
@@ -138,7 +171,7 @@
         window.dispatchEvent(new CustomEvent("oc-checkout", { detail: j.checkout }));
         const c = j.checkout;
         // a newer order in this chat replaces the earlier one (stock orders): its button no longer pays
-        if (c.order_id && !c.deposit_usd) log.querySelectorAll(".cocard:not([data-k=mto]) a.pp").forEach((a) => { const p = document.createElement("p"); p.className = "fine"; p.textContent = "Replaced by the newer order below."; a.replaceWith(p); });
+        if (c.order_id && !c.deposit_usd) log.querySelectorAll(".cocard:not([data-k=mto]) a.pp").forEach((a) => { a.parentElement.querySelector(".ppsdk")?.remove(); const p = document.createElement("p"); p.className = "fine"; p.textContent = "Replaced by the newer order below."; a.replaceWith(p); });
         const r = c.receipt, $ = (v) => (v < 0 ? "−$" : "$") + Math.abs(v).toFixed(2);
         const rec = r ? `<div class="rcpt"><small>Your order</small><ol>${r.rows.map((x) => `<li><span>${esc(x.name)}</span><b>${x.qty} × ${$(x.unit)} = ${$(x.sum)}</b></li>`).join("")}</ol>
           ${r.extra.map((x) => `<p class="rx"><span>${esc(x.name)}</span><b>${$(x.sum)}</b></p>`).join("")}<p class="rt"><span>Total</span><b>${$(r.total)}</b></p>${r.deposit ? `<p class="rd"><span>Pay now (deposit)</span><b>${$(r.deposit)}</b></p><p class="rn">The rest before your cars ship. PayPal also emailed you the invoice.</p>` : ""}</div>`
@@ -147,7 +180,7 @@
           <a class="pp" href="${esc(c.approve_url)}" target="_blank" rel="noopener"><span class="pp-a">Pay</span><span class="pp-b">Pal</span></a>
           ${c.ship_to ? `<p class="shipto"><small>Ships to</small>${esc(c.ship_to)}</p>` : ""}
           <p class="fine">${esc(c.delivery)}. Nothing is charged until you approve in PayPal.</p>`);
-        if (c.deposit_usd) card.dataset.k = "mto";
+        if (c.deposit_usd) card.dataset.k = "mto"; else payInChat(card, c);
         log.scrollTop = log.scrollHeight;
       }
       persist();

@@ -251,3 +251,12 @@ def test_shop_card_matches_its_published_schema():
     card = TestClient(web.app).get("/c/small-garage.json").json()
     schema = json.loads((shop.ROOT / "web/static/schema/open-counter-card.v1.json").read_text())
     jsonschema.validate(card, schema)
+
+
+def test_popup_approval_needs_the_matching_paypal_order():
+    from fastapi.testclient import TestClient
+    from opencounter.web import app
+    c = TestClient(app)
+    assert "client_id" in c.get("/api/paypal/config").json()
+    r = c.post("/api/paypal/approved", json={"order_id": "OC-NOPE", "paypal_order_id": "X"})
+    assert r.status_code == 404
