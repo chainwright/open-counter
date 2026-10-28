@@ -100,7 +100,7 @@ def api_delivery(state: str):
 async def api_checkout(req: Request):
     b = await req.json()
     out = counter.start_checkout(b.get("item_id", ""), int(b.get("quantity", 1)), b.get("us_state", ""),
-                                 b.get("asked_for", ""), channel=b.get("channel", "web-agent"))
+                                 b.get("asked_for", ""), channel=b.get("channel", "web-agent"), items=b.get("items"))
     if out.get("ok"):
         _announce("awaiting_approval", shop.order(out["order_id"]))
     return out
@@ -145,7 +145,8 @@ def paypal_return(oc: str, token: str = ""):
         shop.update_order(oc, status="pending", capture_id=c["id"])
         return RedirectResponse(f"/thanks/{oc}")
     ship = unit.get("shipping", {})
-    if o.get("kind") != "commission" and not shop.take_stock(o["listing_id"], o["qty"]):
+    lines = o.get("lines") or [{"listing_id": o["listing_id"], "qty": o["qty"]}]
+    if o.get("kind") != "commission" and not shop.take_stock_lines(lines):
         paypal.refund(c["id"], oc, note="Sorry, the last one sold a moment before your payment. Full refund.")
         o = shop.update_order(oc, status="refunded_out_of_stock", capture_id=c["id"])
         _announce("refunded", o)
@@ -241,7 +242,7 @@ li b{{font-weight:600}}li span{{color:var(--mute);font-size:15px;line-height:1.4
 </style></head><body><main class="wrap">
 <div class="pic" style="background-image:url('{photo}')" role="img" aria-label="{e(item.get('title', ''))}"></div>
 <div class="body"><div class="k">Small Garage · order {e(oc)}</div><h1>{e(head)}</h1>
-<p class="lead">{lead}</p><p class="item">{e(o.get('title', item.get('title', '')))} · qty {o.get('qty', 1)}</p>
+<p class="lead">{lead}</p><p class="item">{e(o.get('title', item.get('title', '')))} · {f"{o.get('qty')} cars" if len(o.get('lines') or []) > 1 else f"qty {o.get('qty', 1)}"}</p>
 {f'<div class="asked"><small>You asked for</small>{asked}</div>' if asked else ''}
 <ol>{rows}</ol>
 <div class="foot"><span>PayPal sandbox · no real money</span><a href="/">Back to the counter</a></div></div>

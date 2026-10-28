@@ -39,8 +39,10 @@ def delivery_estimate(us_state: str, need_by: str = "") -> dict:
 
 @mcp.tool(description=("Create an order awaiting the person's approval and get a PayPal approval link. Pass the "
                        "person's request in their own words as what_the_shopper_asked."))
-def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_asked: str) -> dict:
-    return counter.start_checkout(item_id, quantity, us_state, what_the_shopper_asked, channel="mcp")
+def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_asked: str,
+                   items: list[dict] | None = None) -> dict:
+    """items: several different cars in one order, [{"item_id", "quantity"}] (then item_id/quantity are ignored)."""
+    return counter.start_checkout(item_id, quantity, us_state, what_the_shopper_asked, channel="mcp", items=items)
 
 
 @mcp.tool(description=("Exact price, volume discount, shipping, build time and delivery for made-to-order cars. "

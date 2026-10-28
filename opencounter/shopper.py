@@ -50,6 +50,9 @@ hand-built 1:43 replica cars, serving a customer through the shop's public tools
   gave one and repeat the tool's verdict; never ask for a deadline), then call
   start_checkout in the same turn as soon as you know the car, the quantity and the state. PayPal collects their
   name and address.
+- Several different cars in stock (e.g. 5 yellow, 5 green, 5 orange): one order, one start_checkout call with all
+  of them in items. Never call start_checkout more than once per order, and never type a payment link yourself:
+  the PayPal button appears under your message.
 - Made to order (a car or colour not in stock, or more than the stock): ask, one short question at a time and only
   for what's still missing: which car (body style or one of the listings), the year of the real car, the body
   colour, the interior colour, and how many. Then call quote_commission and give the total, discount, shipping,
@@ -104,11 +107,15 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}, "name": {"type": "string"},
                        "message": {"type": "string"}}, "required": ["phone"]}}},
     {"type": "function", "function": {"name": "start_checkout",
-        "description": "Create an order that waits for the person's approval in PayPal; returns the approval link.",
+        "description": ("Create ONE order that waits for the person's approval in PayPal; returns the approval link. "
+                        "Several different cars: pass them all in items, in a single call."),
         "parameters": {"type": "object", "properties": {"item_id": {"type": "string"}, "quantity": {"type": "integer"},
+                                                        "items": {"type": "array", "items": {"type": "object", "properties": {
+                                                            "item_id": {"type": "string"}, "quantity": {"type": "integer"}},
+                                                            "required": ["item_id", "quantity"]}},
                                                         "us_state": {"type": "string"},
                                                         "what_the_shopper_asked": {"type": "string"}},
-                       "required": ["item_id", "quantity", "us_state", "what_the_shopper_asked"]}}},
+                       "required": ["us_state", "what_the_shopper_asked"]}}},
 ]
 LABELS = {"about_counter": "reading the counter", "search_counter": "searching the counter",
           "item_details": "reading the listing", "delivery_estimate": "checking delivery",
@@ -159,7 +166,7 @@ def _call_tool(name: str, args: dict, asked: str = "") -> dict:
     if name == "start_checkout":
         return counter.start_checkout(args.get("item_id", ""), int(args.get("quantity", 1) or 1),
                                       args.get("us_state", ""), asked or args.get("what_the_shopper_asked", ""),
-                                      channel="demo-shopper")
+                                      channel="demo-shopper", items=args.get("items") or None)
     return {"error": f"unknown tool {name}"}
 
 

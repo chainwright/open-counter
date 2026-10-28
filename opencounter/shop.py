@@ -294,23 +294,37 @@ def _save_orders(o: list[dict]):
     _path("orders.json").write_text(json.dumps(o[-MAX_ORDERS:], indent=2, ensure_ascii=False))
 
 
-def new_order(lid: str, qty: int, state: str, asked_for: str, channel: str) -> dict:
-    """Checks the maker's rules before any money moves. Raises ValueError with a sentence an agent can relay."""
+def new_order(lid: str, qty: int, state: str, asked_for: str, channel: str,
+              items: list[dict] | None = None) -> dict:
+    """Checks the maker's rules before any money moves. Raises ValueError with a sentence an agent can relay.
+    items: several cars in one order, [{"item_id", "quantity"}]; otherwise lid/qty is the single line."""
     s = shop()
-    item = listing(lid)
-    if not item:
-        raise ValueError(f"No listing '{lid}' at {s['name']}.")
-    if qty < 1:
-        raise ValueError("Quantity must be at least 1.")
-    if item["stock"] < qty:
-        raise ValueError(f"Only {item['stock']} of '{item['title']}' in stock."
-                         + (" It can be commissioned instead." if s["rules"]["commissions"] else ""))
+    want: dict[str, int] = {}
+    for it in (items or [{"item_id": lid, "quantity": qty}]):
+        k = str(it.get("item_id", ""))
+        want[k] = want.get(k, 0) + int(it.get("quantity") or 0)
+    lines = []
+    for k, q in want.items():
+        item = listing(k)
+        if not item:
+            raise ValueError(f"No listing '{k}' at {s['name']}.")
+        if q < 1:
+            raise ValueError("Quantity must be at least 1.")
+        if item["stock"] < q:
+            raise ValueError(f"Only {item['stock']} of '{item['title']}' in stock."
+                             + (" It can be commissioned instead." if s["rules"]["commissions"] else ""))
+        lines.append({"listing_id": k, "title": item["title"], "qty": q, "unit_usd": item["price_usd"]})
+    if not lines:
+        raise ValueError("Say which car and how many.")
     est = delivery_estimate(state)
     if not est["ok"]:
         raise ValueError(est["reason"])
-    o = {"id": "OC-" + uuid.uuid4().hex[:8].upper(), "listing_id": lid, "title": item["title"], "qty": qty,
-         "unit_usd": item["price_usd"], "shipping_usd": s["rules"]["shipping_usd"],
-         "total_usd": round(item["price_usd"] * qty + s["rules"]["shipping_usd"], 2),
+    items_usd = sum(ln["unit_usd"] * ln["qty"] for ln in lines)
+    title = lines[0]["title"] if len(lines) == 1 else " + ".join(f"{ln['qty']} × {ln['title']}" for ln in lines)
+    o = {"id": "OC-" + uuid.uuid4().hex[:8].upper(), "listing_id": lines[0]["listing_id"], "title": title,
+         "qty": sum(ln["qty"] for ln in lines), "lines": lines,
+         "unit_usd": lines[0]["unit_usd"], "shipping_usd": s["rules"]["shipping_usd"],
+         "total_usd": round(items_usd + s["rules"]["shipping_usd"], 2),
          "ship_state": state.upper(), "estimate": est, "asked_for": asked_for[:400], "channel": channel,
          "status": "awaiting_approval", "created": time.time(), "events": [["created", time.time()]]}
     with _lock:
@@ -333,6 +347,22 @@ def update_order(oid: str, **fields) -> dict:
 
 def order(oid: str) -> dict | None:
     return next((x for x in orders() if x["id"] == oid), None)
+
+
+def take_stock_lines(lines: list[dict]) -> bool:
+    """All lines of one order or none: False if any ran out in between (then the payment is refunded)."""
+    with _lock:
+        s = shop()
+        items = {x["id"]: x for x in s["listings"]}
+        if any(items[ln["listing_id"]]["stock"] < ln["qty"] for ln in lines):
+            return False
+        for ln in lines:
+            it = items[ln["listing_id"]]
+            it["stock"] -= ln["qty"]
+            if it["stock"] <= 0:
+                it["sold_out_at"] = time.time()
+        save_shop(s)
+        return True
 
 
 def take_stock(lid: str, qty: int) -> bool:

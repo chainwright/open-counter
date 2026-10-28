@@ -110,13 +110,13 @@ def delivery_estimate(us_state: str, need_by: str = "") -> dict:
 
 
 def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_asked: str,
-                   channel: str = "mcp") -> dict:
+                   channel: str = "mcp", items: list[dict] | None = None) -> dict:
     """Creates an order that waits for the human. Returns the PayPal approval link and a side-by-side
     'you asked for / you are approving' summary the agent must show before sending the person to PayPal."""
     if not paypal.configured():
         return {"ok": False, "reason": "Checkout is offline right now; nothing was created or charged."}
     try:
-        o = shop.new_order(item_id, int(quantity), us_state, what_the_shopper_asked, channel)
+        o = shop.new_order(item_id, int(quantity or 0), us_state, what_the_shopper_asked, channel, items=items)
     except ValueError as e:
         return {"ok": False, "reason": str(e)}
     s = shop.shop()
@@ -124,6 +124,7 @@ def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_
     try:
         pp = paypal.create_order(order_id=o["id"], shop=s, listing=item, qty=o["qty"],
                                  shipping_usd=o["shipping_usd"],
+                                 lines=[(shop.listing(ln["listing_id"]), ln["qty"]) for ln in o["lines"]],
                                  return_url=f"{PUBLIC_URL}/paypal/return?oc={o['id']}",
                                  cancel_url=f"{PUBLIC_URL}/paypal/cancel?oc={o['id']}")
     except paypal.PayPalError as e:
@@ -135,8 +136,9 @@ def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_
     est = {k: (v.split(" ")[-1] if isinstance(v, str) and k.startswith(("ships", "arrives")) else v) for k, v in est.items()}
     return {"ok": True, "order_id": o["id"], "approve_url": link,
             "you_asked_for": what_the_shopper_asked,
-            "you_are_approving": f"{o['qty']} × {o['title']} at ${o['unit_usd']:.2f} + ${o['shipping_usd']:.2f} "
-                                 f"shipping = ${o['total_usd']:.2f}, from {s['name']} ({s['maker']}, {s['city']})",
+            "you_are_approving": " + ".join(f"{ln['qty']} × {ln['title']} at ${ln['unit_usd']:.2f}" for ln in o["lines"])
+                                 + f" + ${o['shipping_usd']:.2f} shipping = ${o['total_usd']:.2f}, from {s['name']} "
+                                 f"({s['maker']}, {s['city']})",
             "delivery": f"ships {est['ships_on']}, estimated arrival {est['arrives_earliest']} to "
                         f"{est['arrives_latest']} ({est['carrier']}; estimate, not a guarantee)",
             "next_step": "Show both lines to the person, then open approve_url. Nothing is charged until they "

@@ -144,3 +144,16 @@ def test_talk_to_lena_takes_a_phone_number():
     assert not counter.leave_contact("12")["ok"]
     r = counter.leave_contact("(415) 555-0134", "Sam", "When will the yellow one be back?")
     assert r["ok"] and shop.requests_()[0]["kind"] == "callback"
+
+
+def test_several_cars_are_one_order_and_stock_moves_all_or_nothing():
+    ids = [x["id"] for x in shop.shop()["listings"]][:3]
+    o = shop.new_order("", 0, "TX", "5 of each", "t", items=[{"item_id": i, "quantity": 5} for i in ids])
+    assert o["qty"] == 15 and len(o["lines"]) == 3
+    assert o["total_usd"] == round(sum(ln["unit_usd"] * 5 for ln in o["lines"]) + o["shipping_usd"], 2)
+    with pytest.raises(ValueError, match="stock"):
+        shop.new_order("", 0, "TX", "x", "t", items=[{"item_id": ids[0], "quantity": 5}, {"item_id": ids[1], "quantity": 31}])
+    assert not shop.take_stock_lines([{"listing_id": ids[0], "qty": 5}, {"listing_id": ids[1], "qty": 31}])
+    assert all(shop.listing(i)["stock"] == 30 for i in ids)
+    assert shop.take_stock_lines(o["lines"])
+    assert all(shop.listing(i)["stock"] == 25 for i in ids)
