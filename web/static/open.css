@@ -30,3 +30,6 @@ input,textarea{background:#0B0C0E;border:1px solid var(--hair);color:#fff;border
 .item img{width:100%;border-radius:10px;aspect-ratio:4/3;object-fit:cover}.item p{color:#C9CDD1;line-height:1.5;margin-top:8px}.item .meta{font:13px "Geist Mono";color:var(--lamp)}
 .by{color:var(--mute)}.agents{font:12.5px "Geist Mono";color:var(--mute);margin-bottom:16px}.agents a{color:var(--cyan)}
 @media (max-width:560px){.samples{grid-template-columns:repeat(2,minmax(0,1fr))}.item{grid-template-columns:1fr}}
+.buy{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:6px 0 8px}.buy label{flex:0 1 150px}
+.buy button{background:#FFC439;color:#003087;border:0;border-radius:22px;padding:12px 20px;font:italic 800 16px Verdana,sans-serif;cursor:pointer}
+.buy span{font:12.5px "Geist Mono";color:var(--cyan)}

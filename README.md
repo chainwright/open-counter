@@ -57,7 +57,9 @@ with checks written in code. Latest results and every transcript: [`evals/RESULT
   accept in one tap. It also answers "how much did I make this week?" from numbers computed in code.
 - **Customers and consent:** buyers are asked once, after their first order, whether Lena may email them about new
   models. Only a yes in their own words puts them on the list.
-- **Open your counter (`/open`):** one photo and one sentence. NVIDIA Nemotron VL writes the listing words; the maker
+- **Open your counter (`/open`):** one photo and one sentence. Shoppers can buy from a new counter at `/c/<slug>` the
+  same way (PayPal approval by a person, stock taken at capture); in the demo the sandbox payment goes to the Open Counter
+  test merchant, and a live counter connects the maker's own PayPal account. NVIDIA Nemotron VL writes the listing words; the maker
   sets price and stock; the product is registered in PayPal Catalog Products and gets its own agent-readable card.
 
 ## How it works

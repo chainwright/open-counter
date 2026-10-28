@@ -194,7 +194,7 @@ def build(now: float | None = None):
         return len(orders), len(convs)
 
 
-DATA_VERSION = "5"   # bump to wipe the demo data (test chats and orders) and lay the sample history down again
+DATA_VERSION = "6"   # bump to wipe the demo data (test chats and orders) and lay the sample history down again
 
 
 def ensure():

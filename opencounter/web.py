@@ -186,6 +186,22 @@ async def open_publish(req: Request):
             "paypal_catalog_product": c["listing"].get("paypal_catalog_product")}
 
 
+@app.post("/api/c/{slug}/checkout")
+async def counter_checkout(slug: str, req: Request):
+    b = await req.json()
+    if not paypal.configured():
+        raise HTTPException(503, "Checkout is offline right now.")
+    try:
+        out = await asyncio.to_thread(onboard.checkout, slug, int(b.get("quantity") or 1), str(b.get("us_state") or ""),
+                                      _who(req)[0])
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, str(e))
+    except paypal.PayPalError:
+        raise HTTPException(502, "PayPal could not create the order; nothing was charged.")
+    _announce("awaiting_approval", shop.order(out["order_id"]))
+    return out
+
+
 @app.get("/api/open/latest")
 def open_latest(req: Request):
     return [{"slug": c["slug"], "name": c["name"], "title": c["listing"]["title"], "price_usd": c["listing"]["price_usd"],
@@ -210,6 +226,15 @@ def counter_page(slug: str):
 <span class="k">OPEN COUNTER · A MAKER'S SHOP, READABLE BY ANY AI</span><h1>{e(c['name'])}</h1><p class="by">by {e(c['maker'])} · ships from {e(c['ships_from'])}</p>
 <article class="item"><img src="/c/{e(slug)}/photo.jpg" alt=""><div><h2>{e(l['title'])}</h2><p>{e(l.get('short_description') or '')}</p>
 <p class="meta">${l['price_usd']:.2f} · {l['stock']} available{(' · ' + e(', '.join(l.get('materials') or []))) if l.get('materials') else ''}</p></div></article>
+<form class="buy" id="buy"><label>How many<input type="number" id="q" min="1" max="{l['stock']}" value="1"></label>
+<label>Ship to (US state)<input id="st" maxlength="2" placeholder="TX" required></label><button>Buy with PayPal</button><span id="m"></span></form>
+<p class="fine">PayPal sandbox, no real money. You approve in PayPal; nothing is charged before that. In this demo the payment goes to
+the Open Counter test merchant; a live counter connects the maker's own PayPal account.</p>
+<script>
+document.getElementById("buy").addEventListener("submit", async (ev) => {{ ev.preventDefault(); const m = document.getElementById("m"); m.textContent = "Opening PayPal…";
+  const r = await fetch("/api/c/{e(slug)}/checkout", {{ method: "POST", headers: {{ "content-type": "application/json" }}, body: JSON.stringify({{ quantity: document.getElementById("q").value, us_state: document.getElementById("st").value }}) }});
+  const j = await r.json(); if (r.ok && j.approve_url) location.href = j.approve_url; else m.textContent = j.detail || "Couldn't start checkout."; }});
+</script>
 <p class="agents">For AI agents: <a href="/c/{e(slug)}.json">/c/{e(slug)}.json</a>{(' · PayPal catalog product ' + e(l['paypal_catalog_product'])) if l.get('paypal_catalog_product') else ''}</p>
 <a class="back" href="/open">Open your own counter →</a></main></body></html>""")
 
@@ -298,7 +323,9 @@ def _settle(oc: str) -> dict:
             return shop.update_order(oc, status="pending", capture_id=c["id"])
         ship = unit.get("shipping", {})
         lines = o.get("lines") or [{"listing_id": o["listing_id"], "qty": o["qty"]}]
-        if o.get("kind") != "commission" and not shop.take_stock_lines(lines):
+        took = (onboard.take(o["counter"], o["qty"]) if o.get("kind") == "counter"
+                else True if o.get("kind") == "commission" else shop.take_stock_lines(lines))
+        if not took:
             paypal.refund(c["id"], oc, note="Sorry, the last one sold a moment before your payment. Full refund.")
             o = shop.update_order(oc, status="refunded_out_of_stock", capture_id=c["id"])
             _announce("refunded", o)
@@ -401,10 +428,20 @@ def thanks(oc: str):
                  ("It ships", f"About {_day(est.get('ships_on', ''))}, and PayPal sends you the tracking."),
                  ("It arrives", f"Between {_day(est.get('arrives_earliest', ''))} and {_day(est.get('arrives_latest', ''))}.")]
     photo = f"/media/{e(item['photo'])}" if item.get("photo") else "/media/hero.jpg"
+    brand = "Small Garage"
+    if o.get("kind") == "counter":   # an order from another maker's counter: her name, her photo
+        cc = onboard.counter(o.get("counter", "")) or {}
+        first = (cc.get("maker") or "The maker").split()[0]
+        swap = lambda t: t.replace("Lena", first).replace("from Columbus, Ohio", f"from {cc.get('ships_from', 'the US')}").replace(
+            " She ", " They ").replace("She ships", "Ships").replace("she adds", "they add").replace("Lena takes commissions. Ask your agent for the same car in your colour.", "")
+        lead = swap(lead)
+        steps = [(swap(a), swap(b)) for a, b in steps]
+        photo = f"/c/{e(o.get('counter', ''))}/photo.jpg"
+        brand = cc.get("name", "Open Counter")
     rows = "".join(f'<li><b>{t}</b><span>{d}</span></li>' for t, d in steps)
     asked = e(_hide_contact(o.get("asked_for", "")))   # the thanks page URL is shareable: no address or phone on it
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(head)} · Small Garage</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(head)} · {e(brand)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{{--black:#0D0E10;--soot:#17191C;--hair:#2A2D31;--paper:#F2F3F1;--mute:#8C9096;--lamp:#FFE9C7;--cyan:#38F2E5}}
@@ -427,7 +464,7 @@ li b{{font-weight:600}}li span{{color:var(--mute);font-size:15px;line-height:1.4
 @media (max-width:760px){{.wrap{{grid-template-columns:1fr}}.pic{{min-height:260px}}.body{{padding:26px 22px}}h1{{font-size:38px}}}}
 </style></head><body><main class="wrap">
 <div class="pic" style="background-image:url('{photo}')" role="img" aria-label="{e(item.get('title', ''))}"></div>
-<div class="body"><div class="k">Small Garage · order {e(oc)}</div><h1>{e(head)}</h1>
+<div class="body"><div class="k">{e(brand)} · order {e(oc)}</div><h1>{e(head)}</h1>
 <p class="lead">{lead}</p><p class="item">{e(o.get('title', item.get('title', '')))} · {f"{o.get('qty')} cars" if len(o.get('lines') or []) > 1 else f"qty {o.get('qty', 1)}"}</p>
 {f'<div class="asked"><small>You asked for</small>{asked}</div>' if asked else ''}
 <ol>{rows}</ol>

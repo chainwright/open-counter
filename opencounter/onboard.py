@@ -113,3 +113,56 @@ def latest(n: int = 12, visitor: str = "") -> list[dict]:
     """The sample counters plus the ones this browser opened (visitors' uploads aren't shown to other people)."""
     cs = [c for c in _counters().values() if c.get("sample") or (visitor and c.get("visitor") == visitor)]
     return sorted(cs, key=lambda c: -c["created"])[:n]
+
+
+def take(slug: str, qty: int) -> bool:
+    """Stock for a counter's listing, taken at capture (all or nothing)."""
+    with shop._lock:
+        all_ = _counters()
+        c = all_.get(slug)
+        if not c or c["listing"]["stock"] < qty:
+            return False
+        c["listing"]["stock"] -= qty
+        shop._save_json("counters.json", all_)
+        return True
+
+
+def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
+    """A buyer orders from a maker's counter: same rules as Lena's (stock, US state, PayPal approval by a person).
+    In this demo the sandbox payment goes to the Open Counter test merchant; a real counter connects the maker's
+    own PayPal account first."""
+    from . import paypal
+    c = counter(slug)
+    if not c:
+        raise ValueError("No such counter.")
+    l = c["listing"]
+    qty, st = int(qty), (state or "").strip().upper()
+    if not 1 <= qty <= l["stock"]:
+        raise ValueError(f"Choose 1 to {l['stock']}.")
+    est = shop.delivery_estimate(st)
+    if not est.get("ok"):
+        raise ValueError(est.get("reason", "Ships inside the US only."))
+    ship = float(c.get("shipping_usd", 6.5))
+    o = {"id": "OC-" + uuid.uuid4().hex[:8].upper(), "kind": "counter", "counter": slug, "listing_id": "",
+         "title": l["title"], "qty": qty, "unit_usd": l["price_usd"], "shipping_usd": ship,
+         "lines": [{"listing_id": l["id"], "title": l["title"], "qty": qty, "unit_usd": l["price_usd"]}],
+         "total_usd": round(l["price_usd"] * qty + ship, 2), "ship_state": st, "estimate": est,
+         "asked_for": f"{qty} × {l['title']} from {c['name']}", "channel": "counter-page", "visitor": visitor,
+         "status": "awaiting_approval", "created": time.time(), "events": [["created", time.time()]]}
+    with shop._lock:
+        all_ = shop.orders()
+        all_.append(o)
+        shop._save_orders(all_)
+    s = {"name": c["name"]}
+    pp = paypal.create_order(order_id=o["id"], shop=s, listing={"id": l["id"], "title": l["title"], "price_usd": l["price_usd"]},
+                             qty=qty, shipping_usd=ship,
+                             return_url=f"{_public_url()}/paypal/return?oc={o['id']}",
+                             cancel_url=f"{_public_url()}/paypal/cancel?oc={o['id']}")
+    link = paypal.approve_link(pp)
+    shop.update_order(o["id"], paypal_order_id=pp["id"], approve_url=link)
+    return {"order_id": o["id"], "approve_url": link, "total_usd": o["total_usd"]}
+
+
+def _public_url() -> str:
+    from . import counter as _c
+    return _c.PUBLIC_URL
