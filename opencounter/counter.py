@@ -13,11 +13,19 @@ FIELDS = ("id", "title", "price_usd", "stock", "scale", "length_mm", "materials"
           "edition", "notes")
 
 
+def _media_url(name: str) -> str:
+    """Media URL stamped with the file's size and time: a phone that cached an older 3D model or photo
+    (they're cached for a day) fetches the new one as soon as it changes."""
+    p = shop.MEDIA_DIR / name
+    v = f"?v={p.stat().st_size:x}{int(p.stat().st_mtime):x}" if p.exists() else ""
+    return f"{PUBLIC_URL}/media/{name}{v}"
+
+
 def _public(item: dict) -> dict:
     d = {k: item[k] for k in FIELDS}
-    d["photo_url"] = f"{PUBLIC_URL}/media/{item['photo']}"
+    d["photo_url"] = _media_url(item["photo"])
     if item.get("model"):
-        d["model_url"] = f"{PUBLIC_URL}/media/{item['model']}"   # a 3D model of the replica (glTF binary)
+        d["model_url"] = _media_url(item["model"])   # a 3D model of the replica (glTF binary)
     d["page_url"] = f"{PUBLIC_URL}/c/{shop.shop()['slug']}#{item['id']}"
     r = shop.shop()["rules"]
     d["availability"] = (f"{item['stock']} in stock" if item["stock"] > 0 else "sold out") + (

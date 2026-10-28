@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.environ.get("OPENCOUNTER_DATA", ROOT / "data"))
 SEED = ROOT / "demo" / "shop.json"
+MEDIA_DIR = ROOT / "demo" / "media"
 _lock = threading.RLock()
 
 # The public demo is a fictional shop with 1-2 of each car, so one judge's purchase would empty it for everyone after.
