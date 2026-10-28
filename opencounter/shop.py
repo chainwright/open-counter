@@ -24,7 +24,7 @@ _lock = threading.RLock()
 # still visible in between. Items seeded at 0 stay at 0: they show the commission path.
 DEMO = os.environ.get("OPENCOUNTER_DEMO", "1") != "0"
 RESTOCK_AFTER_S = float(os.environ.get("OPENCOUNTER_DEMO_RESTOCK_MIN", "10")) * 60
-MAX_ORDERS = 300
+MAX_ORDERS = 2000
 
 # USPS Ground Advantage from Columbus, OH, in business days after drop-off. A planning estimate, shown as one.
 _ZONE_DAYS = {
@@ -191,8 +191,9 @@ def commission_quote(lines: list[dict], state: str = "", today: date | None = No
         item = listing(ln.get("item_id", "")) if ln.get("item_id") else None
         spec = {"model": (ln.get("model") or (item["title"].rsplit(",", 1)[0] if item else "")).strip(),
                 "year": str(ln.get("year") or "").strip(), "body_colour": (ln.get("body_colour") or ln.get("colour") or "").strip().lower(),
-                "interior_colour": (ln.get("interior_colour") or "").strip().lower(), "quantity": int(ln.get("quantity") or 0)}
-        missing = [SPEC[k] for k, v in spec.items() if not v]
+                "interior_colour": (ln.get("interior_colour") or "").strip().lower(), "quantity": int(ln.get("quantity") or 0),
+                "details": re.sub(r"\s+", " ", str(ln.get("details") or "")).strip()[:120]}
+        missing = [SPEC[k] for k, v in spec.items() if not v and k in SPEC]
         if missing:
             raise ValueError("Before quoting, ask for " + ", ".join(missing) + ".")
         clean.append(spec)
@@ -227,7 +228,8 @@ def commission_quote(lines: list[dict], state: str = "", today: date | None = No
 
 def commission_title(q: dict) -> str:
     return "Made to order: " + "; ".join(f"{c['quantity']} × {c['model']} ({c['year']}), {c['body_colour']} body, "
-                                         f"{c['interior_colour']} interior" for c in q["cars"])
+                                         f"{c['interior_colour']} interior" + (f", {c['details']}" if c.get("details") else "")
+                                         for c in q["cars"])
 
 
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.I)
@@ -248,8 +250,12 @@ def clean_customer(c: dict | None, state: str) -> dict:
     if missing:
         raise ValueError("Still needed for the delivery: " + ", ".join(missing) + ".")
     st = (c.get("state") or state or "").strip().upper()
+    real = zip_state(zip_)
+    if real and st != real:
+        # the ZIP decides: a model must not "fix" a mismatch by changing the state (28.10 audit: SF ZIP sent to CO)
+        raise ValueError(f"ZIP {zip_} is in {real}, not {st}. Ask the person which address is right; don't change it yourself.")
     if state and st != state.strip().upper():
-        raise ValueError(f"The address is in {st} but the order ships to {state.upper()}; check the state.")
+        raise ValueError(f"The address is in {st} but the order ships to {state.upper()}; ask the person which is right.")
     return {"full_name": c["full_name"][:120], "phone": c["phone"][:40], "email": c["email"][:120],
             "address_line_1": c["address_line_1"][:200], "address_line_2": c.get("address_line_2", "")[:200],
             "city": c["city"][:80], "state": st, "postal_code": zip_}
@@ -320,7 +326,9 @@ def orders() -> list[dict]:
 
 
 def _save_orders(o: list[dict]):
-    _path("orders.json").write_text(json.dumps(o[-MAX_ORDERS:], indent=2, ensure_ascii=False))
+    # sample history always stays; live orders keep the newest 2000 (a flood of demo checkouts can't push them out)
+    keep = [x for x in o if x.get("sample")] + [x for x in o if not x.get("sample")][-MAX_ORDERS:]
+    _save_json("orders.json", keep)
 
 
 def new_order(lid: str, qty: int, state: str, asked_for: str, channel: str,
@@ -440,7 +448,7 @@ def _save_json(name: str, data):
 
 
 def log_turn(cid: str, user_text: str, reply: str, steps: list[dict], order_id: str | None, channel: str = "demo-shopper",
-             name: str = ""):
+             name: str = "", memo: str = ""):
     """One question and answer of a shopper chat, kept for Lena (newest chats first on her screen)."""
     cid = re.sub(r"[^A-Za-z0-9_-]", "", cid or "")[:40] or "anon-" + uuid.uuid4().hex[:8]
     now = time.time()
@@ -453,7 +461,8 @@ def log_turn(cid: str, user_text: str, reply: str, steps: list[dict], order_id: 
         if name and not c.get("name"):
             c["name"] = name.strip()[:80]
         c["turns"].append({"at": now, "user": user_text[:1000], "reply": reply[:2000],
-                           "steps": [s.get("label", "") + " · " + s.get("result", "") for s in steps][:8]})
+                           "steps": [s.get("label", "") + " · " + s.get("result", "") for s in steps][:8],
+                           "memo": memo[:800]})
         c["turns"] = c["turns"][-80:]
         if order_id and order_id not in c["orders"]:
             c["orders"].append(order_id)
@@ -463,6 +472,12 @@ def log_turn(cid: str, user_text: str, reply: str, steps: list[dict], order_id: 
                 del all_[k]
         _save_json("conversations.json", all_)
     return cid
+
+
+def server_memos(cid: str) -> list[str]:
+    """What the tools returned in each earlier turn of this chat, as the server recorded it (never the browser's copy)."""
+    c = _json("conversations.json", {}).get(re.sub(r"[^A-Za-z0-9_-]", "", cid or "")[:40])
+    return [t.get("memo", "") for t in (c or {}).get("turns", [])]
 
 
 def conversations() -> list[dict]:
@@ -507,7 +522,7 @@ def coaching() -> list[dict]:
     return _json("coaching.json", [])
 
 
-def add_coaching(chat_id: str, note: str, sample: bool = False) -> dict:
+def add_coaching(chat_id: str, note: str, sample: bool = False, visitor: str = "") -> dict:
     """A short lesson Lena writes after reading a chat; every new chat's AI reads the active ones."""
     note = re.sub(r"https?://\S+", "", note or "").strip()
     if len(note) < 5:
@@ -515,20 +530,52 @@ def add_coaching(chat_id: str, note: str, sample: bool = False) -> dict:
     with _lock:
         all_ = coaching()
         n = {"id": "L-" + uuid.uuid4().hex[:6].upper(), "at": time.time(), "chat": (chat_id or "")[:40],
-             "note": note[:400], "active": True, "sample": sample}
+             "note": note[:400], "active": True, "sample": sample, "visitor": visitor or ""}
         all_.append(n)
-        _save_json("coaching.json", all_[-40:])
+        glob = [x for x in all_ if not x.get("visitor")]
+        _save_json("coaching.json", glob[-40:] + [x for x in all_ if x.get("visitor")][-400:])
         return n
 
 
-def set_coaching(lid: str, active: bool):
+def set_coaching(lid: str, active: bool, visitor: str = "", admin: bool = False) -> bool:
     with _lock:
         all_ = coaching()
         for n in all_:
-            if n["id"] == lid:
+            if n["id"] == lid and (admin or (visitor and n.get("visitor") == visitor)):
                 n["active"] = bool(active)
-        _save_json("coaching.json", all_)
+                _save_json("coaching.json", all_)
+                return True
+        return False
 
 
-def active_lessons(limit: int = 12) -> list[str]:
-    return [n["note"] for n in coaching() if n.get("active")][-limit:]
+def lessons_for(visitor: str = "", admin: bool = False) -> list[dict]:
+    """Lena's own lessons apply to everyone. On the public demo, a lesson written by a visitor applies to that
+    visitor's chats only, so nobody can change the shop's agent for other people."""
+    return [n for n in coaching() if admin or not n.get("visitor") or n.get("visitor") == visitor]
+
+
+def active_lessons(limit: int = 12, visitor: str = "") -> list[str]:
+    return [n["note"] for n in lessons_for(visitor) if n.get("active")][-limit:]
+
+
+# ZIP code prefixes (first three digits) by state, from USPS ranges, so a ZIP can't sit in the wrong state.
+_ZIP3 = {
+    "AL": [(350, 369)], "AK": [(995, 999)], "AZ": [(850, 865)], "AR": [(716, 729)], "CA": [(900, 961)],
+    "CO": [(800, 816)], "CT": [(60, 69)], "DE": [(197, 199)], "DC": [(200, 205), (569, 569)], "FL": [(320, 349)],
+    "GA": [(300, 319), (398, 399)], "HI": [(967, 968)], "ID": [(832, 838)], "IL": [(600, 629)], "IN": [(460, 479)],
+    "IA": [(500, 528)], "KS": [(660, 679)], "KY": [(400, 427)], "LA": [(700, 714)], "ME": [(39, 49)],
+    "MD": [(206, 219)], "MA": [(10, 27), (55, 55)], "MI": [(480, 499)], "MN": [(550, 567)], "MS": [(386, 397)],
+    "MO": [(630, 658)], "MT": [(590, 599)], "NE": [(680, 693)], "NV": [(889, 898)], "NH": [(30, 38)],
+    "NJ": [(70, 89)], "NM": [(870, 884)], "NY": [(5, 5), (63, 63), (100, 149)], "NC": [(270, 289)],
+    "ND": [(580, 588)], "OH": [(430, 459)], "OK": [(730, 749)], "OR": [(970, 979)], "PA": [(150, 196)],
+    "RI": [(28, 29)], "SC": [(290, 299)], "SD": [(570, 577)], "TN": [(370, 385)], "TX": [(750, 799), (885, 885)],
+    "UT": [(840, 847)], "VT": [(50, 59)], "VA": [(201, 201), (220, 246)], "WA": [(980, 994)], "WV": [(247, 268)],
+    "WI": [(530, 549)], "WY": [(820, 831)],
+}
+
+
+def zip_state(zip5: str) -> str | None:
+    if not re.fullmatch(r"\d{5}", zip5 or ""):
+        return None
+    z = int(zip5[:3])
+    return next((st for st, rs in _ZIP3.items() for a, b in rs if a <= z <= b), None)

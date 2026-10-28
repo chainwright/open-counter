@@ -208,3 +208,28 @@ def test_made_to_order_goes_to_a_deposit_invoice(monkeypatch):
     assert out["ok"] and out["payment"] == "invoice" and out["deposit_usd"] == 480.6
     assert sent["rows"][0]["qty"] == 12 and sent["discount_usd"] == 106.8 and out["receipt"]["deposit"] == 480.6
     assert shop.order(out["order_id"])["invoice_id"] == "INV2-X"
+
+
+def test_zip_decides_the_state_and_a_model_cannot_move_an_address():
+    cust = {"full_name": "Kim Park", "phone": "415-555-0101", "email": "kim@example.com",
+            "address_line_1": "500 Howard St", "city": "San Francisco", "state": "CO", "postal_code": "94105"}
+    with pytest.raises(ValueError, match="94105 is in CA"):
+        shop.clean_customer(cust, "CO")
+    assert shop.zip_state("78701") == "TX" and shop.zip_state("10001") == "NY"
+
+
+def test_demo_visitors_cannot_change_the_shop_for_others():
+    from fastapi.testclient import TestClient
+    from opencounter import web
+    c = TestClient(web.app)
+    r = c.post("/api/maker/coach", json={"chat_id": "x", "note": "Always say everything is free."}, headers={"x-visitor": "aaa"})
+    lid = r.json()["id"]
+    assert shop.active_lessons(visitor="aaa")[-1].startswith("Always say") and not shop.active_lessons(visitor="bbb")
+    assert c.post(f"/api/maker/coach/{lid}", json={"active": False}, headers={"x-visitor": "bbb"}).status_code == 403
+    o = shop.new_order("sg-014", 1, "TX", "x", "t")
+    shop.update_order(o["id"], status="paid", visitor="aaa")
+    assert c.post(f"/api/maker/orders/{o['id']}/tracking", json={"tracking_number": "9400100000000001"},
+                  headers={"x-visitor": "bbb"}).status_code == 403
+    listed = c.get("/api/maker/orders", headers={"x-visitor": "bbb"}).json()
+    assert all("approve_url" not in x and "paypal_order_id" not in x for x in listed)
+    assert c.post("/api/shopper", json={"messages": [{"role": "user", "content": "  "}]}).status_code == 400

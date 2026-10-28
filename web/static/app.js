@@ -1,3 +1,12 @@
+// One id per browser, sent with every /api call: on the public demo, what you change (lessons, shipping your own
+// orders, counters you open) stays with your browser and never changes the shop for other people.
+(() => {
+  let vid = "";
+  try { vid = localStorage.getItem("oc_visitor") || ""; if (!vid) { vid = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)).replace(/-/g, "").slice(0, 24); localStorage.setItem("oc_visitor", vid); } } catch (e) {}
+  const f = window.fetch.bind(window);
+  window.fetch = (u, o = {}) => (typeof u === "string" && u.startsWith("/api") && vid ? f(u, { ...o, headers: { ...(o.headers || {}), "x-visitor": vid } }) : f(u, o));
+})();
+
 // Hero: the cursor is Lena's bench lamp, the shopper's AI works on the left, the sale lands on her phone on the right.
 (() => {
   const root = document.documentElement;
@@ -32,7 +41,7 @@
   // --- the shopper's AI at work (demo script; the live demo runs the same tools for real) ---
   const steps = [
     ["searching makers' counters", "found <b>Small Garage</b> · Columbus, OH"],
-    ["reading the listing", "<b>Green Fastback, 1968</b> · 1:43 · $59 · 1 in stock"],
+    ["reading the listing", "<b>Green Fastback, 1968</b> · 1:43 · $59 · in stock"],
     ["checking delivery to CO", "ships Mon · arrives <b>Thu–Fri</b>"],
     ["preparing PayPal checkout", "waiting for your approval"],
   ];

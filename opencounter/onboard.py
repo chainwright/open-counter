@@ -63,7 +63,7 @@ def draft(image_b64: str, note: str) -> dict:
 
 
 def publish(listing: dict, price_usd: float, stock: int, ships_from: str, maker: str, shop_name: str,
-            image_b64: str) -> dict:
+            image_b64: str, visitor: str = "") -> dict:
     """Open the counter: save it, register the product with PayPal, and return the agent-readable URLs."""
     title = str(listing.get("title") or "").strip()[:80]
     if not title:
@@ -89,7 +89,7 @@ def publish(listing: dict, price_usd: float, stock: int, ships_from: str, maker:
             product_id = p.get("id")
         except paypal.PayPalError:
             product_id = None
-    c = {"slug": slug, "created": time.time(), "maker": (maker or "").strip()[:60] or "A maker",
+    c = {"slug": slug, "created": time.time(), "visitor": visitor, "maker": (maker or "").strip()[:60] or "A maker",
          "name": (shop_name or "").strip()[:60] or "My counter", "ships_from": st,
          "listing": {**{k: listing.get(k) for k in ("title", "category", "materials", "size", "colour",
                                                      "made_by_hand", "short_description", "keywords")},
@@ -109,5 +109,7 @@ def counter(slug: str) -> dict | None:
     return _counters().get(slug)
 
 
-def latest(n: int = 12) -> list[dict]:
-    return sorted(_counters().values(), key=lambda c: -c["created"])[:n]
+def latest(n: int = 12, visitor: str = "") -> list[dict]:
+    """The sample counters plus the ones this browser opened (visitors' uploads aren't shown to other people)."""
+    cs = [c for c in _counters().values() if c.get("sample") or (visitor and c.get("visitor") == visitor)]
+    return sorted(cs, key=lambda c: -c["created"])[:n]

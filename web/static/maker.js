@@ -1,3 +1,12 @@
+// One id per browser, sent with every /api call: on the public demo, what you change (lessons, shipping your own
+// orders, counters you open) stays with your browser and never changes the shop for other people.
+(() => {
+  let vid = "";
+  try { vid = localStorage.getItem("oc_visitor") || ""; if (!vid) { vid = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)).replace(/-/g, "").slice(0, 24); localStorage.setItem("oc_visitor", vid); } } catch (e) {}
+  const f = window.fetch.bind(window);
+  window.fetch = (u, o = {}) => (typeof u === "string" && u.startsWith("/api") && vid ? f(u, { ...o, headers: { ...(o.headers || {}), "x-visitor": vid } }) : f(u, o));
+})();
+
 // One period for every tab (Roma 14547): today, week, 2 weeks, month, quarter, year.
 window.OC = (() => {
   let days = 14;
@@ -38,9 +47,10 @@ window.OC = (() => {
       const st = { awaiting_approval: "WAITING FOR BUYER", deposit_paid: "DEPOSIT IN · BUILD IT", paid: "PAID · SHIP IT", shipped: "SHIPPED", cancelled: "CANCELLED", refunded_out_of_stock: "REFUNDED" }[o.status] || o.status.toUpperCase();
       const where = (o.customer?.name ? o.customer.name + " · " : "") + (o.ship_to?.city ? `${o.ship_to.city}, ${o.ship_to.state}` : (o.customer?.where || o.ship_state));
       const acts = o.status === "paid"
-        ? `<div class="acts"><button class="p" data-note="${esc(o.id)}">Packing note</button><input placeholder="Tracking number" data-trk="${esc(o.id)}"><button data-ship="${esc(o.id)}">Shipped</button></div><div class="note" id="n-${esc(o.id)}" hidden></div>`
-        : o.status === "shipped" ? `<div class="m">USPS ${esc(o.tracking?.number)}</div>` : "";
-      const inv = o.invoice_id ? `<div class="m">PayPal invoice · paid $${(o.paid_usd || 0).toFixed(2)} of $${o.total_usd.toFixed(2)}${o.status === "deposit_paid" ? ` · <button class="mini" data-balance="${esc(o.id)}">${o.balance_requested ? "Remind again" : "Cars ready: request the balance"}</button>` : ""}</div>` : "";
+        ? (o.mine ? `<div class="acts"><button class="p" data-note="${esc(o.id)}">Packing note</button><input placeholder="USPS tracking number" data-trk="${esc(o.id)}"><button data-ship="${esc(o.id)}">Shipped</button></div><div class="note" id="n-${esc(o.id)}" hidden></div><div class="m err" id="e-${esc(o.id)}"></div>`
+          : `<div class="m">Lena packs and ships this one. (On the demo you can ship the orders you placed yourself, and the sample ones.)</div>`)
+        : o.status === "shipped" ? `<div class="m">USPS ${esc(o.tracking?.number)}${o.tracking?.note ? " · " + esc(o.tracking.note) : ""}</div>` : "";
+      const inv = o.has_invoice ? `<div class="m">PayPal invoice · paid $${(o.paid_usd || 0).toFixed(2)} of $${o.total_usd.toFixed(2)}${o.status === "deposit_paid" && o.mine ? ` · <button class="mini" data-balance="${esc(o.id)}">${o.balance_requested ? "Remind again" : "Cars ready: request the balance"}</button>` : ""}</div>` : "";
       const mto = o.kind === "commission" ? inv + `<div class="m">MADE TO ORDER · build ${o.quote?.build_weeks} wk · ready ${esc((o.quote?.ready_to_ship_by || "").split(" ").pop())}${o.contact ? ` · ${esc(o.contact.name)} <a href="tel:${esc(o.contact.phone)}">${esc(o.contact.phone)}</a>` : ""}</div>` : "";
       return `<div class="o"><img src="${esc(photos[o.listing_id] || "")}" alt=""><div>${mto}
         <span class="badge ${esc(o.status)}">${st}</span>${o.sample ? ` <span class="badge smpb">SAMPLE</span>` : ""}
@@ -84,7 +94,7 @@ window.OC = (() => {
       const num = document.querySelector(`[data-trk="${s}"]`).value.trim();
       if (!num) return;
       const r = await fetch(`/api/maker/orders/${s}/tracking`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tracking_number: num, carrier: "USPS" }) });
-      if (r.ok) load();
+      if (r.ok) load(); else { const e = document.getElementById("e-" + s); if (e) e.textContent = (await r.json().catch(() => ({}))).detail || "Couldn't mark it shipped."; }
     }
   });
 
@@ -134,7 +144,7 @@ window.OC = (() => {
   const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   let chats = [], custs = [], orders = [], calls = [], filter = "all", lessons = [];
   const lessonRow = (n) => `<div class="lesson ${n.active ? "" : "off"}"><p>${esc(n.note)}</p><span>${esc(new Date(n.at * 1000).toLocaleDateString([], { month: "short", day: "numeric" }))}${n.sample ? " · sample" : ""}
-    · ${n.active ? "the AI follows this" : "paused"} <button data-lesson="${esc(n.id)}" data-on="${n.active ? 0 : 1}">${n.active ? "Pause" : "Turn on"}</button>${n.chat ? ` <a href="#chats/${esc(n.chat)}">from chat</a>` : ""}</span></div>`;
+    · ${n.mine ? "yours (applies to your chats on this demo)" : "Lena's"} · ${n.active ? "the AI follows this" : "paused"}${n.mine ? ` <button data-lesson="${esc(n.id)}" data-on="${n.active ? 0 : 1}">${n.active ? "Pause" : "Turn on"}</button>` : ""}${n.chat ? ` <a href="#chats/${esc(n.chat)}">from chat</a>` : ""}</span></div>`;
   const lessonsFor = (cid) => lessons.filter((n) => n.chat === cid).map(lessonRow).join("");
 
   function show() {
@@ -170,7 +180,7 @@ window.OC = (() => {
     view.innerHTML = `<a class="back" href="#chats">← all chats</a>
       <div class="chead"><b>#${c.no || "–"} · ${c.name ? esc(c.name) : "Guest, no name"}</b><span>${esc(dayName(day(c.started)))}, ${esc(clock(c.started))} · ${!c.name ? (c.asked_name ? "the AI asked for a name, none given · " : "the AI never asked for a name · ") : ""}${c.turns.length} message${c.turns.length > 1 ? "s" : ""}${c.orders.length ? " · orders " + c.orders.map(esc).join(", ") : " · no order"}</span></div>
       <div class="thread">${c.turns.map((t) => `<p class="q">${esc(t.user)}</p>${t.steps.length ? `<p class="s">${t.steps.map(esc).join("<br>")}</p>` : ""}<p class="a">${esc(t.reply)}</p>`).join("")}</div>
-      <div class="teach"><b>Teach the AI from this chat</b><span>What should it say or do differently next time? It reads your notes in every new chat.</span>
+      <div class="teach"><b>Teach the AI from this chat</b><span>What should it say or do differently next time? Your lesson goes into your next chats in the shop (on this public demo, only yours; Lena's own lessons apply to everyone).</span>
         <textarea id="teach-note" maxlength="400" placeholder="e.g. When someone asks about gift wrap, say every car comes in two layers with a handwritten note."></textarea>
         <button id="teach-save" data-chat="${esc(c.id)}">Save the lesson</button>
         <div id="teach-list">${lessonsFor(c.id)}</div></div>`;
@@ -241,7 +251,7 @@ window.OC = (() => {
       const note = document.getElementById("teach-note").value.trim(); if (note.length < 5) return;
       save.disabled = true; save.textContent = "Saving…";
       const r = await fetch("/api/maker/coach", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: save.dataset.chat, note }) });
-      if (r.ok) { document.getElementById("teach-note").value = ""; save.textContent = "Saved · the AI uses it from the next chat"; await load(); }
+      if (r.ok) { document.getElementById("teach-note").value = ""; save.textContent = "Saved · your next chat in the shop uses it"; await load(); }
       else { save.textContent = "Couldn't save, try again"; } save.disabled = false;
     }
     const l = e.target.closest("[data-lesson]");
@@ -315,7 +325,7 @@ window.OC = (() => {
       if (a) {
         const f = r.findings[+a.dataset.accept];
         const ok = await fetch("/api/maker/coach", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: f.chat, note: f.lesson }) });
-        a.closest(".acts").innerHTML = ok.ok ? `<span class="done">✓ Your shop's AI follows this from the next chat</span>` : `<span>Couldn't save</span>`;
+        a.closest(".acts").innerHTML = ok.ok ? `<span class="done">✓ Saved. Your next chat in the shop uses it (on this demo, only your chats)</span>` : `<span>Couldn't save</span>`;
       }
     };
   });

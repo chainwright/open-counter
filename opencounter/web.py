@@ -9,6 +9,8 @@ import json
 import os
 import re
 import threading
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import time
 from datetime import datetime
 from pathlib import Path
@@ -54,6 +56,14 @@ app.mount("/mcp", mcp_app)
 app.mount("/static", StaticFiles(directory=WEB / "static"), name="static")
 
 
+def _who(req: Request) -> tuple[str, bool]:
+    """(visitor, is_lena). The demo back office is public: each browser has its own visitor id, and what it changes
+    (lessons, shipping its own orders) stays with it. Lena's key (MAKER_KEY) can do everything."""
+    v = re.sub(r"[^A-Za-z0-9_-]", "", req.headers.get("x-visitor", ""))[:40]
+    key = os.environ.get("MAKER_KEY", "")
+    return v, bool(key) and req.headers.get("x-maker-key", "") == key
+
+
 def _mask(c: dict | None) -> dict | None:
     """The maker screen is a public demo page, so personal details are shown masked there:
     first name + last initial, city/state, email and phone partly hidden. The full record stays on the server."""
@@ -82,11 +92,18 @@ def _hide_contact(t: str) -> str:
     return re.sub(r"(?<![\d-])\b\d{5}(?:-\d{4})?\b(?!-)", "•••••", t)
 
 
-def _mask_order(o: dict | None) -> dict | None:
+_PRIVATE = ("approve_url", "paypal_order_id", "invoice_id", "capture_id", "visitor", "payer", "error")
+
+
+def _mask_order(o: dict | None, visitor: str = "") -> dict | None:
     if not o:
         return o
-    return {**o, "customer": _mask(o.get("customer")), "contact": _mask(o.get("contact")),
-            "asked_for": _hide_contact(o.get("asked_for") or "")}
+    st = o.get("ship_to") or {}
+    return {**{k: v for k, v in o.items() if k not in _PRIVATE}, "customer": _mask(o.get("customer")),
+            "contact": _mask(o.get("contact")), "asked_for": _hide_contact(o.get("asked_for") or ""),
+            "ship_to": {**st, "name": (_mask({"full_name": st.get("name")}) or {}).get("name", "")} if st else st,
+            "has_invoice": bool(o.get("invoice_id")),
+            "mine": bool(o.get("sample")) or (bool(visitor) and o.get("visitor") == visitor)}
 
 
 def _announce(kind: str, o: dict):
@@ -161,7 +178,7 @@ async def open_publish(req: Request):
     try:
         c = await asyncio.to_thread(onboard.publish, b.get("listing") or {}, float(b.get("price_usd") or 0),
                                     int(b.get("stock") or 0), str(b.get("ships_from") or ""), str(b.get("maker") or ""),
-                                    str(b.get("shop_name") or ""), str(b.get("image") or ""))
+                                    str(b.get("shop_name") or ""), str(b.get("image") or ""), _who(req)[0])
     except (ValueError, TypeError) as e:
         raise HTTPException(400, str(e))
     return {"slug": c["slug"], "page": f"{counter.PUBLIC_URL}/c/{c['slug']}", "json": f"{counter.PUBLIC_URL}/c/{c['slug']}.json",
@@ -169,9 +186,9 @@ async def open_publish(req: Request):
 
 
 @app.get("/api/open/latest")
-def open_latest():
-    return [{"slug": c["slug"], "name": c["name"], "title": c["listing"]["title"], "price_usd": c["listing"]["price_usd"]}
-            for c in onboard.latest(8)]
+def open_latest(req: Request):
+    return [{"slug": c["slug"], "name": c["name"], "title": c["listing"]["title"], "price_usd": c["listing"]["price_usd"],
+             "sample": bool(c.get("sample"))} for c in onboard.latest(8, _who(req)[0])]
 
 
 @app.get("/open")
@@ -210,9 +227,14 @@ def api_delivery(state: str):
 @app.post("/api/checkout")
 async def api_checkout(req: Request):
     b = await req.json()
-    out = counter.start_checkout(b.get("item_id", ""), int(b.get("quantity", 1)), b.get("us_state", ""),
-                                 b.get("asked_for", ""), channel=b.get("channel", "web-agent"), items=b.get("items"))
+    try:
+        qty = int(b.get("quantity", 1))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Quantity must be a whole number.")
+    out = counter.start_checkout(b.get("item_id", ""), qty, b.get("us_state", ""),
+                                 str(b.get("asked_for", ""))[:400], channel=b.get("channel", "web-agent"), items=b.get("items"))
     if out.get("ok"):
+        shop.update_order(out["order_id"], visitor=_who(req)[0])
         _announce("awaiting_approval", shop.order(out["order_id"]))
     return out
 
@@ -221,10 +243,20 @@ async def api_checkout(req: Request):
 async def api_shopper(req: Request):
     b = await req.json()
     # The whole conversation (up to 40 turns), so the agent remembers quantities, colours and quotes already given.
-    msgs = [{"role": m.get("role"), "content": m["content"][:1000], "memo": str(m.get("memo") or "")[:800]}
-            for m in b.get("messages", []) if isinstance(m.get("content"), str)][-40:]
+    msgs = [{"role": m.get("role"), "content": m["content"][:1000]}
+            for m in b.get("messages", []) if isinstance(m.get("content"), str) and m.get("role") in ("user", "assistant")][-40:]
+    if not msgs or msgs[-1]["role"] != "user" or not msgs[-1]["content"].strip():
+        raise HTTPException(400, "Say something to the agent first.")
+    # tool notes come from the server's own record of this chat, never from the browser (they steer the model)
+    memos = shop.server_memos(str(b.get("conv_id") or ""))
+    k = len(memos) - sum(1 for m in msgs if m["role"] == "assistant")
+    for m in msgs:
+        if m["role"] == "assistant":
+            m["memo"] = memos[k] if 0 <= k < len(memos) else ""
+            k += 1
     try:
-        out = await asyncio.to_thread(shopper.run, msgs)
+        visitor, _ = _who(req)
+        out = await asyncio.to_thread(shopper.run, msgs, visitor)
     except shopper.OverBudget as e:
         return JSONResponse({"error": f"{e}; the rest of the demo still works."}, 429)
     if out.get("checkout"):
@@ -232,10 +264,12 @@ async def api_shopper(req: Request):
     # Lena can read every chat later (and see which order came out of it)
     last_user = next((m["content"] for m in reversed(msgs) if m["role"] == "user"), "")
     oid = (out.get("checkout") or {}).get("order_id")
+    if oid:
+        shop.update_order(oid, visitor=visitor)
     o = shop.order(oid) if oid else None
     who = ((o or {}).get("customer") or {}).get("full_name") or ((o or {}).get("contact") or {}).get("name") or ""
     out["conv_id"] = shop.log_turn(str(b.get("conv_id") or ""), last_user, out.get("reply", ""), out.get("steps", []),
-                                   oid, name=who)
+                                   oid, name=who, memo=out.get("memo", ""))
     return out
 
 
@@ -364,7 +398,7 @@ def thanks(oc: str):
                  ("It arrives", f"Between {_day(est.get('arrives_earliest', ''))} and {_day(est.get('arrives_latest', ''))}.")]
     photo = f"/media/{e(item['photo'])}" if item.get("photo") else "/media/hero.jpg"
     rows = "".join(f'<li><b>{t}</b><span>{d}</span></li>' for t, d in steps)
-    asked = e(o.get("asked_for", ""))
+    asked = e(_hide_contact(o.get("asked_for", "")))   # the thanks page URL is shareable: no address or phone on it
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(head)} · Small Garage</title>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -433,7 +467,7 @@ async def webhook(req: Request):
 
 # ---- maker side ----
 @app.get("/api/maker/orders")
-def maker_orders():
+def maker_orders(req: Request):
     # made-to-order invoices: if a webhook was missed, look again (at most once a minute per order)
     for o in shop.orders():
         if (o.get("invoice_id") and not o.get("sample") and o["status"] in ("awaiting_approval", "deposit_paid")
@@ -442,18 +476,27 @@ def maker_orders():
                 _sync_invoice(o["id"])
             except paypal.PayPalError:
                 shop.update_order(o["id"], invoice_checked=time.time())
-    return [_mask_order(o) for o in sorted(shop.orders(), key=lambda o: -o["created"])]
+    visitor, lena = _who(req)
+    return [_mask_order(o, visitor) | ({"mine": True} if lena else {}) for o in sorted(shop.orders(), key=lambda o: -o["created"])]
 
 
 @app.post("/api/maker/orders/{oid}/tracking")
 async def maker_tracking(oid: str, req: Request):
     b = await req.json()
     o = shop.order(oid)
+    visitor, lena = _who(req)
     if not o or o["status"] != "paid":
-        raise HTTPException(400, "Only paid orders can be shipped.")
-    paypal.add_tracking(o["paypal_order_id"], o["capture_id"], b["tracking_number"], b.get("carrier", "USPS"))
-    o = shop.update_order(oid, status="shipped", tracking={"number": b["tracking_number"],
-                                                            "carrier": b.get("carrier", "USPS")})
+        raise HTTPException(400, "Only orders paid in full can be shipped.")
+    if not (lena or o.get("sample") or (visitor and o.get("visitor") == visitor)):
+        raise HTTPException(403, "On the demo you can ship the orders you placed yourself (and the sample ones).")
+    num = str(b.get("tracking_number") or "").strip()[:40]
+    if not re.fullmatch(r"[A-Za-z0-9 -]{8,40}", num):
+        raise HTTPException(400, "Enter the carrier's tracking number.")
+    note = "kept on the order"
+    if o.get("paypal_order_id") and o.get("capture_id") and not o.get("sample"):
+        paypal.add_tracking(o["paypal_order_id"], o["capture_id"], num, b.get("carrier", "USPS"))
+        note = "sent to PayPal; the buyer is told"
+    o = shop.update_order(oid, status="shipped", tracking={"number": num, "carrier": b.get("carrier", "USPS"), "note": note})
     _announce("shipped", o)
     return o
 
@@ -474,6 +517,7 @@ _STUCK = re.compile(r"couldn.?t finish|can.?t help|cannot help|unable to|don.?t 
                     r"try again later|checkout (is|system is) (currently )?offline", re.I)
 _TOOL_TROUBLE = re.compile(r"^(no listing|only \d+|.*not a us state|checkout is offline|paypal could not|ask the person|"
                            r"still needed|before checkout)", re.I)
+_SHOP_TZ = ZoneInfo("America/New_York")   # Columbus, Ohio
 _PAINT = {"68-G": "#2FA36B", "67-B": "#3D6FE0", "70-O": "#FF6A2B", "73-Y": "#F5C400", "65-R": "#E3242B"}
 
 
@@ -516,8 +560,8 @@ def maker_insights(days: int = 30):
         for t in c["turns"]:
             if t["at"] < t0:
                 continue
-            lt = time.localtime(t["at"])
-            heat[lt.tm_wday][lt.tm_hour] += 1
+            lt = datetime.fromtimestamp(t["at"], _SHOP_TZ)   # Lena's time (Columbus), not the server's UTC
+            heat[lt.weekday()][lt.hour] += 1
             why = ("the AI got stuck" if _STUCK.search(t["reply"]) else
                    next(("a tool said: " + s.split(" · ", 1)[-1][:80] for s in t["steps"]
                          if _TOOL_TROUBLE.search(s.split(" · ", 1)[-1])), None))
@@ -555,16 +599,20 @@ async def assistant_ask(req: Request):
 
 
 @app.get("/api/maker/coach")
-def coach_list():
-    """Lena's lessons for her shop's AI (newest first)."""
-    return list(reversed(shop.coaching()))
+def coach_list(req: Request):
+    """Lena's lessons for her shop's AI (newest first): hers, plus the ones this browser wrote on the demo."""
+    visitor, lena = _who(req)
+    return [n | {"mine": bool(visitor) and n.get("visitor") == visitor} for n in reversed(shop.lessons_for(visitor, lena))]
 
 
 @app.post("/api/maker/coach")
 async def coach_add(req: Request):
     b = await req.json()
+    visitor, lena = _who(req)
+    if not visitor and not lena:
+        raise HTTPException(400, "Open the back office in a browser to teach the agent.")
     try:
-        return shop.add_coaching(str(b.get("chat_id") or ""), str(b.get("note") or ""))
+        return shop.add_coaching(str(b.get("chat_id") or ""), str(b.get("note") or ""), visitor="" if lena else visitor)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -572,7 +620,9 @@ async def coach_add(req: Request):
 @app.post("/api/maker/coach/{lid}")
 async def coach_set(lid: str, req: Request):
     b = await req.json()
-    shop.set_coaching(lid, bool(b.get("active")))
+    visitor, lena = _who(req)
+    if not shop.set_coaching(lid, bool(b.get("active")), visitor, lena):
+        raise HTTPException(403, "On the demo you can pause the lessons you wrote yourself.")
     return {"ok": True}
 
 
@@ -583,11 +633,16 @@ def maker_customers():
 
 
 @app.post("/api/maker/orders/{oid}/balance")
-def request_balance(oid: str):
+def request_balance(oid: str, req: Request):
     """Lena: the cars are ready, ask the buyer for the rest (PayPal sends the reminder)."""
     o = shop.order(oid)
     if not o or not o.get("invoice_id"):
         raise HTTPException(404)
+    visitor, lena = _who(req)
+    if not (lena or (visitor and o.get("visitor") == visitor)):
+        raise HTTPException(403, "On the demo you can request the balance for orders you placed yourself.")
+    if o.get("balance_requested") and time.time() - o["balance_requested"] < 3600:
+        raise HTTPException(429, "A reminder already went out in the last hour.")
     paypal.remind_invoice(o["invoice_id"], "Your hand-built cars are finished. Pay the balance and they ship the next day.")
     return _mask_order(shop.update_order(oid, balance_requested=time.time()))
 

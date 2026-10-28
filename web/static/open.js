@@ -1,3 +1,12 @@
+// One id per browser, sent with every /api call: on the public demo, what you change (lessons, shipping your own
+// orders, counters you open) stays with your browser and never changes the shop for other people.
+(() => {
+  let vid = "";
+  try { vid = localStorage.getItem("oc_visitor") || ""; if (!vid) { vid = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)).replace(/-/g, "").slice(0, 24); localStorage.setItem("oc_visitor", vid); } } catch (e) {}
+  const f = window.fetch.bind(window);
+  window.fetch = (u, o = {}) => (typeof u === "string" && u.startsWith("/api") && vid ? f(u, { ...o, headers: { ...(o.headers || {}), "x-visitor": vid } }) : f(u, o));
+})();
+
 // Open your counter: photo + one sentence → the AI writes the listing words; the maker sets price and stock (Roma 14565 #4).
 (() => {
   const $ = (id) => document.getElementById(id);

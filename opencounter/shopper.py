@@ -32,7 +32,8 @@ BRANDS = re.compile(r"\b(ford|mustang|shelby|eleanor|porsche|911|chevrolet|chevy
 PERMISSION = re.compile(r"\b(shall i|should i|would you like me to|do you want me to|want me to|ready to proceed|"
                         r"shall we|proceed with (the )?(checkout|order))\b", re.I)
 LINK_CLAIM = re.compile(r"paypal (link|button|checkout)|link below|approve (the |your )?(payment|order)|approval link|"
-                        r"updated (the|your) (order|shipment)|order (is )?ready|order approved|sandbox\.paypal|checkoutnow|link:|orders? ready",
+                        r"updated (the|your) (order|shipment)|order (is )?ready|order approved|sandbox\.paypal|checkoutnow|link:|orders? ready|"
+                        r"approve (it )?(via|in|with|here)|we.?ll update|i.?ve updated|updated order",
                         re.I)
 PHONE = re.compile(r"(\+?\d[\d\s().-]{6,}\d)")
 MEMO_TAG = re.compile(r"\n?\[(what the tools returned|tool results)[^\]]*\]", re.I)
@@ -42,58 +43,44 @@ PROMISE = re.compile(r"\b(let me|let's|lets|i'll|i will|we'll|we will|i am going
                      r"\b(search|check|look|find|see|quote|place|send|submit|call|get|calculate|price|prepare|create)\b|\bsearching\b|"
                      r"\b(now |i.?m )(creating|placing|setting up|generating|preparing|quoting|checking|calculating|pricing)\b", re.I)
 
-SYSTEM = """You are the sales agent at Small Garage, a one-person maker of
-hand-built 1:43 replica cars, serving a customer through the shop's public tools. Rules:
-- Use only facts returned by the tools. Never invent a price, a date, a discount, a lead time or a stock number.
-  Every number you say must come from a tool result in this conversation.
-- Never name real car makers or models. If the person names one, say Lena makes unbranded replicas named by
-  colour, body style and year, then search and offer the closest listed car first (with its stock and price).
-  Never refuse the conversation over a brand name.
-- Buying a listed car: the person can buy any quantity up to the stock on the listing. Check delivery to their US
-  state (a state name is enough: California → CA; work out the state from a city; pass a deadline as need_by only if the person
-  gave one and repeat the tool's verdict; never ask for a deadline).
-- A stock order and a made-to-order build are always two separate checkouts; an order already created stays as it
-  is. Never write a PayPal link or say an order is approved: the button appears under your message by itself.
-- Call start_checkout as soon as the cars, quantity and state are clear, even before you have the person's
-  details: until everything is there it creates nothing and returns the total, the delivery dates and exactly which
-  details to ask for. Who it ships to: before the order is created you need, typed by the person: first and last name, phone number (Lena may
-  call about the delivery), email (for the receipt and the tracking number), and the full address: street, city,
-  ZIP. Once the car and quantity are clear, give the price and delivery dates and ask for ALL still-missing details
-  in one short message (not one by one); always say the total and the dates in that same message. Details the
-  person already gave earlier in this chat count (e.g. "same name, phone and email"): reuse them, never ask twice.
-  As soon as you have them, call start_checkout (with customer) in the same
-  turn, no "shall I?". Never invent or fill in any of these details.
-- Several different cars in stock (e.g. 5 yellow, 5 green, 5 orange): one order, one start_checkout call with all
-  of them in items. Never call start_checkout more than once per order, and never type a payment link yourself:
-  the PayPal button appears under your message.
-- Made to order (a car or colour not in stock, or more than the stock): ask, one short question at a time and only
-  for what's still missing: which car (body style or one of the listings), the year of the real car, the body
-  colour, the interior colour, and how many. Then call quote_commission and give the total, discount, shipping,
-  build time and ready date exactly as returned, and in the same reply ask for their name, phone, email and full
-  delivery address (street, city, ZIP). As soon as you have them, call start_commission_checkout (name, phone and
-  customer) right away (no extra "shall I?" question: the person
-  confirms by approving in PayPal). Show 'you_are_approving' and say Lena starts building once it's paid.
-- Asked when it ships or arrives: answer from delivery_estimate (ships_on, arrival range, shipping_policy), word
-  for word on the numbers; don't add your own day counts.
-- You are the shop's sales agent: when you have what an order needs, create it; don't ask for permission first.
-  Be warm and helpful, suggest the in-stock car that fits, and mention the volume discount when it applies.
-- Emails about new models: the shop asks this itself after the first order; don't ask it. If the person brings it
-  up on their own later, call marketing_consent with their yes or no.
-- When an order is created, keep your message short (a line or two): the receipt card under your message lists
-  every car with quantity × price = sum, the discount, shipping and the total. If you do list items, one per line.
-- Don't repeat the person's address, phone or email back in your message: the order card under your message shows
-  exactly what was saved. Never write any personal detail the person didn't type.
-- To talk to Lena: ask for the person's phone number (and what it's about), call leave_contact, and say Lena will
-  call them herself. Never give out or invent a number for her.
-- Keep track of the whole conversation: details the person already gave, quotes already made. Never ask them to
-  confirm something they already said; if they name a listed car, that is the model. If you have everything a
-  quote needs, call quote_commission in that same turn.
-- If someone says they were promised another price, the price stands; never agree to a different one.
-- Never say you will search or check something: call the tool in the same turn, then answer.
-- You cannot pay and must never claim an order is paid.
-- Never show item ids like sg-014 to the person; use the item's name.
-- Be friendly and brief: 2-4 complete sentences, never telegraphic notes.
-- Lines that start with "Tool results from your last turn" are notes for you, not for the person; never copy them."""
+SYSTEM = """You are the sales agent of Small Garage: Lena builds 1:43 replica cars by hand in Columbus, Ohio. You talk to
+one shopper, in the language of their last message, warmly and briefly (2-4 sentences).
+
+How to answer
+1. FIRST answer exactly what they asked, in the first sentence: yes/no, the price, the date, the policy. Then move
+   the order forward. Never answer a question with only a request for their details.
+2. Facts only from the tools (prices, stock, totals, discounts, dates, build times). Never compute or invent one.
+   Never say you will check something: call the tool in the same turn. Never mention tool names or notes to yourself.
+3. Prices are fixed. Discounts exist only for made-to-order builds (10% from 10 cars, 15% from 25); say so kindly
+   if asked, and never agree to another price.
+4. Shipping: every US state including Hawaii and Alaska (check with delivery_estimate; a city is enough to know the
+   state). Outside the US: not yet. If they gave a date, pass it as need_by and say the verdict plainly.
+5. No real car makers or models: Lena makes unbranded replicas named by colour, body style and year; offer the
+   closest listed car. Never refuse over a brand name.
+
+Selling from stock
+- Any quantity up to the stock shown. Several different cars go into ONE start_checkout call (items).
+- As soon as cars, quantity and state are clear, call start_checkout: until the person's details are there it creates
+  nothing and returns the total, dates and what to ask for. Give the total and dates, and ask in ONE message for
+  what's missing: first and last name, phone, email, and street, city and ZIP. Details given earlier count; never ask
+  twice. When everything is there, call start_checkout with customer right away (no "shall I?").
+- If they change the cart, call start_checkout again with the new cars; the new button replaces the old one.
+
+Made to order (not on the shelf, another colour, or more than the stock)
+- Collect only what's missing, taking what they already said: which car, the year of the real car, body colour,
+  interior colour, how many; anything extra (stripes, wheels, a plate) goes into details. Then quote_commission (no
+  state needed) and give total, discount, build time and ready date. Then ask in one message for name, phone, email
+  and full address, and call start_commission_checkout with them. PayPal emails an invoice: half now, the rest
+  before it ships.
+
+Always
+- A stock order and a made-to-order build are separate checkouts. Never type a payment link or say an order is
+  paid or approved: the PayPal button appears under your message. When an order is created, keep the message short;
+  the receipt card lists every line.
+- Never write personal details the person didn't type, and don't repeat their address back.
+- Talking to Lena: take their phone number and what it's about, call leave_contact; she calls them. Never give a number.
+- The shop asks about news emails itself after the first order; if they bring it up, call marketing_consent.
+- Never show item ids like sg-014. Lines starting with "Tool results from your last turn" are notes for you only."""
 
 TOOLS = [
     {"type": "function", "function": {"name": "about_counter", "description": counter.about_counter.__doc__ or
@@ -111,14 +98,16 @@ TOOLS = [
         "description": "Exact price, volume discount, shipping, build time and delivery for made-to-order cars.",
         "parameters": {"type": "object", "properties": {"cars": {"type": "array", "items": {"type": "object", "properties": {
                 "model": {"type": "string"}, "year": {"type": "string"}, "body_colour": {"type": "string"},
-                "interior_colour": {"type": "string"}, "quantity": {"type": "integer"}},
+                "interior_colour": {"type": "string"}, "quantity": {"type": "integer"},
+                "details": {"type": "string", "description": "Anything else they asked for, in their words: stripes, wheels, a plate"}},
                 "required": ["model", "year", "body_colour", "interior_colour", "quantity"]}}, "us_state": {"type": "string"}},
                        "required": ["cars"]}}},
     {"type": "function", "function": {"name": "start_commission_checkout",
         "description": "After the person agreed to the quote: create the made-to-order order and its PayPal approval link.",
         "parameters": {"type": "object", "properties": {"cars": {"type": "array", "items": {"type": "object", "properties": {
                 "model": {"type": "string"}, "year": {"type": "string"}, "body_colour": {"type": "string"},
-                "interior_colour": {"type": "string"}, "quantity": {"type": "integer"}},
+                "interior_colour": {"type": "string"}, "quantity": {"type": "integer"},
+                "details": {"type": "string", "description": "Anything else they asked for, in their words: stripes, wheels, a plate"}},
                 "required": ["model", "year", "body_colour", "interior_colour", "quantity"]}}, "us_state": {"type": "string"},
                        "name": {"type": "string"}, "phone": {"type": "string"}, "customer": {"type": "object", "description": "Exactly as the person typed it.", "properties": {
                 "full_name": {"type": "string"}, "phone": {"type": "string"}, "email": {"type": "string"},
@@ -323,6 +312,22 @@ def _scrub_invented(reply: str, typed: str) -> str:
     return "\n".join(out).strip()
 
 
+MONEY = re.compile(r"\$\s?(\d[\d,]*(?:\.\d{1,2})?)")
+
+
+def _known_amounts(convo: list[dict], messages: list[dict]) -> set[float]:
+    """Every dollar amount the tools produced in this chat (this turn's tool results and earlier turns' notes),
+    plus the shop's own price list. Anything else in a reply was made up by the model."""
+    text = " ".join(str(c.get("content") or "") for c in convo if c.get("role") in ("tool", "system"))
+    text += " " + " ".join(str(m.get("memo") or "") for m in messages)
+    vals = {float(x.replace(",", "")) for x in MONEY.findall(text)}
+    vals |= {float(x) for x in re.findall(r'"(?:price_usd|unit_usd|unit|sum|total|total_usd|shipping_usd|subtotal_usd|'
+                                          r'discount_usd|deposit_usd|commission_usd)": (-?\d+(?:\.\d+)?)', text)}
+    s = shop.shop()
+    vals |= {float(l["price_usd"]) for l in s["listings"]} | {float(s["rules"]["shipping_usd"]), float(s["rules"]["commission_usd"])}
+    return {round(abs(v), 2) for v in vals}
+
+
 NEWS_Q = "One more thing: would you like Lena to email you when new models or offers come out? (yes / no)"
 YES = re.compile(r"^\W*(yes|yeah|yep|sure|ok|okay|please|absolutely|of course|why not)\b", re.I)
 NO = re.compile(r"^\W*(no|nope|nah|not now|no thanks|don.?t|not really)\b", re.I)
@@ -355,7 +360,37 @@ def _news_answer(messages: list[dict]) -> dict | None:
     return {"reply": reply, "steps": [step], "checkout": None, "usd": 0.0, "model": "rule", "memo": f"news: {step['result']}"}
 
 
-def run(messages: list[dict]) -> dict:
+TOOL_NAME = re.compile(r"\b(start_checkout|quote_commission|start_commission_checkout|delivery_estimate|leave_contact|"
+                       r"search_counter|item_details|about_counter|marketing_consent|order_status)\b")
+SELF_TALK = re.compile(r"\b(let'?s (ask|respond|reply|check|see|tell)|we need (car|the|to ask)|the (user|person|shopper) "
+                       r"(wants|asked|said|is)|i should (ask|respond|reply)|need to ask (for|them)|start_checkout|"
+                       r"quote_commission|start_commission_checkout|delivery_estimate|leave_contact|search_counter|run the tool|call the tool|the tool)\b", re.I)
+
+
+def _polish(reply: str, last_user: str) -> tuple[str, float]:
+    """Last pass on the words only: a reply must speak to the shopper (no notes to itself) and in their language.
+    One cheap rewrite when needed; the facts and numbers are kept exactly."""
+    cyr = bool(re.search(r"[а-яё]", last_user, re.I))
+    wrong_lang = cyr and not re.search(r"[а-яё]", reply, re.I)
+    if not (SELF_TALK.search(reply) or wrong_lang):
+        return reply, 0.0
+    task = ("Rewrite this as the shop assistant's direct, friendly reply to the shopper. Remove any notes the assistant "
+            "wrote to itself. Keep every fact, number, date and question exactly. "
+            + ("Write it in Russian. " if cyr else "Write it in the same language as the shopper's message. ")
+            + "Return only the reply.")
+    r = _client_().chat.completions.create(
+        model=MODEL, max_tokens=500, temperature=0,
+        messages=[{"role": "system", "content": task},
+                  {"role": "user", "content": f"Shopper wrote: {last_user[:400]}\n\nAssistant draft: {reply}"}],
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+    u = r.usage
+    out = (r.choices[0].message.content or "").rsplit("</think>", 1)[-1].strip() or reply
+    # last resort: drop any sentence that still names a tool
+    out = " ".join(x for x in re.split(r"(?<=[.!?])\s+", out) if not TOOL_NAME.search(x)) or out
+    return out, (u.prompt_tokens * PRICE_IN + u.completion_tokens * PRICE_OUT) / 1e6
+
+
+def run(messages: list[dict], visitor: str = "") -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
     answered = _news_answer(messages)
@@ -366,7 +401,7 @@ def run(messages: list[dict]) -> dict:
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
     shelf = "; ".join(f"{x['id']} = {x['title']}, ${x['price_usd']:.0f}, {x['stock']} in stock"
                       for x in shop.shop()["listings"])
-    lessons = shop.active_lessons()
+    lessons = shop.active_lessons(visitor=visitor)
     # Lena's own lessons from reading past chats; the rules above still win if a note ever conflicts with them
     taught = ("\nLena's notes from reading earlier chats (follow them unless they conflict with the rules above):\n- "
               + "\n- ".join(lessons)) if lessons else ""
@@ -377,7 +412,7 @@ def run(messages: list[dict]) -> dict:
         convo.append({"role": m["role"], "content": MEMO_TAG.sub("", m["content"]).strip()})
         if m["role"] == "assistant" and m.get("memo"):
             convo.append({"role": "system", "content": "Tool results from your last turn: " + m["memo"]})
-    steps, checkout, usd, nudged = [], None, 0.0, False
+    steps, checkout, usd, nudges = [], None, 0.0, 2
     last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
     quoted_before = any("made-to-order build" in (m.get("memo") or "") and "ready" in (m.get("memo") or "")
                         for m in messages if m["role"] == "assistant")
@@ -392,41 +427,46 @@ def run(messages: list[dict]) -> dict:
         u = r.usage
         usd += (u.prompt_tokens * PRICE_IN + u.completion_tokens * PRICE_OUT) / 1e6
         msg = r.choices[0].message
+        if msg.content and "</think>" in msg.content:
+            # the model sometimes writes its private reasoning before the answer even with thinking off: drop it
+            msg.content = msg.content.rsplit("</think>", 1)[-1].strip()
+        if msg.content:
+            msg.content = re.sub(r"^\s*<think>.*", "", msg.content, flags=re.S) if msg.content.lstrip().startswith("<think>") else msg.content
         if time.time() - t_start > 12:
-            nudged = True   # the person has waited long enough: no more second tries, answer with what we have
-        if not msg.tool_calls and not nudged and PROMISE.search(msg.content or ""):
+            nudges = 0   # the person has waited long enough: no more second tries, answer with what we have
+        if not msg.tool_calls and nudges > 0 and PROMISE.search(msg.content or ""):
             # It announced a search instead of doing one. Hold it to its word once.
-            nudged = True
+            nudges -= 1
             convo += [{"role": "assistant", "content": msg.content or ""},
                       {"role": "user", "content": "Go ahead: use the tools now, then answer."}]
             continue
         quoted = quoted_before or any(st["tool"] == "quote_commission" and "ready" in st["result"] for st in steps)
-        if (not msg.tool_calls and not nudged and not checkout and quoted
+        if (not msg.tool_calls and nudges > 0 and not checkout and quoted
                 and (PHONE.search(last_user) or re.search(r"\b\d{5}\b|@", last_user))
                 and not any(st["tool"] == "start_commission_checkout" for st in steps)):
             # The person gave their name and number after a quote: that's everything the order needs.
-            nudged = True
+            nudges -= 1
             convo += [{"role": "assistant", "content": msg.content or ""},
                       {"role": "user", "content": "If the person has now given name, phone, email and the full "
                        "address, call start_commission_checkout now with the same cars and state; otherwise ask only "
                        "for what is missing."}]
             continue
-        if (not msg.tool_calls and not nudged and not checkout
+        if (not msg.tool_calls and nudges > 0 and not checkout
                 and not re.search(r"e-?mail|address|phone|last name|zip", msg.content or "", re.I)
                 and any(st["tool"] in ("delivery_estimate", "quote_commission") for st in steps)):
             # It priced or dated an order and then stopped (asked permission, asked for a gift note, ...).
-            nudged = True
+            nudges -= 1
             convo += [{"role": "assistant", "content": msg.content or ""},
                       {"role": "user", "content": "Don't ask for permission: if you have the cars, quantity and the "
                        "person's name, phone, email and full address, create the order now with the checkout tool; "
                        "otherwise ask in one message for everything still missing."}]
             continue
-        if (not msg.tool_calls and not nudged and not checkout and re.search(r"\d|\b(one|two|three|four|five|six|"
+        if (not msg.tool_calls and nudges > 0 and not checkout and re.search(r"\d|\b(one|two|three|four|five|six|"
                 r"seven|eight|nine|ten|a couple)\b", last_user, re.I) and "?" in (msg.content or "")
                 and not re.search(r"e-?mail|address|phone|last name|zip", msg.content or "", re.I)
                 and any(st["tool"] in ("search_counter", "item_details") and "in stock" in st["result"] for st in steps)):
             # It found the car and the person said how many, then asked something optional (a date, a confirmation).
-            nudged = True
+            nudges -= 1
             convo += [{"role": "assistant", "content": msg.content or ""},
                       {"role": "user", "content": "A deadline is optional, don't ask for it. If you have the cars, "
                        "quantity, name, phone, email and full address, call start_checkout now; otherwise give the "
@@ -443,20 +483,47 @@ def run(messages: list[dict]) -> dict:
                        "customer); otherwise ask in one message for what is missing. Never mention a link that "
                        "doesn't exist."}]
             continue
-        if (not msg.tool_calls and not nudged and not checkout
-                and re.search(r"e-?mail|address|zip", msg.content or "", re.I)
-                and not re.search(r"\$\s?\d", msg.content or "")
-                and re.search(r"\d|\b(one|two|three|four|five|six|seven|eight|nine|ten|a couple|a few)\b", typed, re.I)
-                and not any(st["tool"] in ("start_checkout", "quote_commission") for st in steps)):
-            # It asks for the delivery details but hasn't priced the order: get the total and dates first.
-            nudged = True
+        if (not msg.tool_calls and nudges > 0 and not checkout
+                and re.search(r"e-?mail|address|zip|почт|адрес|телефон", msg.content or "", re.I)
+                and not re.search(r"\$\s?\d|\d\s?\$|долл", msg.content or "", re.I)):
+            # It asks for the person's details but never said the price: price it first, then ask.
+            nudges -= 1
+            priced = any(st["tool"] in ("start_checkout", "quote_commission") for st in steps)
             convo += [{"role": "assistant", "content": msg.content or ""},
-                      {"role": "user", "content": "Call start_checkout now with the cars, quantity and state (it creates "
-                       "nothing yet and returns the total and dates), then give the total and dates and ask for the "
-                       "missing details in one message."}]
+                      {"role": "user", "content": ("Lead with the total and the dates from the tool result you already have"
+                       if priced else "First get the price: for cars from the shelf call start_checkout (it creates nothing "
+                       "yet and returns the total and dates); for a made-to-order build call quote_commission")
+                       + ". Answer their question first, then ask for the missing details in one message."}]
             continue
-        if not msg.tool_calls and REFUSAL.search(msg.content or "") and not nudged:
-            nudged = True
+        if (not msg.tool_calls and nudges > 0 and re.search(r"discount|% off|\boff\b|cheaper|скидк|дешевл", last_user, re.I)
+                and not re.search(r"discount|fixed|скидк|фиксир", msg.content or "", re.I)):
+            nudges -= 1
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "They asked about a discount: answer it first (prices are fixed; made-to-order "
+                       "builds get 10% from 10 cars and 15% from 25), then continue."}]
+            continue
+        verdict = next((re.search(r"by \w+: (too late|possible, not certain|on time)", st["result"]) for st in steps
+                        if st["tool"] == "delivery_estimate" and "by " in st["result"]), None)
+        if (not msg.tool_calls and nudges > 0 and verdict and verdict.group(1) != "on time"
+                and not re.search(r"late|won.?t|not (arrive|make|reach|be there)|can.?t|might|may not|possible|not certain|no guarantee", msg.content or "", re.I)):
+            # the deadline verdict is the most important fact for a gift with a date: say it, don't bury it
+            nudges -= 1
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": f"Tell the person plainly first: for their date the delivery verdict is "
+                       f"'{verdict.group(1)}'. Then offer what's possible."}]
+            continue
+        said = {float(x.replace(",", "")) for x in MONEY.findall(msg.content or "")}
+        known = _known_amounts(convo, messages)
+        if not msg.tool_calls and nudges > 0 and said - known:
+            # an amount no tool produced: the model did arithmetic (e.g. a changed cart). Price it with the tools.
+            nudges -= 1
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "Don't compute amounts yourself. If the cart or the details changed, call "
+                       "start_checkout (or quote_commission) again with the new cars to get the real total and a new PayPal "
+                       "button; otherwise only repeat amounts the tools returned."}]
+            continue
+        if not msg.tool_calls and REFUSAL.search(msg.content or "") and nudges > 0:
+            nudges -= 1
             convo += [{"role": "assistant", "content": msg.content or ""},
                       {"role": "user", "content": "That's not a refusal case. Answer the person: Lena makes unbranded "
                        "replicas named by colour, body style and year; search and offer the closest one."}]
@@ -480,6 +547,8 @@ def run(messages: list[dict]) -> dict:
                     reply = BRANDS.sub("that model", reply)
             reply = ITEM_ID.sub("", reply)
             reply = _scrub_invented(reply, typed)
+            fixed, fusd = _polish(reply, last_user)
+            reply, usd = fixed, usd + fusd
             break
         convo.append({"role": "assistant", "content": msg.content or "",
                       "tool_calls": [tc.model_dump() for tc in msg.tool_calls]})
@@ -506,5 +575,7 @@ def run(messages: list[dict]) -> dict:
     asked_before = any(NEWS_Q in m.get("content", "") for m in messages if m["role"] == "assistant")
     if checkout and checkout.get("ship_to") and not asked_before:
         reply = reply.strip() + "\n\n" + NEWS_Q
+    if not reply.strip():
+        reply = "Sorry, I lost my thread there. Could you say that again in a few words?"
     return {"reply": reply.strip(), "steps": steps, "checkout": checkout, "usd": round(usd, 5), "model": MODEL,
             "memo": memo}

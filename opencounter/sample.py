@@ -165,16 +165,51 @@ def build(now: float | None = None):
                     "note": "If someone asks about shipping outside the US, say Lena ships inside the US only for now, "
                             "and offer to take their email so she can tell them when that changes."},
                    {"id": "L-S2", "at": now - 86400, "chat": returns, "active": True, "sample": True,
-                    "note": "Returns: if a car arrives damaged, Lena replaces it or refunds in full. Say that plainly "
-                            "instead of 'I'm not sure'."}]
+                    "note": "If someone asks something you can't answer from the shop's facts (returns, custom "
+                            "packaging), say Lena will answer it personally and offer to take their phone for a call back."}]
         shop._save_json("coaching.json", lessons)
+        # three counters other makers opened at /open (sample), so the page shows what it makes
+        import shutil
+        cdir = shop._path("counters"); cdir.mkdir(exist_ok=True)
+        counters = {}
+        for k, (slug, name, maker, st, title, desc, mats, price, stock, photo) in enumerate([
+                ("clay-kiln-s1", "Clay & Kiln", "Rosa Diaz", "TX", "Handmade Stoneware Mug",
+                 "A wheel-thrown stoneware mug with a speckled sea-green glaze. Holds 12 oz.", ["stoneware", "glaze"], 32, 6, "mug.jpg"),
+                ("slow-flame-s2", "Slow Flame", "Ben Okoro", "OR", "Hand-Poured Soy Candle",
+                 "Soy wax poured by hand into an amber glass jar, with a cotton wick. About 50 hours of burn.", ["soy wax", "glass"], 24, 20, "candle.jpg"),
+                ("saddle-thread-s3", "Saddle & Thread", "Ana Petrov", "OH", "Hand-Stitched Leather Wallet",
+                 "A brown full-grain leather bifold, saddle-stitched by hand.", ["leather", "waxed thread"], 68, 4, "wallet.jpg")]):
+            src = shop.ROOT / "web" / "static" / "open" / photo
+            if src.exists():
+                shutil.copy(src, cdir / f"{slug}.jpg")
+            counters[slug] = {"slug": slug, "created": now - (k + 1) * 3 * 86400, "sample": True, "visitor": "", "maker": maker,
+                              "name": name, "ships_from": st,
+                              "listing": {"id": slug + "-1", "title": title, "short_description": desc, "materials": mats,
+                                          "made_by_hand": True, "price_usd": float(price), "stock": stock,
+                                          "keywords": [], "paypal_catalog_product": None}}
+        shop._save_json("counters.json", counters)
         shop._save_orders(orders)
         shop._save_json("conversations.json", convs)
         shop._save_json("customers.json", custs)
         return len(orders), len(convs)
 
 
+DATA_VERSION = "3"   # bump to wipe the demo data (test chats and orders) and lay the sample history down again
+
+
 def ensure():
-    """On an empty data folder (a fresh deploy), lay down the sample history once."""
-    if shop.DEMO and not shop._path("conversations.json").exists() and not shop.orders():
-        build()
+    """On an empty data folder, or when DATA_VERSION changes, lay down the sample history (test data is wiped)."""
+    if not shop.DEMO:
+        return
+    vf = shop._path("data_version")
+    if vf.exists() and vf.read_text().strip() == DATA_VERSION:
+        return
+    import shutil
+    for f in ("orders.json", "conversations.json", "customers.json", "coaching.json", "counters.json", "requests.json"):
+        p = shop._path(f)
+        if p.exists():
+            p.unlink()
+    shutil.rmtree(shop._path("counters"), ignore_errors=True)
+    shop.seed(force=True)
+    build()
+    vf.write_text(DATA_VERSION)

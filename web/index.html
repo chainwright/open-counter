@@ -72,20 +72,20 @@
   </section>
 
   <section class="try" id="try">
-    <div class="sec-head"><span class="label cyan">01 · TRY IT</span><h2>Be the stranger's AI.</h2>
-      <p>This is a real agent (NVIDIA Nemotron) shopping Lena's counter with the same six tools any outside agent gets. It can find, compare and prepare a PayPal checkout. It cannot pay.</p></div>
+    <div class="sec-head"><span class="label cyan">01 · TRY IT</span><h2>Talk to her sales agent.</h2>
+      <p>Lena's own sales agent (NVIDIA Nemotron), using the same nine tools any outside agent gets over MCP. Ask in any language: a car from the shelf, or one made to order. It prepares the PayPal checkout; only you can pay. Lena reads every chat and teaches it.</p></div>
     <div class="chat" id="chat">
-      <div class="chat-bar"><span class="av"></span><div><b>Shopper's AI</b><small>NVIDIA Nemotron · shopping Lena's counter</small></div><span class="live">● live</span></div>
+      <div class="chat-bar"><span class="av"></span><div><b>Lena's sales agent</b><small>NVIDIA Nemotron · same tools as any outside agent</small></div><span class="live">● live</span></div>
       <div class="chat-log" id="log">
-        <div class="msg a">Hi, I'm a shopping agent. Tell me who the gift is for and where it has to go. I'll find it on Lena's counter, check stock and delivery, and hand you a PayPal button. I can't pay. You do that.</div>
+        <div class="msg a">Hi, I'm Lena's sales agent. Tell me what you're looking for and where it should go: a car from the shelf, or one made to order in your colours. I'll check stock and delivery and give you a receipt with a PayPal button. Only you can pay.</div>
       </div>
       <div class="chips" id="chips">
         <button type="button">A gift for my dad who loved his '68 green fastback. Under $60, Denver, by Friday.</button>
         <button type="button">Anything yellow from the 70s?</button>
         <button type="button">How big is the orange coupe?</button>
       </div>
-      <form class="ask" id="askform"><input id="askin" autocomplete="off" placeholder="Ask the shopper's AI…"><button aria-label="Send">↑</button></form>
-      <details class="sandbox"><summary>Test buyer for PayPal sandbox</summary><code>sb-yi0xc53507798@personal.example.com</code> · password in the README · no real money moves</details>
+      <form class="ask" id="askform"><input id="askin" autocomplete="off" placeholder="Ask Lena's sales agent…"><button aria-label="Send">↑</button></form>
+      <details class="sandbox"><summary>Test buyer for PayPal sandbox</summary><code>sb-yi0xc53507798@personal.example.com</code> · password <code>2dt_AD6W</code> · PayPal's test environment, no real money moves</details>
     </div>
   </section>
 
@@ -109,8 +109,8 @@
     <div class="sec-head"><span class="label">03 · HOW IT WORKS</span><h2>Legible. Payable. Still hers.</h2></div>
     <div class="beats">
       <article><b>Legible</b><p>Lena's listings become a public counter: a page for people, a JSON card and an MCP server for agents. Agents get facts only — size, paint, stock, delivery — never guesses.</p></article>
-      <article><b>Payable</b><p>An agent can start a PayPal order (Orders v2) with the exact item, price and shipping, recomputed on our server. The person sees "you asked for" next to "you're approving".</p></article>
-      <article><b>Still hers</b><p>Nothing is charged until a human approves in PayPal. Lena's rules hold: ships to the US only, at most 2 per order, stock is checked again at capture.</p></article>
+      <article><b>Payable</b><p>Any agent can start a PayPal order (Orders v2) priced on our server, line by line, with the buyer's address. Made-to-order builds get a PayPal invoice: half now, the rest before shipping.</p></article>
+      <article><b>Still hers</b><p>Nothing is charged until a human approves in PayPal. Her rules hold in code: US shipping only, any quantity up to the stock shown, made-to-order prices and build times from her table, stock checked again at capture.</p></article>
     </div>
   </section>
 
@@ -118,7 +118,7 @@
     <div class="sec-head"><span class="label cyan">04 · FOR AGENTS</span><h2>Point any agent here.</h2></div>
     <div class="endpoint"><span>MCP</span><code id="mcpurl"></code><button type="button" id="copy">copy</button></div>
     <div class="endpoint"><span>JSON</span><code id="jsonurl"></code></div>
-    <p class="tools">Tools: <code>about_counter</code> <code>search_counter</code> <code>item_details</code> <code>delivery_estimate</code> <code>start_checkout</code> <code>order_status</code></p>
+    <p class="tools">Tools: <code>about_counter</code> <code>search_counter</code> <code>item_details</code> <code>delivery_estimate</code> <code>start_checkout</code> <code>quote_commission</code> <code>start_commission_checkout</code> <code>leave_contact</code> <code>order_status</code></p>
   </section>
 
   <section class="makers"><span class="label warm">FOR ANY MAKER</span>

@@ -7,4 +7,5 @@ COPY web ./web
 COPY demo ./demo
 ENV OPENCOUNTER_DATA=/tmp/opencounter
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn opencounter.web:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# behind Render's proxy: trust its X-Forwarded-Proto so redirects (e.g. /mcp → /mcp/) stay on https
+CMD ["sh", "-c", "uvicorn opencounter.web:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]

@@ -28,7 +28,8 @@ def receipt(o: dict) -> dict:
         q = o["quote"]
         for c in q["cars"]:
             rows.append({"name": f"Made to order: {c['model']} ({c['year']}), {c['body_colour']} body, "
-                                 f"{c['interior_colour']} interior", "qty": c["quantity"], "unit": q["unit_usd"],
+                                 f"{c['interior_colour']} interior" + (f", {c['details']}" if c.get("details") else ""),
+                         "qty": c["quantity"], "unit": q["unit_usd"],
                          "sum": round(c["quantity"] * q["unit_usd"], 2)})
         extra = [{"name": f"Volume discount {q['volume_discount_percent']}%", "sum": -q["discount_usd"]}] if q["discount_usd"] else []
     else:
