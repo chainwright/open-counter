@@ -336,6 +336,17 @@ def api_order(oid: str):
     return counter.order_status(oid)
 
 
+@app.get("/api/orders/{oid}/ship-to")
+def api_order_ship_to(oid: str, req: Request):
+    """The buyer's own delivery details, in full, for the browser that placed the order (Roma 14645: let the buyer
+    check them). Anyone else holding the order number sees nothing."""
+    o = shop.order(oid)
+    visitor = _who(req)[0]
+    if not o or not visitor or o.get("visitor") != visitor or o.get("sample"):
+        raise HTTPException(404)
+    return {"ship_to": counter._ship_to(o)}
+
+
 # ---- PayPal: the human approved (or cancelled) ----
 _settling = threading.Lock()
 
@@ -542,9 +553,18 @@ li b{{font-weight:600}}li span{{color:var(--mute);font-size:15px;line-height:1.4
 <div class="body"><div class="k">{e(brand)} · order {e(oc)}</div><h1>{e(head)}</h1>
 <p class="lead">{lead}</p><p class="item">{e(o.get('title', item.get('title', '')))} · {f"{o.get('qty')} cars" if len(o.get('lines') or []) > 1 else f"qty {o.get('qty', 1)}"}</p>
 {f'<div class="asked"><small>You asked for</small>{asked}</div>' if asked else ''}
+<div class="asked mine" id="mine" hidden><small>Ships to · please check · only you see this</small><span id="mine-t"></span></div>
 <ol>{rows}</ol>
 <div class="foot"><span>PayPal sandbox · no real money</span><a href="/">Back to the counter</a></div></div>
-</main></body></html>""")
+</main><script>
+(function () {{  // the buyer's own browser gets the full address back to check it; the shareable page shows dots
+  var v = ""; try {{ v = localStorage.getItem("oc_visitor") || ""; }} catch (e) {{}}
+  if (!v) return;
+  fetch("/api/orders/{e(oc)}/ship-to", {{ headers: {{ "x-visitor": v }} }}).then(function (r) {{ return r.ok ? r.json() : null; }})
+    .then(function (j) {{ if (!j || !j.ship_to) return; document.getElementById("mine-t").textContent = j.ship_to; document.getElementById("mine").hidden = false; }})
+    .catch(function () {{}});
+}})();
+</script></body></html>""")
 
 
 @app.post("/paypal/webhook")

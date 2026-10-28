@@ -86,3 +86,13 @@ def test_one_search_covers_every_counter(c):
 def test_contacts_are_hidden_on_public_pages_in_any_phone_format():
     t = web._hide_contact("Kim / +12796657833 / 4155550134 / (415) 555-0134 / kim@example.com / 95608")
     assert not any(x in t for x in ("2796657833", "4155550134", "555-0134", "kim@", "95608"))
+
+
+def test_full_ship_to_only_for_the_browser_that_ordered(c, monkeypatch):
+    o = shop.new_order("sg-014", 1, "IL", "x", "t")
+    shop.update_order(o["id"], visitor="v-buyer", customer={"full_name": "Mia Cole", "phone": "+13125550177",
+                      "email": "mia@example.com", "address_line_1": "233 S Wacker Dr", "city": "Chicago",
+                      "state": "IL", "postal_code": "60606"})
+    assert "+13125550177" in c.get(f"/api/orders/{o['id']}/ship-to", headers={"x-visitor": "v-buyer"}).json()["ship_to"]
+    assert c.get(f"/api/orders/{o['id']}/ship-to", headers={"x-visitor": "someone-else"}).status_code == 404
+    assert c.get(f"/api/orders/{o['id']}/ship-to").status_code == 404
