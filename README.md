@@ -24,7 +24,7 @@ Built for the PayPal AI Hackathon 2026 by Elite Product LLC.
 
 ## What it does
 **For the shopper (or their agent)**
-- Ask in any language. The agent finds the car, checks stock and delivery, gives the total and dates, asks once for
+- Ask in English or Russian (tested; other languages work as the model allows). The agent finds the car, checks stock and delivery, gives the total and dates, asks once for
   name, phone, email and address, and puts a receipt under its message: one line per car, quantity × price, shipping,
   total, and a PayPal button. Several different cars go into one PayPal order.
 - Something not on the shelf? Describe it. The agent asks the year, body and interior colours and the quantity, and
@@ -36,7 +36,9 @@ Built for the PayPal AI Hackathon 2026 by Elite Product LLC.
 - **Back office** with one period filter (today … year) over every tab: orders, numbered chats by day with the
   buyer's name (or "Guest, no name"), insights (cars sold per model in the cars' own colours, best sellers, when
   shoppers come, how often a chat becomes an order, where the agent got stuck), customers, stock.
-- **She teaches her agent.** Under any chat: "Teach the AI from this chat". Her lesson goes into every new chat.
+- **She teaches her agent.** Under any chat: "Teach the AI from this chat". Lena's lessons go into every new chat.
+  On this public demo a visitor's lesson applies to that visitor's own chats only, so nobody can change the shop's
+  agent for other people (Lena's key, `MAKER_KEY`, makes a lesson global).
 - **Her assistant** reviews the latest chats, points at the answers that went wrong and writes the lesson for her to
   accept in one tap. It also answers "how much did I make this week?" from numbers computed in code.
 - **Customers and consent:** buyers are asked once, after their first order, whether Lena may email them about new
@@ -58,7 +60,7 @@ flowchart LR
   PP -->|Invoicing v2: deposit + balance| C
   PP -->|Webhooks, signature-verified| W[Webhook handler]
   W --> C
-  C --> D[(Orders · chats · customers · lessons<br/>on a persistent disk)]
+  C --> D[(Orders · chats · customers · lessons<br/>JSON on a Render persistent disk)]
   D --> BO[Lena's back office]
   BO -->|lessons| SA
   AS[Lena's assistant<br/>reviews chats, answers from facts] --> BO
@@ -103,7 +105,11 @@ export OPENCOUNTER_PUBLIC_URL=http://127.0.0.1:8800
 .venv/bin/uvicorn opencounter.web:app --port 8800
 .venv/bin/python -m pytest -q tests
 ```
-Optional: `PAYPAL_WEBHOOK_ID` (webhook verification), `OPENCOUNTER_DATA` (data folder), `MAKER_KEY` (news-list export).
+Optional: `PAYPAL_WEBHOOK_ID` (webhook verification), `OPENCOUNTER_DATA` (data folder; on Render it points at a
+mounted persistent disk, `/var/data`, so data survives deploys), `MAKER_KEY` (Lena's key: global lessons, news-list export).
+
+On the public demo every browser gets its own visitor id: lessons it writes, orders it can ship and counters it opens
+stay with that browser. Sample history (marked SAMPLE) is read-only.
 
 ## Tools used while building
 Claude Code wrote code and tests with us, using PayPal's developer docs. Product photos, the 3D models and the bench

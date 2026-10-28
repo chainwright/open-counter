@@ -42,7 +42,7 @@
   const steps = [
     ["searching makers' counters", "found <b>Small Garage</b> · Columbus, OH"],
     ["reading the listing", "<b>Green Fastback, 1968</b> · 1:43 · $59 · in stock"],
-    ["checking delivery to CO", "ships Mon · arrives <b>Thu–Fri</b>"],
+    ["checking delivery to CO", "ships Thu · arrives <b>Tue–Thu</b> · on time"],
     ["preparing PayPal checkout", "waiting for your approval"],
   ];
   const agent = document.getElementById("agent"), list = document.getElementById("steps");
@@ -136,14 +136,17 @@
       history.push({ role: "assistant", content: j.reply, memo: j.memo || "" });
       if (j.checkout) {
         const c = j.checkout;
+        // a newer order in this chat replaces the earlier one (stock orders): its button no longer pays
+        if (c.order_id && !c.deposit_usd) log.querySelectorAll(".cocard:not([data-k=mto]) a.pp").forEach((a) => { const p = document.createElement("p"); p.className = "fine"; p.textContent = "Replaced by the newer order below."; a.replaceWith(p); });
         const r = c.receipt, $ = (v) => (v < 0 ? "−$" : "$") + Math.abs(v).toFixed(2);
         const rec = r ? `<div class="rcpt"><small>Your order</small><ol>${r.rows.map((x) => `<li><span>${esc(x.name)}</span><b>${x.qty} × ${$(x.unit)} = ${$(x.sum)}</b></li>`).join("")}</ol>
           ${r.extra.map((x) => `<p class="rx"><span>${esc(x.name)}</span><b>${$(x.sum)}</b></p>`).join("")}<p class="rt"><span>Total</span><b>${$(r.total)}</b></p>${r.deposit ? `<p class="rd"><span>Pay now (deposit)</span><b>${$(r.deposit)}</b></p><p class="rn">The rest before your cars ship. PayPal also emailed you the invoice.</p>` : ""}</div>`
           : `<div class="ap-pair"><div><small>You're approving</small>${esc(c.you_are_approving)}</div></div>`;
-        add("cocard", `${rec}<details class="asked"><summary>What you asked for</summary>${esc(c.you_asked_for)}</details>
+        const card = add("cocard", `${rec}<details class="asked"><summary>What you asked for</summary>${esc(c.you_asked_for)}</details>
           <a class="pp" href="${esc(c.approve_url)}" target="_blank" rel="noopener"><span class="pp-a">Pay</span><span class="pp-b">Pal</span></a>
           ${c.ship_to ? `<p class="shipto"><small>Ships to</small>${esc(c.ship_to)}</p>` : ""}
           <p class="fine">${esc(c.delivery)}. Nothing is charged until you approve in PayPal.</p>`);
+        if (c.deposit_usd) card.dataset.k = "mto";
         log.scrollTop = log.scrollHeight;
       }
       persist();

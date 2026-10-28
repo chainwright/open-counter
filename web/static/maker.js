@@ -44,7 +44,7 @@ window.OC = (() => {
     const sr = document.getElementById("s-rev"); if (sr) sr.textContent = "$" + rev.toFixed(0);
     if (!shown.length) return;
     feed.innerHTML = shown.map((o) => {
-      const st = { awaiting_approval: "WAITING FOR BUYER", deposit_paid: "DEPOSIT IN · BUILD IT", paid: "PAID · SHIP IT", shipped: "SHIPPED", cancelled: "CANCELLED", refunded_out_of_stock: "REFUNDED" }[o.status] || o.status.toUpperCase();
+      const st = { awaiting_approval: "WAITING FOR BUYER", deposit_paid: "DEPOSIT IN · BUILD IT", paid: "PAID · SHIP IT", replaced: "REPLACED BY A NEWER ORDER", shipped: "SHIPPED", cancelled: "CANCELLED", refunded_out_of_stock: "REFUNDED" }[o.status] || o.status.toUpperCase();
       const where = (o.customer?.name ? o.customer.name + " · " : "") + (o.ship_to?.city ? `${o.ship_to.city}, ${o.ship_to.state}` : (o.customer?.where || o.ship_state));
       const acts = o.status === "paid"
         ? (o.mine ? `<div class="acts"><button class="p" data-note="${esc(o.id)}">Packing note</button><input placeholder="USPS tracking number" data-trk="${esc(o.id)}"><button data-ship="${esc(o.id)}">Shipped</button></div><div class="note" id="n-${esc(o.id)}" hidden></div><div class="m err" id="e-${esc(o.id)}"></div>`

@@ -103,7 +103,7 @@ def _mask_order(o: dict | None, visitor: str = "") -> dict | None:
             "contact": _mask(o.get("contact")), "asked_for": _hide_contact(o.get("asked_for") or ""),
             "ship_to": {**st, "name": (_mask({"full_name": st.get("name")}) or {}).get("name", "")} if st else st,
             "has_invoice": bool(o.get("invoice_id")),
-            "mine": bool(o.get("sample")) or (bool(visitor) and o.get("visitor") == visitor)}
+            "mine": bool(visitor) and o.get("visitor") == visitor and not o.get("sample")}
 
 
 def _announce(kind: str, o: dict):
@@ -248,7 +248,7 @@ async def api_shopper(req: Request):
     if not msgs or msgs[-1]["role"] != "user" or not msgs[-1]["content"].strip():
         raise HTTPException(400, "Say something to the agent first.")
     # tool notes come from the server's own record of this chat, never from the browser (they steer the model)
-    memos = shop.server_memos(str(b.get("conv_id") or ""))
+    memos = shop.server_memos(str(b.get("conv_id") or ""), _who(req)[0])
     k = len(memos) - sum(1 for m in msgs if m["role"] == "assistant")
     for m in msgs:
         if m["role"] == "assistant":
@@ -269,7 +269,7 @@ async def api_shopper(req: Request):
     o = shop.order(oid) if oid else None
     who = ((o or {}).get("customer") or {}).get("full_name") or ((o or {}).get("contact") or {}).get("name") or ""
     out["conv_id"] = shop.log_turn(str(b.get("conv_id") or ""), last_user, out.get("reply", ""), out.get("steps", []),
-                                   oid, name=who, memo=out.get("memo", ""))
+                                   oid, name=who, memo=out.get("memo", ""), visitor=visitor)
     return out
 
 
@@ -288,8 +288,8 @@ def _settle(oc: str) -> dict:
     One at a time, and the capture carries a PayPal-Request-Id, so the two paths can never charge twice."""
     with _settling:
         o = shop.order(oc)
-        if o["status"] in ("paid", "shipped", "refunded_out_of_stock", "refunded"):
-            return o
+        if o["status"] in ("paid", "shipped", "refunded_out_of_stock", "refunded", "replaced", "cancelled"):
+            return o   # already settled, or replaced by a newer order from the same chat: never captured
         cap = paypal.capture(o["paypal_order_id"], oc)
         unit = cap["purchase_units"][0]
         c = unit["payments"]["captures"][0]
@@ -487,8 +487,10 @@ async def maker_tracking(oid: str, req: Request):
     visitor, lena = _who(req)
     if not o or o["status"] != "paid":
         raise HTTPException(400, "Only orders paid in full can be shipped.")
-    if not (lena or o.get("sample") or (visitor and o.get("visitor") == visitor)):
-        raise HTTPException(403, "On the demo you can ship the orders you placed yourself (and the sample ones).")
+    if o.get("sample") and not lena:
+        raise HTTPException(403, "Sample orders are history; place your own order to try shipping.")
+    if not (lena or (visitor and o.get("visitor") == visitor)):
+        raise HTTPException(403, "On the demo you can ship the orders you placed yourself.")
     num = str(b.get("tracking_number") or "").strip()[:40]
     if not re.fullmatch(r"[A-Za-z0-9 -]{8,40}", num):
         raise HTTPException(400, "Enter the carrier's tracking number.")

@@ -18,7 +18,7 @@ from . import counter, shop
 MODEL = os.environ.get("SHOPPER_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 PRICE_IN, PRICE_OUT = 0.30, 0.90  # USD per 1M tokens, Token Factory catalog
 DAILY_CAP_USD = float(os.environ.get("SHOPPER_DAILY_CAP_USD", "1.00"))
-MAX_STEPS = 6
+MAX_STEPS = 8
 _spent: dict[str, float] = {}
 _lock = threading.Lock()
 _client: OpenAI | None = None
@@ -171,7 +171,8 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
     if name == "item_details":
         return counter.item_details(args.get("item_id", ""))
     if name == "delivery_estimate":
-        return counter.delivery_estimate(args.get("us_state", ""), args.get("need_by", ""))
+        # the shopper's own deadline ("by next Friday") is always checked, even if the model forgot to pass it
+        return counter.delivery_estimate(args.get("us_state", ""), args.get("need_by", "") or shop.deadline_in(typed))
     if name == "quote_commission":
         return counter.quote_commission(args.get("cars") or [], args.get("us_state", ""))
     if name in ("start_checkout", "start_commission_checkout"):
@@ -184,8 +185,8 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
         email = str(c.get("email", "")).strip().lower()
         typed_digits = re.sub(r"\D", "", typed)
         need = [lbl for lbl, ok in (
-            ("first and last name", len(str(c.get("full_name", "")).split()) >= 2
-             and all(w.lower() in typed.lower() for w in str(c.get("full_name", "")).split())),
+            # the name may come back transliterated (Иван Петров → Ivan Petrov); phone, email and ZIP must be typed
+            ("first and last name", len(str(c.get("full_name", "")).split()) >= 2),
             ("phone number", len(digits) >= 7 and digits[-7:] in typed_digits),
             ("email (for the receipt and tracking)", bool(email) and email in typed.lower()),
             ("street address", bool(c.get("address_line_1")) and str(c.get("address_line_1", "")).split()[0] in typed),
@@ -202,10 +203,15 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
                     lines = shop.order_lines(args.get("item_id", ""), int(args.get("quantity") or 0), args.get("items") or None)
                     est = shop.delivery_estimate(args.get("us_state", ""))
                     total = sum(ln["unit_usd"] * ln["qty"] for ln in lines) + shop.shop()["rules"]["shipping_usd"]
-                    out["order_would_be"] = (" + ".join(f"{ln['qty']} × {ln['title']}" for ln in lines)
-                                             + f", ${total:.2f} with shipping")
+                    out["order_would_be"] = (" + ".join(f"{ln['qty']} × {ln['title']} at ${ln['unit_usd']:.2f} = "
+                                                        f"${ln['qty'] * ln['unit_usd']:.2f}" for ln in lines)
+                                             + f"; shipping ${shop.shop()['rules']['shipping_usd']:.2f}; total ${total:.2f}")
                     if est.get("ok"):
                         out["delivery"] = f"ships {est['ships_on']}, arrives {est['arrives_earliest']} to {est['arrives_latest']}"
+                    dl = shop.deadline_in(typed)
+                    if dl and est.get("ok"):
+                        v = shop.delivery_estimate(args.get("us_state", ""), need_by=dl).get("need_by_verdict")
+                        out["deadline_verdict"] = f"by {dl}: {v}"
             except (ValueError, KeyError, TypeError) as e:
                 out["problem"] = str(e)
             return out
@@ -275,7 +281,9 @@ def _summary(name: str, out: dict) -> str:
         s = f"ships {out['ships_on'][:3]} · arrives {out['arrives_earliest'][:3]}–{out['arrives_latest'][:3]}"
         return s + (f" · by {out['need_by'][:3]}: {out['need_by_verdict']}" if out.get("need_by") else "")
     if name in ("start_checkout", "start_commission_checkout") and out.get("not_created_yet"):
-        return ((out.get("order_would_be", "") + " · ") if out.get("order_would_be") else "") + "needs: " + ", ".join(out["ask_the_person_for"])
+        return (((out.get("order_would_be", "") + " · ") if out.get("order_would_be") else "")
+                + ((out["deadline_verdict"] + " · ") if out.get("deadline_verdict") else "")
+                + "needs: " + ", ".join(out["ask_the_person_for"]))
     if name == "start_checkout":
         return "waiting for your approval in PayPal" if out.get("ok") else out.get("reason", out.get("problem", ""))
     if name == "quote_commission":
@@ -329,8 +337,9 @@ def _known_amounts(convo: list[dict], messages: list[dict]) -> set[float]:
 
 
 NEWS_Q = "One more thing: would you like Lena to email you when new models or offers come out? (yes / no)"
-YES = re.compile(r"^\W*(yes|yeah|yep|sure|ok|okay|please|absolutely|of course|why not)\b", re.I)
-NO = re.compile(r"^\W*(no|nope|nah|not now|no thanks|don.?t|not really)\b", re.I)
+YES = re.compile(r"^\W*(yes|yeah|yep|sure|ok|okay|please|absolutely|of course|why not|да|конечно|хочу|давайте|ага)", re.I)
+NO = re.compile(r"^\W*(no|nope|nah|not now|no thanks|don.?t|not really|нет|не надо|не нужно|не хочу)", re.I)
+NEWS_Q_RU = "И ещё: хотите, чтобы Лена писала вам на почту, когда появятся новые модели или акции? (да / нет)"
 OPT_IN = re.compile(r"\b(e-?mail me|send me|sign me up|subscribe|keep me (posted|updated)|add me)\b.{0,60}"
                     r"\b(new|news|model|offer|update|deal|release)", re.I)
 OPT_OUT = re.compile(r"\b(no|don.?t|stop|unsubscribe|never)\b.{0,20}\b(e-?mails?|news|newsletter|updates)\b", re.I)
@@ -342,7 +351,7 @@ def _news_answer(messages: list[dict]) -> dict | None:
     if len(messages) < 2 or messages[-1]["role"] != "user" or messages[-2]["role"] != "assistant":
         return None
     said = messages[-1]["content"].strip()
-    if NEWS_Q in messages[-2]["content"]:
+    if NEWS_Q in messages[-2]["content"] or NEWS_Q_RU in messages[-2]["content"]:
         agrees = True if YES.search(said) else False if NO.search(said) else None
     else:   # they bring it up themselves later: "email me when new models come out", "no emails please"
         agrees = (False if OPT_OUT.search(said) else True if OPT_IN.search(said) else None)
@@ -353,8 +362,10 @@ def _news_answer(messages: list[dict]) -> dict | None:
     out = counter.marketing_consent(email, agrees, said) if email else {"ok": False}
     if not out.get("ok"):
         return None
-    reply = ("Done, you're on Lena's list. She only writes when there's something new. Anything else I can help with?"
-             if agrees else "No problem, no emails. Anything else I can help with?")
+    ru = bool(re.search(r"[а-яё]", said, re.I))
+    reply = (("Готово, вы в списке Лены. Она пишет, только когда есть что-то новое. Чем ещё помочь?" if ru else
+              "Done, you're on Lena's list. She only writes when there's something new. Anything else I can help with?")
+             if agrees else ("Хорошо, писем не будет. Чем ещё помочь?" if ru else "No problem, no emails. Anything else I can help with?"))
     step = {"tool": "marketing_consent", "label": LABELS["marketing_consent"], "args": {"agrees": agrees},
             "result": "subscribed to news" if agrees else "no emails", "ms": 0}
     return {"reply": reply, "steps": [step], "checkout": None, "usd": 0.0, "model": "rule", "memo": f"news: {step['result']}"}
@@ -364,7 +375,8 @@ TOOL_NAME = re.compile(r"\b(start_checkout|quote_commission|start_commission_che
                        r"search_counter|item_details|about_counter|marketing_consent|order_status)\b")
 SELF_TALK = re.compile(r"\b(let'?s (ask|respond|reply|check|see|tell)|we need (car|the|to ask)|the (user|person|shopper) "
                        r"(wants|asked|said|is)|i should (ask|respond|reply)|need to ask (for|them)|start_checkout|"
-                       r"quote_commission|start_commission_checkout|delivery_estimate|leave_contact|search_counter|run the tool|call the tool|the tool)\b", re.I)
+                       r"quote_commission|start_commission_checkout|delivery_estimate|leave_contact|search_counter|run the tool|call the tool|the tool|"
+                       r"checkout calculation|инструмент\w*|данные как есть|передаём его)\b|\[tool[^\]]*\]", re.I)
 
 
 def _polish(reply: str, last_user: str) -> tuple[str, float]:
@@ -374,20 +386,41 @@ def _polish(reply: str, last_user: str) -> tuple[str, float]:
     wrong_lang = cyr and not re.search(r"[а-яё]", reply, re.I)
     if not (SELF_TALK.search(reply) or wrong_lang):
         return reply, 0.0
-    task = ("Rewrite this as the shop assistant's direct, friendly reply to the shopper. Remove any notes the assistant "
+    task = ("Below is a message the SHOP ASSISTANT wrote TO a shopper. Rewrite it as that same assistant's direct, "
+            "friendly message to the shopper; never write as the shopper, never add names, numbers or details. "
+            "Remove any notes the assistant "
             "wrote to itself. Keep every fact, number, date and question exactly. "
-            + ("Write it in Russian. " if cyr else "Write it in the same language as the shopper's message. ")
+            + ("Write it in Russian. " if cyr else "Keep its language. ")
             + "Return only the reply.")
     r = _client_().chat.completions.create(
         model=MODEL, max_tokens=500, temperature=0,
-        messages=[{"role": "system", "content": task},
-                  {"role": "user", "content": f"Shopper wrote: {last_user[:400]}\n\nAssistant draft: {reply}"}],
+        messages=[{"role": "system", "content": task + " Do not quote or repeat the shopper's message."},
+                  {"role": "user", "content": reply}],
         extra_body={"chat_template_kwargs": {"enable_thinking": False}})
     u = r.usage
     out = (r.choices[0].message.content or "").rsplit("</think>", 1)[-1].strip() or reply
     # last resort: drop any sentence that still names a tool
     out = " ".join(x for x in re.split(r"(?<=[.!?])\s+", out) if not TOOL_NAME.search(x)) or out
     return out, (u.prompt_tokens * PRICE_IN + u.completion_tokens * PRICE_OUT) / 1e6
+
+
+def _must_say(reply: str, last_user: str, steps: list[dict]) -> str:
+    """Two answers a shopper must never miss, added in code if the model left them out: the deadline verdict, and
+    the answer to 'can I get a discount?'."""
+    ru = bool(re.search(r"[а-яё]", last_user, re.I))
+    v = next((m for m in (re.search(r"by ([\w ]+): (too late|possible, not certain)", st["result"]) for st in steps) if m), None)
+    if v and not re.search(r"late|won.?t|not (arrive|make|reach)|past|miss|might|may not|possible|не успе|позже|опозда", reply, re.I):
+        day = v.group(1).strip()
+        day = {"mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thursday", "fri": "Friday", "sat": "Saturday",
+               "sun": "Sunday"}.get(day.lower()[:3], day) if len(day) <= 4 else day
+        reply = (("По расчёту доставки к этому сроку не успеем. " if v.group(2) == "too late" else "К этому сроку успеть можно, но без гарантии. ")
+                 if ru else (f"Heads-up: it won't arrive by {day}. " if v.group(2) == "too late"
+                             else f"It may arrive by {day}, but that isn't certain. ")) + reply
+    if (re.search(r"discount|% off|\d+ ?% |cheaper|скидк|дешевл", last_user, re.I)
+            and not re.search(r"discount|fixed|скидк|фиксир", reply, re.I)):
+        reply = ("Цены фиксированные; скидки есть только на сборку под заказ: 10% от 10 машинок и 15% от 25. " if ru else
+                 "Prices are fixed; the only discounts are on made-to-order builds: 10% from 10 cars, 15% from 25. ") + reply
+    return reply
 
 
 def run(messages: list[dict], visitor: str = "") -> dict:
@@ -502,8 +535,8 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                       {"role": "user", "content": "They asked about a discount: answer it first (prices are fixed; made-to-order "
                        "builds get 10% from 10 cars and 15% from 25), then continue."}]
             continue
-        verdict = next((re.search(r"by \w+: (too late|possible, not certain|on time)", st["result"]) for st in steps
-                        if st["tool"] == "delivery_estimate" and "by " in st["result"]), None)
+        verdict = next((m for m in (re.search(r"by [\w ]+: (too late|possible, not certain|on time)", st["result"])
+                                     for st in steps) if m), None)
         if (not msg.tool_calls and nudges > 0 and verdict and verdict.group(1) != "on time"
                 and not re.search(r"late|won.?t|not (arrive|make|reach|be there)|can.?t|might|may not|possible|not certain|no guarantee", msg.content or "", re.I)):
             # the deadline verdict is the most important fact for a gift with a date: say it, don't bury it
@@ -548,7 +581,8 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             reply = ITEM_ID.sub("", reply)
             reply = _scrub_invented(reply, typed)
             fixed, fusd = _polish(reply, last_user)
-            reply, usd = fixed, usd + fusd
+            reply, usd = _scrub_invented(fixed, typed), usd + fusd
+            reply = _must_say(reply, last_user, steps)
             break
         convo.append({"role": "assistant", "content": msg.content or "",
                       "tool_calls": [tc.model_dump() for tc in msg.tool_calls]})
@@ -562,19 +596,29 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             steps.append({"tool": tc.function.name, "label": LABELS.get(tc.function.name, tc.function.name),
                           "args": args, "result": _summary(tc.function.name, out), "ms": int((time.time() - t0) * 1000)})
             if tc.function.name in ("start_checkout", "start_commission_checkout") and out.get("ok"):
+                if checkout is None and tc.function.name == "start_checkout":
+                    # a changed cart: the earlier stock order from this chat is replaced, so only one button can pay
+                    for o in shop.orders():
+                        if (o["id"] != out["order_id"] and o.get("kind") != "commission" and o["status"] == "awaiting_approval"
+                                and o.get("asked_for", "")[:60] == asked[:60]):
+                            shop.update_order(o["id"], status="replaced", replaced_by=out["order_id"])
                 checkout = out
             convo.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(out)[:4000]})
     else:
-        reply = "I couldn't finish that in a few steps. Could you tell me a bit more?"
+        # out of steps: keep the last real answer the model wrote rather than a canned apology
+        last = next((c["content"] for c in reversed(convo) if c.get("role") == "assistant" and c.get("content")), "")
+        reply = _scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", last)), typed) or \
+            "I couldn't finish that in a few steps. Could you tell me a bit more?"
     with _lock:
         d = date.today().isoformat()
         _spent[d] = _spent.get(d, 0.0) + usd
     # What the tools returned this turn, so the next turn still knows it (the browser sends it back with the reply).
     memo = "; ".join(f"{st['label']}: {st['result']}" for st in steps)
     # after the first order with an email, the shop asks about news once (the model is told not to ask itself)
-    asked_before = any(NEWS_Q in m.get("content", "") for m in messages if m["role"] == "assistant")
+    asked_before = any(NEWS_Q in m.get("content", "") or NEWS_Q_RU in m.get("content", "") for m in messages
+                       if m["role"] == "assistant")
     if checkout and checkout.get("ship_to") and not asked_before:
-        reply = reply.strip() + "\n\n" + NEWS_Q
+        reply = reply.strip() + "\n\n" + (NEWS_Q_RU if re.search(r"[а-яё]", last_user, re.I) else NEWS_Q)
     if not reply.strip():
         reply = "Sorry, I lost my thread there. Could you say that again in a few words?"
     return {"reply": reply.strip(), "steps": steps, "checkout": checkout, "usd": round(usd, 5), "model": MODEL,

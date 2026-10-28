@@ -133,14 +133,29 @@ def _need_by_date(need_by: str, today: date) -> date | None:
     v = (need_by or "").strip().lower()
     if not v:
         return None
+    nxt = v.startswith("next ")
+    v = v[5:] if nxt else v
     try:
         return date.fromisoformat(v[:10])
     except ValueError:
         pass
     for i, name in enumerate(WEEKDAYS):
         if name.startswith(v[:3]):
-            return today + timedelta(days=(i - today.weekday()) % 7)
+            d = today + timedelta(days=(i - today.weekday()) % 7)
+            return d + timedelta(days=7) if nxt and (d - today).days < 7 else d
     return None
+
+
+DEADLINE = re.compile(r"\b(?:by|before|until|для|к|до)\s+((?:next|следующ\w*)\s+)?(monday|tuesday|wednesday|thursday|friday|"
+                      r"saturday|sunday|mon|tue|wed|thu|fri|sat|sun|\d{4}-\d{2}-\d{2})\b", re.I)
+
+
+def deadline_in(text: str) -> str:
+    """'... Denver, by next Friday' -> 'next friday' (what the shopper said, so the verdict is computed in code)."""
+    m = list(DEADLINE.finditer(text or ""))
+    if not m:
+        return ""
+    return (("next " if m[-1].group(1) else "") + m[-1].group(2)).lower()
 
 
 def delivery_estimate(state: str, today: date | None = None, need_by: str = "") -> dict:
@@ -448,15 +463,18 @@ def _save_json(name: str, data):
 
 
 def log_turn(cid: str, user_text: str, reply: str, steps: list[dict], order_id: str | None, channel: str = "demo-shopper",
-             name: str = "", memo: str = ""):
+             name: str = "", memo: str = "", visitor: str = ""):
     """One question and answer of a shopper chat, kept for Lena (newest chats first on her screen)."""
     cid = re.sub(r"[^A-Za-z0-9_-]", "", cid or "")[:40] or "anon-" + uuid.uuid4().hex[:8]
     now = time.time()
     with _lock:
         all_ = _json("conversations.json", {})
+        if cid in all_ and all_[cid].get("visitor") and visitor != all_[cid]["visitor"]:
+            cid = "anon-" + uuid.uuid4().hex[:8]   # another browser can't continue someone else's chat
         if cid not in all_:   # chats are numbered in the order they start, like tickets
             n = max([x.get("no", 0) for x in all_.values()] + [0]) + 1
-            all_[cid] = {"id": cid, "no": n, "started": now, "channel": channel, "turns": [], "orders": [], "name": ""}
+            all_[cid] = {"id": cid, "no": n, "started": now, "channel": channel, "turns": [], "orders": [], "name": "",
+                         "visitor": visitor}
         c = all_[cid]
         if name and not c.get("name"):
             c["name"] = name.strip()[:80]
@@ -474,9 +492,11 @@ def log_turn(cid: str, user_text: str, reply: str, steps: list[dict], order_id: 
     return cid
 
 
-def server_memos(cid: str) -> list[str]:
+def server_memos(cid: str, visitor: str = "") -> list[str]:
     """What the tools returned in each earlier turn of this chat, as the server recorded it (never the browser's copy)."""
     c = _json("conversations.json", {}).get(re.sub(r"[^A-Za-z0-9_-]", "", cid or "")[:40])
+    if c and c.get("visitor") and c["visitor"] != visitor:
+        return []
     return [t.get("memo", "") for t in (c or {}).get("turns", [])]
 
 
