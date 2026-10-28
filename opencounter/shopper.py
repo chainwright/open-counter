@@ -62,7 +62,8 @@ How to answer
    closest listed car. Never refuse over a brand name.
 
 Selling from stock
-- Any quantity up to the stock shown. Several different cars go into ONE start_checkout call (items).
+- Any quantity up to the stock shown. If they want more than the stock, say how many are in stock and offer both: buy
+  those now, or have all of them made to order (with the volume discount). Several different cars go into ONE start_checkout call (items).
 - As soon as cars, quantity and state are clear, call start_checkout: until the person's details are there it creates
   nothing and returns the total, dates and what to ask for. Give the total and dates, and ask in ONE message for
   what's missing: first and last name, phone, email, and street, city and ZIP. Details given earlier count; never ask
@@ -184,6 +185,19 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
         c = args.get("customer") or {}
         if name == "start_commission_checkout":
             c = {"full_name": args.get("name", ""), "phone": args.get("phone", ""), **c}
+        # "same name, phone and email": take what this person already gave for an order in this chat
+        prev = next((o.get("customer") for o in reversed(shop.orders())
+                     if o.get("customer") and o.get("asked_for", "")[:60] == asked[:60]), None)
+        if prev:
+            c = {k: v for k, v in c.items() if v}
+            for k in ("full_name", "phone", "email"):
+                c.setdefault(k, prev[k])
+            if not c.get("address_line_1"):
+                for k in ("address_line_1", "address_line_2", "city", "state", "postal_code"):
+                    c.setdefault(k, prev.get(k))
+            args["customer"] = {**(args.get("customer") or {}), **c}
+            if name == "start_commission_checkout":
+                args["name"], args["phone"] = args.get("name") or c["full_name"], args.get("phone") or c["phone"]
         digits = re.sub(r"\D", "", str(c.get("phone", "")))
         zip_ = re.sub(r"\D", "", str(c.get("postal_code", "")))
         email = str(c.get("email", "")).strip().lower()
@@ -393,7 +407,8 @@ TOOL_NAME = re.compile(r"\b(start_checkout|quote_commission|start_commission_che
 SELF_TALK = re.compile(r"\b(let'?s (ask|respond|reply|check|see|tell)|we need (car|the|to ask)|the (user|person|shopper) "
                        r"(wants|asked|said|is)|i should (ask|respond|reply)|need to ask (for|them)|start_checkout|"
                        r"quote_commission|start_commission_checkout|delivery_estimate|leave_contact|search_counter|run the tool|call the tool|the tool|"
-                       r"checkout calculation|инструмент\w*|данные как есть|передаём его)\b|\[tool[^\]]*\]", re.I)
+                       r"checkout calculation|инструмент\w*|данные как есть|передаём его|ask for (all|the) missing|we still lack|"
+                       r"in one message\.)\b|\[tool[^\]]*\]", re.I)
 
 
 def _polish(reply: str, last_user: str) -> tuple[str, float]:
