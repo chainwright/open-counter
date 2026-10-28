@@ -109,11 +109,16 @@
   let convId = saved?.conv_id || "";
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify({ conv_id: convId, history, items: items.slice(-120), at: Date.now() })); } catch (e) {} };
   const add = (cls, html, keep = true) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; log.appendChild(d); log.scrollTop = log.scrollHeight; if (keep) items.push({ cls, html }); return d; };
+  // "New chat" sits in the chat's header, visible once a chat has started (Roma 14647); the example questions
+  // are only for an empty chat, after that they're in the way
+  const bar = document.querySelector(".chat-bar"), fresh = document.createElement("button");
+  fresh.type = "button"; fresh.className = "newchat"; fresh.textContent = "↺ New chat"; fresh.hidden = true;
+  fresh.addEventListener("click", () => { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); });
+  bar?.appendChild(fresh);
+  const started = () => { fresh.hidden = false; document.getElementById("chips")?.remove(); };
   if (items.length) {
     items.forEach((it) => { const d = document.createElement("div"); d.className = it.cls; d.innerHTML = it.html; log.appendChild(d); });
-    const again = document.createElement("button"); again.type = "button"; again.className = "restart"; again.textContent = "Start a new chat";
-    again.addEventListener("click", () => { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); });
-    log.parentElement.insertBefore(again, log.nextSibling);
+    started();
     requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
   }
 
@@ -154,6 +159,7 @@
     if (!text.trim()) return;
     history.push({ role: "user", content: text });
     add("msg u", esc(text));
+    started();
     persist();
     const t = add("think", "Reading your message", false);
     const stages = ["Reading your message", "Checking the shelf", "Working out delivery", "Almost there"];
