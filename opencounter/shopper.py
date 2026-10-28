@@ -9,7 +9,7 @@ import os
 import re
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 
 from openai import OpenAI
 
@@ -41,7 +41,8 @@ REFUSAL = re.compile(r"^\s*(i.?m sorry,?\s*)?(but\s*)?i (can.?t|cannot) (help|as
 ITEM_ID = re.compile(r"\s*\(?\bsg[-‑–]\d+\b\)?", re.I)
 PROMISE = re.compile(r"\b(let me|let's|lets|i'll|i will|we'll|we will|i am going to|i'm going to|we need to)\b.{0,40}"
                      r"\b(search|check|look|find|see|quote|place|send|submit|call|get|calculate|price|prepare|create)\b|\bsearching\b|"
-                     r"\b(now |i.?m )(creating|placing|setting up|generating|preparing|quoting|checking|calculating|pricing)\b", re.I)
+                     r"\b(now |i.?m )(creating|placing|setting up|generating|preparing|quoting|checking|calculating|pricing)\b|"
+                     r"\bproceeding with\b|\busing (the )?provided details\b", re.I)
 
 SYSTEM = """You are the sales agent of Small Garage: Lena builds 1:43 replica cars by hand in Columbus, Ohio. You talk to
 one shopper, in the language of their last message, warmly and briefly (2-4 sentences).
@@ -237,6 +238,11 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
                             "ship_to": counter._ship_to(o), "receipt": counter.receipt(o),
                             "next_step": "This order already exists; show it again. Nothing is charged until they approve."}
     if name == "start_commission_checkout":
+        said = next((p for p in (parse_made_to_order(u) for u in reversed(typed.split(" / "))) if p), None)
+        if said and said.get("details"):
+            for car in args.get("cars") or []:   # extras the person asked for (stripes…) must reach the invoice
+                if isinstance(car, dict) and not car.get("details"):
+                    car["details"] = said["details"]
         cars = sum(int((x or {}).get("quantity") or 0) for x in (args.get("cars") or []))
         for o in shop.orders():   # the same build for the same person in this chat already waits: show it again
             if (o.get("kind") == "commission" and o.get("status") == "awaiting_approval" and o.get("approve_url")
@@ -282,9 +288,17 @@ def _summary(name: str, out: dict) -> str:
         if not out.get("ok"):
             return out.get("reason", "")
         s = f"ships {out['ships_on'][:3]} · arrives {out['arrives_earliest'][:3]}–{out['arrives_latest'][:3]}"
-        return s + (f" · by {out['need_by'][:3]}: {out['need_by_verdict']}" if out.get("need_by") else "")
+        if out.get("need_by"):
+            d = datetime.strptime(out["need_by"].split()[-1], "%Y-%m-%d")
+            s += f" · by {d.strftime('%A %b')} {d.day}: {out['need_by_verdict']}"
+        return s
     if name in ("start_checkout", "start_commission_checkout") and out.get("not_created_yet"):
-        return (((out.get("order_would_be", "") + " · ") if out.get("order_would_be") else "")
+        dl = out.get("delivery", "")
+        m = re.search(r"ships (\w+) (\d{4}-\d{2}-\d{2}), arrives (\w+) (\d{4}-\d{2}-\d{2}) to (\w+) (\d{4}-\d{2}-\d{2})", dl)
+        fmt = lambda wd, iso: f"{wd} {datetime.strptime(iso, '%Y-%m-%d').strftime('%b')} {int(iso[-2:])}"
+        dates = (f"ships {fmt(m.group(1), m.group(2))}, arrives {fmt(m.group(3), m.group(4))}–{fmt(m.group(5), m.group(6))} · "
+                 if m else "")
+        return (((out.get("order_would_be", "") + " · ") if out.get("order_would_be") else "") + dates
                 + ((out["deadline_verdict"] + " · ") if out.get("deadline_verdict") else "")
                 + "needs: " + ", ".join(out["ask_the_person_for"]))
     if name == "start_checkout":
@@ -456,10 +470,22 @@ def parse_made_to_order(text: str) -> dict | None:
             "details": extras.group(0) if extras else ""}
 
 
-def _must_say(reply: str, last_user: str, steps: list[dict]) -> str:
+US_STATE_NAMES = {n.lower() for n in (
+    "Alabama Alaska Arizona Arkansas California Colorado Connecticut Delaware Florida Georgia Hawaii Idaho Illinois "
+    "Indiana Iowa Kansas Kentucky Louisiana Maine Maryland Massachusetts Michigan Minnesota Mississippi Missouri Montana "
+    "Nebraska Nevada Ohio Oklahoma Oregon Pennsylvania Tennessee Texas Utah Vermont Virginia Washington Wisconsin Wyoming").split()} | {
+    "new hampshire", "new jersey", "new mexico", "new york", "north carolina", "north dakota", "rhode island",
+    "south carolina", "south dakota", "west virginia", "puerto rico"} - {"puerto rico"}
+
+
+def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | None = None) -> str:
     """Two answers a shopper must never miss, added in code if the model left them out: the deadline verdict, and
     the answer to 'can I get a discount?'."""
     ru = bool(re.search(r"[а-яё]", last_user, re.I))
+    ok = next((m for m in (re.search(r"by ([\w ]+): on time", st["result"]) for st in steps) if m), None)
+    if ok and not re.search(r"on time|in time|arrive[sd]? (by|before)|успе", reply, re.I):
+        reply = (f"Хорошая новость: успеет к сроку ({ok.group(1).strip()}). " if ru else
+                 f"Good news: it arrives in time for {ok.group(1).strip()}. ") + reply
     v = next((m for m in (re.search(r"by ([\w ]+): (too late|possible, not certain)", st["result"]) for st in steps) if m), None)
     if v and not re.search(r"too late|\blate\b|won.?t (arrive|make|reach|get)|not (arrive|make|reach)|past your|miss(es)? (your|the)|"
                            r"may not|not certain|не успе|опозда", reply, re.I):
@@ -475,10 +501,29 @@ def _must_say(reply: str, last_user: str, steps: list[dict]) -> str:
         tot = re.search(r"total \$([\d,.]+)", pv["result"]).group(1)
         if f"${tot}" not in reply.replace(" ", "") and f"{tot}$" not in reply.replace(" ", ""):
             reply = (f"Итого с доставкой: ${tot}. " if ru else f"Total with shipping: ${tot}. ") + reply
+    st_q = re.search(r"(?:ship|deliver)\w*\s+(?:to|in)\s+([A-Za-z ]{4,20}?)\s*\?", last_user, re.I)
+    if st_q and st_q.group(1).strip().lower() in US_STATE_NAMES and not re.search(r"\byes\b|\bда\b|we (do )?ship", reply, re.I):
+        reply = (f"Да, Лена отправляет в {st_q.group(1).strip()}. " if ru else f"Yes, Lena ships to {st_q.group(1).strip().title()}. ") + reply
     if (re.search(r"discount|% off|\d+ ?% |cheaper|скидк|дешевл", last_user, re.I)
             and not re.search(r"discount|fixed|скидк|фиксир", reply, re.I)):
         reply = ("Цены фиксированные; скидки есть только на сборку под заказ: 10% от 10 машинок и 15% от 25. " if ru else
                  "Prices are fixed; the only discounts are on made-to-order builds: 10% from 10 cars, 15% from 25. ") + reply
+    if checkout and checkout.get("receipt") and not re.search(r"\$\s?\d|\d\s?\$|\d\s?доллар|\d\s?usd", reply, re.I):
+        r_ = checkout["receipt"]
+        if r_.get("deposit"):
+            reply = (f"Заказ готов: всего ${r_['total']:.2f}, сейчас предоплата ${r_['deposit']:.2f} по счёту PayPal ниже, остальное перед отправкой. "
+                     if ru else f"Your order is ready: ${r_['total']:.2f} in total, ${r_['deposit']:.2f} deposit now through the PayPal "
+                     "invoice below, the rest before it ships. ") + reply
+        else:
+            reply = (f"Заказ готов: всего ${r_['total']:.2f} с доставкой, кнопка PayPal ниже. " if ru else
+                     f"Your order is ready: ${r_['total']:.2f} with shipping. The PayPal button is below. ") + reply
+    if re.search(r"\bwhen\b|когда", last_user, re.I) and not re.search(
+            r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\.? \d|"
+            r"\d{4}-\d{2}-\d{2}|понед|вторн|сред|четв|пятн|суббот|воскр|ноябр|октябр|декабр", reply, re.I):
+        d = next((m for m in (re.search(r"ships (\w+ \w+ \d+), arrives (\w+ \w+ \d+)[–-](\w+ \w+ \d+)", st["result"]) for st in steps) if m), None)
+        if d:
+            reply = (f"Отправка: {d.group(1)}, доставка: {d.group(2)} – {d.group(3)}. " if ru else
+                     f"It ships {d.group(1)} and arrives {d.group(2)} to {d.group(3)}. ") + reply
     return reply
 
 
@@ -524,7 +569,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             msg.content = msg.content.rsplit("</think>", 1)[-1].strip()
         if msg.content:
             msg.content = re.sub(r"^\s*<think>.*", "", msg.content, flags=re.S) if msg.content.lstrip().startswith("<think>") else msg.content
-        if time.time() - t_start > 12:
+        if time.time() - t_start > 20:
             nudges = 0   # the person has waited long enough: no more second tries, answer with what we have
         if not msg.tool_calls and nudges > 0 and PROMISE.search(msg.content or ""):
             # It announced a search instead of doing one. Hold it to its word once.
@@ -594,6 +639,22 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                       {"role": "user", "content": "They asked about a discount: answer it first (prices are fixed; made-to-order "
                        "builds get 10% from 10 cars and 15% from 25), then continue."}]
             continue
+        if (not msg.tool_calls and nudges > 0 and BRANDS.search(last_user)
+                and not any(st["tool"] in ("search_counter", "item_details") for st in steps)):
+            nudges -= 1
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "Search the counter now and offer the closest listed car by name, with its "
+                       "price and stock (Lena's replicas are named by colour, body style and year)."}]
+            continue
+        if (not msg.tool_calls and PHONE.search(last_user) and re.search(r"lena|call|talk|speak|связ|позвон", last_user, re.I)
+                and not any(st["tool"] in ("leave_contact", "start_checkout", "start_commission_checkout") for st in steps)
+                and not parse_made_to_order(last_user)):
+            # they asked to talk to Lena and gave a number: pass it on in code, then let the model confirm
+            out = counter.leave_contact(PHONE.search(last_user).group(1), "", last_user[:300], asked, channel="demo-shopper")
+            steps.append({"tool": "leave_contact", "label": LABELS["leave_contact"], "args": {}, "result": _summary("leave_contact", out), "ms": 0})
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "system", "content": "Done in code: " + json.dumps(out) + " Tell them Lena will call them back."}]
+            continue
         spec = None if msg.tool_calls or checkout else parse_made_to_order(last_user)
         if spec and not any(st["tool"] in ("quote_commission", "start_commission_checkout") for st in steps) \
                 and not any("made-to-order build" in (m.get("memo") or "") for m in messages if m["role"] == "assistant"):
@@ -626,6 +687,13 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                        "start_checkout (or quote_commission) again with the new cars to get the real total and a new PayPal "
                        "button; otherwise only repeat amounts the tools returned."}]
             continue
+        if (not msg.tool_calls and nudges > 0 and lessons
+                and re.search(r"can.?t answer|not sure|don.?t know|unable to answer|no information", msg.content or "", re.I)):
+            nudges -= 1
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "Check Lena's notes in your instructions: one of them tells you what to do "
+                       "here. Follow it and answer again."}]
+            continue
         if not msg.tool_calls and REFUSAL.search(msg.content or "") and nudges > 0:
             nudges -= 1
             convo += [{"role": "assistant", "content": msg.content or ""},
@@ -653,7 +721,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             reply = _scrub_invented(reply, typed)
             fixed, fusd = _polish(reply, last_user)
             reply, usd = _scrub_invented(fixed, typed), usd + fusd
-            reply = _must_say(reply, last_user, steps)
+            reply = _must_say(reply, last_user, steps, checkout)
             break
         convo.append({"role": "assistant", "content": msg.content or "",
                       "tool_calls": [tc.model_dump() for tc in msg.tool_calls]})
