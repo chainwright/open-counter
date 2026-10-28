@@ -506,7 +506,13 @@ def thanks(oc: str):
         "replaced": ("This order was replaced.", "You changed the order in the chat, so this one can't be paid.",
                      [("Your current order", f"Pay the newer order from the same chat: {e(o.get('replaced_by', ''))}."),
                       ("Nothing was charged", "No money moved for this one.")]),
-    }.get(status, ("Order received.", f"Status: {e(status)}.", []))
+        "awaiting_approval": ("Waiting for your OK in PayPal.", f"{total}, nothing charged yet.",
+                              [("Approve in PayPal", "Use the PayPal button in the chat. Until then no money moves."),
+                               ("Then Lena gets it", "The moment you approve, the order lands on her phone.")]),
+        "cancelled": ("Cancelled.", "Nothing was charged.", [("Changed your mind?", "Your chat is still there.")]),
+        "deposit_paid": ("Deposit in. Lena starts building.", f"The rest of {total} is due before it ships.",
+                         [("The balance", "PayPal sends you the invoice for the rest when the cars are ready.")]),
+    }.get(status, ("Order received.", "Lena has it.", []))
     if o.get("kind") == "commission" and status == "paid":
         q = o.get("quote") or {}
         head, lead = "It's yours. Congratulations!", f"Paid {total} through PayPal. Lena starts building your order."
@@ -540,7 +546,7 @@ def thanks(oc: str):
 h1{{font:800 46px/1.02 'Big Shoulders Display',sans-serif;letter-spacing:.01em;margin:14px 0 10px;color:var(--lamp)}}
 .lead{{color:var(--paper);font-size:18px;margin:0 0 4px}}.item{{color:var(--mute);font-size:15px;margin:0 0 22px}}
 .asked{{border-left:3px solid var(--lamp);padding:8px 14px;margin:0 0 22px;color:#d9dcd7;font-size:15px;line-height:1.45}}
-.asked small{{display:block;font:500 11px/1 'Geist Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:6px}}
+.asked[hidden]{{display:none}}.asked small{{display:block;font:500 11px/1 'Geist Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:6px}}
 ol{{list-style:none;margin:0;padding:0;display:grid;gap:14px;counter-reset:s}}
 li{{display:grid;grid-template-columns:30px 1fr;column-gap:12px;counter-increment:s}}
 li:before{{content:counter(s);grid-row:span 2;width:30px;height:30px;border-radius:50%;border:1px solid var(--hair);display:grid;place-items:center;font:500 13px 'Geist Mono',monospace;color:var(--lamp)}}
