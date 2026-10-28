@@ -363,17 +363,29 @@ def _sync_invoice(oc: str) -> dict:
     return o2
 
 
+def _note(title: str, text: str, code: int = 200) -> HTMLResponse:
+    """A small page in the shop's look for the PayPal return edge cases."""
+    return HTMLResponse(
+        '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{title} · Open Counter</title><style>body{{margin:0;min-height:100vh;display:grid;place-items:center;"
+        "background:#0d0f12;color:#e8e4dc;font:16px/1.5 system-ui,sans-serif}main{max-width:420px;padding:32px 24px}"
+        "small{color:#e0a458;letter-spacing:.12em;font-size:12px}h1{font-size:26px;margin:8px 0 12px}"
+        "a{display:inline-block;margin-top:18px;padding:10px 16px;border-radius:8px;background:#e0a458;color:#111;"
+        f"text-decoration:none;font-weight:600}}</style><main><small>OPEN COUNTER · SMALL GARAGE</small><h1>{title}</h1>"
+        f'<p>{text}</p><a href="/#try">Back to the shop</a></main>', code)
+
+
 @app.get("/paypal/return")
 def paypal_return(oc: str, token: str = ""):
     o = shop.order(oc)
     if not o or (token and token != o.get("paypal_order_id")):
         # an old or unknown checkout link: we never capture it, so the approval lapses and nothing is charged
-        return HTMLResponse("<p>This checkout link is no longer active, so nothing was charged. "
-                            "Please go back to the shop and ask the agent for a fresh receipt.</p>"
-                            '<p><a href="/#try">Back to the shop</a></p>', 410)
+        return _note("This checkout link is no longer active", "Nothing was charged. Go back to the shop and "
+                     "ask the agent for a fresh receipt.", 410)
     if o.get("visitor", "").startswith("webhook-only-test"):
         # test path: the return page stays out of it, as if the buyer had closed the tab; PayPal's webhook settles it
-        return HTMLResponse(f"<p>Approved. Order {oc} is finished by PayPal's webhook, not by this page.</p>")
+        return _note("Approved in PayPal", f"Order {oc} is finished by PayPal's webhook, not by this page. "
+                     "Lena's back office shows it as paid in a few seconds.")
     try:
         _settle(oc)
     except paypal.PayPalError as e:
@@ -387,7 +399,7 @@ def paypal_cancel(oc: str):
     o = shop.order(oc)
     if o and o["status"] == "awaiting_approval":
         _announce("cancelled", shop.update_order(oc, status="cancelled"))
-    return HTMLResponse("<p>Cancelled. Nothing was charged.</p>")
+    return _note("Cancelled", "Nothing was charged. Your chat is still there if you want to change the order.")
 
 
 def _day(s: str) -> str:

@@ -27,6 +27,12 @@ a changed cart, made to order, a wrong ZIP, brand names, an injected instruction
 with checks written in code. Latest results and every transcript: [`evals/RESULTS.md`](evals/RESULTS.md),
 `evals/transcripts.json`.
 
+The closed-tab case, run on the live sandbox on 28 Oct 2026: order `OC-C7DAD2E3` (PayPal order `9NC75431R2481360K`)
+was approved by a person while the return page was told to stay out of it (a `webhook-only-test` visitor). PayPal's
+`CHECKOUT.ORDER.APPROVED` webhook arrived, its signature was verified, and the webhook handler captured the payment
+(capture `9Y869986895732623`, 20:18 UTC); the order showed as paid on Lena's side without the buyer's browser doing
+anything. Same code path as the return page, so the two can never charge twice.
+
 ## Try it in two minutes
 - **Shop:** https://open-counter.onrender.com · chat with the shop's sales agent in section 01, turn any car in 3D.
 - **Lena's back office (open, no login):** https://open-counter.onrender.com/maker
