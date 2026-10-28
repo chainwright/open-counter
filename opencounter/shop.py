@@ -439,13 +439,19 @@ def _save_json(name: str, data):
     tmp.replace(p)
 
 
-def log_turn(cid: str, user_text: str, reply: str, steps: list[dict], order_id: str | None, channel: str = "demo-shopper"):
+def log_turn(cid: str, user_text: str, reply: str, steps: list[dict], order_id: str | None, channel: str = "demo-shopper",
+             name: str = ""):
     """One question and answer of a shopper chat, kept for Lena (newest chats first on her screen)."""
     cid = re.sub(r"[^A-Za-z0-9_-]", "", cid or "")[:40] or "anon-" + uuid.uuid4().hex[:8]
     now = time.time()
     with _lock:
         all_ = _json("conversations.json", {})
-        c = all_.setdefault(cid, {"id": cid, "started": now, "channel": channel, "turns": [], "orders": []})
+        if cid not in all_:   # chats are numbered in the order they start, like tickets
+            n = max([x.get("no", 0) for x in all_.values()] + [0]) + 1
+            all_[cid] = {"id": cid, "no": n, "started": now, "channel": channel, "turns": [], "orders": [], "name": ""}
+        c = all_[cid]
+        if name and not c.get("name"):
+            c["name"] = name.strip()[:80]
         c["turns"].append({"at": now, "user": user_text[:1000], "reply": reply[:2000],
                            "steps": [s.get("label", "") + " · " + s.get("result", "") for s in steps][:8]})
         c["turns"] = c["turns"][-80:]

@@ -10,16 +10,24 @@
   });
   hero.addEventListener("pointerleave", () => { auto = true; t0 = performance.now(); });
 
-  (function loop(now) {
+  // The lamp only moves while the hero is on screen and the tab is visible, and only the hero repaints: a
+  // page-wide mask animated every frame for minutes made iPhone Safari reload the page mid-chat (Roma 14530).
+  let onScreen = true, running = false;
+  function loop(now) {
+    if (!onScreen || document.hidden) { running = false; return; }
     if (auto) {  // a slow figure-eight over the car while nobody holds the lamp (also what the video shows)
       const s = (now - t0) / 1000;
       tx = 0.6 + 0.16 * Math.sin(s * 0.45); ty = 0.5 + 0.12 * Math.sin(s * 0.9);
     }
     x += (tx - x) * 0.12; y += (ty - y) * 0.12;
-    root.style.setProperty("--mx", (x * 100).toFixed(2) + "%");
-    root.style.setProperty("--my", (y * 100).toFixed(2) + "%");
+    hero.style.setProperty("--mx", (x * 100).toFixed(2) + "%");
+    hero.style.setProperty("--my", (y * 100).toFixed(2) + "%");
     requestAnimationFrame(loop);
-  })(performance.now());
+  }
+  const wake = () => { if (!running && onScreen && !document.hidden) { running = true; requestAnimationFrame(loop); } };
+  new IntersectionObserver((es) => { onScreen = es[0].isIntersecting; wake(); }).observe(hero);
+  document.addEventListener("visibilitychange", wake);
+  wake();
 
   // --- the shopper's AI at work (demo script; the live demo runs the same tools for real) ---
   const steps = [

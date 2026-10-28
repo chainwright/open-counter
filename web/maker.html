@@ -9,19 +9,65 @@
 </head>
 <body>
 <div class="device">
-  <header><div><span class="k">LENA'S COUNTER</span><h1>Small Garage</h1></div><span class="live" id="live">● live</span></header>
-  <a class="shoplink" href="/">This is Lena's phone, view only · open the shop to buy →</a>
-  <div class="stats"><div><b id="s-sold">0</b><span>sold to AI agents</span></div><div><b id="s-wait">0</b><span>awaiting approval</span></div><div><b id="s-rev">$0</b><span>paid today</span></div></div>
-  <div class="k sec">ORDERS</div>
-  <div id="reqs" class="reqs" hidden></div>
-  <div id="feed" class="feed"><p class="empty">No orders yet. When a shopper's AI starts a checkout, it shows up here.</p></div>
-  <div class="k sec">CUSTOMERS <span id="c-count"></span></div>
-  <div id="custs" class="custs"><p class="empty">Buyers appear here after their first order. "News: yes" only after they said yes in chat.</p></div>
-  <div class="k sec">SHOPPER CHATS</div>
-  <div id="chats" class="chats"><p class="empty">Every conversation the shop's AI has, newest first.</p></div>
-  <div class="k sec">STOCK</div>
-  <div id="stock" class="stock"></div>
-  <p class="rules" id="rules"></p>
+  <header><div><span class="k">LENA'S BACK OFFICE</span><h1>Small Garage</h1></div><span class="live" id="live">● live</span></header>
+  <div class="inside"><b>You're inside Lena's back office.</b> This is what the maker sees: orders her shop's AI made,
+    every chat it had, what sells, and who wants news. Open to everyone for the demo, no login.
+    <a href="/">← back to the shop</a></div>
+  <nav class="tabs" id="tabs">
+    <a href="#today">Today</a><a href="#orders">Orders <i id="n-orders"></i></a><a href="#chats">Chats <i id="n-chats"></i></a><a href="#insights">Insights</a><a href="#customers">Customers</a><a href="#stock">Stock</a>
+  </nav>
+
+  <section class="tab" id="tab-today">
+    <div class="tiles">
+      <div><b id="t-chats">0</b><span>new chats today</span></div>
+      <div><b id="t-orders">0</b><span>orders today</span></div>
+      <div><b id="s-rev">$0</b><span>paid today</span></div>
+      <div><b id="s-wait">0</b><span>waiting for the buyer's OK</span></div>
+      <div><b id="t-calls">0</b><span>people to call back</span></div>
+      <div><b id="t-subs">0</b><span>want news by email</span></div>
+    </div>
+    <div class="k sec">LAST 7 DAYS</div>
+    <div class="week" id="week"></div>
+    <div class="k sec">LATEST CHATS <a class="more" href="#chats">all chats →</a></div>
+    <div id="latest" class="rows"><p class="empty">No chats yet today.</p></div>
+    <p class="sold-ai"><b id="s-sold">0</b> sold to AI agents so far</p>
+  </section>
+
+  <section class="tab" id="tab-orders" hidden>
+    <div id="reqs" class="reqs" hidden></div>
+    <div id="feed" class="feed"><p class="empty">No orders yet. When a shopper's AI starts a checkout, it shows up here.</p></div>
+  </section>
+
+  <section class="tab" id="tab-chats" hidden>
+    <div id="chatlist"><p class="empty">Every conversation the shop's AI has, newest first.</p></div>
+    <div id="chatview" hidden></div>
+  </section>
+
+  <section class="tab" id="tab-insights" hidden>
+    <div class="chips" id="period"><button data-d="7" class="on">Week</button><button data-d="30">Month</button><button data-d="365">Year</button></div>
+    <div class="k sec">CARS ORDERED, BY MODEL</div>
+    <div class="panel"><svg id="lines" viewBox="0 0 700 220" preserveAspectRatio="none"></svg><div class="keys" id="keys"></div></div>
+    <div class="k sec">BEST SELLERS IN THIS PERIOD</div>
+    <div class="panel" id="rank"></div>
+    <div class="k sec">WHEN THE SHOP'S AI IS BUSIEST</div>
+    <div class="panel"><div class="heat" id="heat"></div><p class="fine">Messages from shoppers by weekday and hour (your local time). Brighter = busier.</p></div>
+    <div class="k sec">HOW THE AI IS DOING</div>
+    <div class="tiles" id="quality"></div>
+    <div class="k sec">WHERE IT NEEDS HELP</div>
+    <div id="stuck" class="rows"></div>
+  </section>
+
+  <section class="tab" id="tab-customers" hidden>
+    <div class="chips" id="cfilter"><button data-f="all" class="on">All</button><button data-f="yes">Want news</button><button data-f="none">Not asked</button><button data-f="no">Said no</button></div>
+    <div id="custs" class="rows"><p class="empty">Buyers appear here after their first order. "Wants news" only after they said yes in chat.</p></div>
+    <button class="export" id="export">Export the news list (CSV)</button>
+    <p class="fine">This page is a public demo, so names, emails and phones are partly hidden. The full list stays on the server; the export needs Lena's key.</p>
+  </section>
+
+  <section class="tab" id="tab-stock" hidden>
+    <div id="stock" class="stock"></div>
+    <p class="rules" id="rules"></p>
+  </section>
 </div>
 <div class="toast" id="toast"><div class="t-k">SOLD TO AN<br>AI AGENT</div><div class="t-a" id="t-a">$59</div><div class="t-l" id="t-l"></div></div>
 <script src="/static/maker.js"></script>

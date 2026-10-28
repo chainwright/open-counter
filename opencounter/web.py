@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import html
 import json
+import os
 import re
 import time
 from datetime import datetime
@@ -16,7 +17,7 @@ from urllib.parse import urlparse
 from mcp.server.transport_security import TransportSecuritySettings
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from . import counter, paypal, shop, shopper
 from .mcp_server import mcp
@@ -156,8 +157,11 @@ async def api_shopper(req: Request):
         _announce("awaiting_approval", shop.order(out["checkout"]["order_id"]))
     # Lena can read every chat later (and see which order came out of it)
     last_user = next((m["content"] for m in reversed(msgs) if m["role"] == "user"), "")
+    oid = (out.get("checkout") or {}).get("order_id")
+    o = shop.order(oid) if oid else None
+    who = ((o or {}).get("customer") or {}).get("full_name") or ((o or {}).get("contact") or {}).get("name") or ""
     out["conv_id"] = shop.log_turn(str(b.get("conv_id") or ""), last_user, out.get("reply", ""), out.get("steps", []),
-                                   (out.get("checkout") or {}).get("order_id"))
+                                   oid, name=who)
     return out
 
 
@@ -327,8 +331,75 @@ async def maker_tracking(oid: str, req: Request):
 @app.get("/api/maker/conversations")
 def maker_conversations():
     """Every shopper chat, newest first, with the orders it produced."""
-    return [{**c, "turns": [{**t, "user": _hide_contact(t["user"]), "reply": _hide_contact(t["reply"])} for t in c["turns"]]}
-            for c in shop.conversations()[:200]]
+    out = []
+    for c in shop.conversations()[:200]:
+        name = (_mask({"full_name": c.get("name")}) or {}).get("name") if c.get("name") else ""
+        asked = any(re.search(r"\bname\b", t["reply"], re.I) for t in c["turns"])
+        out.append({**c, "name": name, "asked_name": asked,
+                    "turns": [{**t, "user": _hide_contact(t["user"]), "reply": _hide_contact(t["reply"])} for t in c["turns"]]})
+    return out
+
+
+_STUCK = re.compile(r"couldn.?t finish|can.?t help|cannot help|unable to|don.?t know|not sure|couldn.?t reach|"
+                    r"try again later|checkout (is|system is) (currently )?offline", re.I)
+_TOOL_TROUBLE = re.compile(r"^(no listing|only \d+|.*not a us state|checkout is offline|paypal could not|ask the person|"
+                           r"still needed|before checkout)", re.I)
+_PAINT = {"68-G": "#2FA36B", "67-B": "#3D6FE0", "70-O": "#FF6A2B", "73-Y": "#F5C400", "65-R": "#E3242B"}
+
+
+@app.get("/api/maker/insights")
+def maker_insights(days: int = 30):
+    """Lena's numbers for a period: cars by model per day (in the cars' own colours), when the shop's AI is busiest,
+    and how well it does (chats that became orders, and the replies where it got stuck)."""
+    days = max(1, min(int(days), 366))
+    now = time.time()
+    t0 = now - days * 86400
+    listings = {l["id"]: l for l in shop.shop()["listings"]}
+    colour = {lid: _PAINT.get((re.search(r"code (\w+-\w)", l.get("paint", "")) or [None, ""])[1], "#8C9096")
+              for lid, l in listings.items()}
+    day = lambda t: time.strftime("%Y-%m-%d", time.localtime(t))
+    labels = [day(now - (days - 1 - i) * 86400) for i in range(days)]
+    series = {lid: {"title": l["title"].rsplit(",", 1)[0], "colour": colour[lid], "units": [0] * days, "usd": 0.0}
+              for lid, l in listings.items()}
+    series["made-to-order"] = {"title": "Made to order", "colour": "#FFE9C7", "units": [0] * days, "usd": 0.0}
+    idx = {d: i for i, d in enumerate(labels)}
+    paid = {"paid", "shipped"}
+    for o in shop.orders():
+        if o.get("created", 0) < t0 or o.get("status") in ("error", "cancelled", "refunded_out_of_stock"):
+            continue
+        i = idx.get(day(o["created"]))
+        if i is None:
+            continue
+        lines = ([{"listing_id": "made-to-order", "qty": o["qty"], "unit_usd": o["total_usd"] / max(o["qty"], 1)}]
+                 if o.get("kind") == "commission" else o.get("lines") or
+                 [{"listing_id": o["listing_id"], "qty": o["qty"], "unit_usd": o["unit_usd"]}])
+        for ln in lines:
+            s = series.get(ln["listing_id"])
+            if s:
+                s["units"][i] += ln["qty"]
+                if o.get("status") in paid:
+                    s["usd"] += ln["qty"] * ln["unit_usd"]
+    chats = [c for c in shop.conversations() if c.get("updated", 0) >= t0]
+    heat = [[0] * 24 for _ in range(7)]   # weekday (Mon=0) x hour, messages from shoppers
+    stuck = []
+    for c in chats:
+        for t in c["turns"]:
+            if t["at"] < t0:
+                continue
+            lt = time.localtime(t["at"])
+            heat[lt.tm_wday][lt.tm_hour] += 1
+            why = ("the AI got stuck" if _STUCK.search(t["reply"]) else
+                   next(("a tool said: " + s.split(" · ", 1)[-1][:80] for s in t["steps"]
+                         if _TOOL_TROUBLE.search(s.split(" · ", 1)[-1])), None))
+            if why:
+                stuck.append({"chat": c["id"], "at": t["at"], "asked": _hide_contact(t["user"])[:160], "why": why})
+    turns = sum(len(c["turns"]) for c in chats)
+    with_order = sum(1 for c in chats if c.get("orders"))
+    return {"days": days, "labels": labels, "series": [s | {"id": k} for k, s in series.items()],
+            "heat": heat, "chats": len(chats), "messages": turns, "chats_with_order": with_order,
+            "conversion": round(100 * with_order / len(chats)) if chats else 0,
+            "stuck": sorted(stuck, key=lambda x: -x["at"])[:30],
+            "answered_pct": round(100 * (1 - len(stuck) / turns)) if turns else 100}
 
 
 @app.get("/api/maker/customers")
@@ -339,8 +410,28 @@ def maker_customers():
 
 @app.get("/api/maker/requests")
 def maker_requests():
-    """Call-back requests for Lena (newest first)."""
-    return list(reversed(shop.requests_()))
+    """Call-back requests for Lena (newest first; masked on the public demo screen)."""
+    return [{**r, "contact": _mask(r.get("contact")), "message": _hide_contact(r.get("message") or "")}
+            for r in reversed(shop.requests_())]
+
+
+@app.get("/api/maker/news-list.csv")
+def news_list(key: str = ""):
+    """Everyone who said yes to news in chat, full details, for Lena only (MAKER_KEY)."""
+    want = os.environ.get("MAKER_KEY", "")
+    if not want or key != want:
+        raise HTTPException(403, "Lena's key needed")
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["name", "email", "phone", "city", "state", "orders", "said", "when"])
+    for c in shop.customers():
+        if c.get("marketing") is True:
+            w.writerow([c.get("full_name"), c.get("email"), c.get("phone"), c.get("city"), c.get("state"),
+                        " ".join(c.get("orders", [])), c.get("consent_said", ""),
+                        time.strftime("%Y-%m-%d %H:%M", time.gmtime(c.get("consent_at", 0)))])
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=small-garage-news-list.csv"})
 
 
 @app.post("/api/maker/requests/{rid}")
