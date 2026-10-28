@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import html
 import json
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -50,8 +51,42 @@ app.mount("/mcp", mcp_app)
 app.mount("/static", StaticFiles(directory=WEB / "static"), name="static")
 
 
+def _mask(c: dict | None) -> dict | None:
+    """The maker screen is a public demo page, so personal details are shown masked there:
+    first name + last initial, city/state, email and phone partly hidden. The full record stays on the server."""
+    if not c:
+        return c
+    name = (c.get("full_name") or c.get("name") or "").split()
+    em = c.get("email") or ""
+    ph = re.sub(r"\D", "", c.get("phone") or "")
+    return {**{k: v for k, v in c.items() if k not in ("full_name", "name", "email", "phone", "address_line_1",
+                                                      "address_line_2", "postal_code", "consent_said")},
+            "name": (name[0] + (" " + name[-1][0] + "." if len(name) > 1 else "")) if name else "",
+            "email": (em[0] + "•••" + em[em.find("@"):]) if "@" in em else "",
+            "phone": ("•••-" + ph[-4:]) if ph else "",
+            "where": ", ".join(x for x in (c.get("city"), c.get("state")) if x)}
+
+
+_STREET = re.compile(r"\b\d{1,6}\s+(?:[A-Za-z][\w.]*\s+){1,4}(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Dr|Drive|Ln|Lane|Way|"
+                     r"Ct|Court|Pl|Place|Pkwy|Hwy)\b\.?", re.I)
+
+
+def _hide_contact(t: str) -> str:
+    """Chats on the public maker page: street, email, phone and ZIP replaced with dots."""
+    t = _STREET.sub("••• (street)", t)
+    t = re.sub(r"[\w.+-]+@[\w-]+\.[\w.]+", "•••@•••", t)
+    t = re.sub(r"(?<![\d-])\+?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b", "•••", t)
+    return re.sub(r"(?<![\d-])\b\d{5}(?:-\d{4})?\b(?!-)", "•••••", t)
+
+
+def _mask_order(o: dict | None) -> dict | None:
+    if not o:
+        return o
+    return {**o, "customer": _mask(o.get("customer")), "contact": _mask(o.get("contact"))}
+
+
 def _announce(kind: str, o: dict):
-    msg = {"kind": kind, "order": o, "at": time.time()}
+    msg = {"kind": kind, "order": _mask_order(o), "at": time.time()}
     for q in list(_listeners):
         q.put_nowait(msg)
 
@@ -118,6 +153,10 @@ async def api_shopper(req: Request):
         return JSONResponse({"error": f"{e}; the rest of the demo still works."}, 429)
     if out.get("checkout"):
         _announce("awaiting_approval", shop.order(out["checkout"]["order_id"]))
+    # Lena can read every chat later (and see which order came out of it)
+    last_user = next((m["content"] for m in reversed(msgs) if m["role"] == "user"), "")
+    out["conv_id"] = shop.log_turn(str(b.get("conv_id") or ""), last_user, out.get("reply", ""), out.get("steps", []),
+                                   (out.get("checkout") or {}).get("order_id"))
     return out
 
 
@@ -268,7 +307,7 @@ async def webhook(req: Request):
 # ---- maker side ----
 @app.get("/api/maker/orders")
 def maker_orders():
-    return sorted(shop.orders(), key=lambda o: -o["created"])
+    return [_mask_order(o) for o in sorted(shop.orders(), key=lambda o: -o["created"])]
 
 
 @app.post("/api/maker/orders/{oid}/tracking")
@@ -282,6 +321,19 @@ async def maker_tracking(oid: str, req: Request):
                                                             "carrier": b.get("carrier", "USPS")})
     _announce("shipped", o)
     return o
+
+
+@app.get("/api/maker/conversations")
+def maker_conversations():
+    """Every shopper chat, newest first, with the orders it produced."""
+    return [{**c, "turns": [{**t, "user": _hide_contact(t["user"]), "reply": _hide_contact(t["reply"])} for t in c["turns"]]}
+            for c in shop.conversations()[:200]]
+
+
+@app.get("/api/maker/customers")
+def maker_customers():
+    """Buyers from orders; marketing is true only after their own yes in chat."""
+    return [_mask(c) for c in shop.customers()]
 
 
 @app.get("/api/maker/requests")

@@ -77,6 +77,10 @@ hand-built 1:43 replica cars, serving a customer through the shop's public tools
   for word on the numbers; don't add your own day counts.
 - You are the shop's sales agent: when you have what an order needs, create it; don't ask for permission first.
   Be warm and helpful, suggest the in-stock car that fits, and mention the volume discount when it applies.
+- Emails about new models: the shop asks this itself after the first order; don't ask it. If the person brings it
+  up on their own later, call marketing_consent with their yes or no.
+- Don't repeat the person's address, phone or email back in your message: the order card under your message shows
+  exactly what was saved. Never write any personal detail the person didn't type.
 - To talk to Lena: ask for the person's phone number (and what it's about), call leave_contact, and say Lena will
   call them herself. Never give out or invent a number for her.
 - Keep track of the whole conversation: details the person already gave, quotes already made. Never ask them to
@@ -120,6 +124,10 @@ TOOLS = [
                 "state": {"type": "string"}, "postal_code": {"type": "string"}},
                 "required": ["full_name", "phone", "email", "address_line_1", "city", "state", "postal_code"]},},
                        "required": ["cars", "us_state", "name", "phone", "customer"]}}},
+    {"type": "function", "function": {"name": "marketing_consent",
+        "description": "Record the person's own yes or no to emails from Lena about new models and offers.",
+        "parameters": {"type": "object", "properties": {"email": {"type": "string"}, "agrees": {"type": "boolean"}},
+                       "required": ["email", "agrees"]}}},
     {"type": "function", "function": {"name": "leave_contact",
         "description": "Pass the person's phone number and question to Lena; she calls them back.",
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}, "name": {"type": "string"},
@@ -142,7 +150,8 @@ TOOLS = [
 LABELS = {"about_counter": "reading the counter", "search_counter": "searching the counter",
           "item_details": "reading the listing", "delivery_estimate": "checking delivery",
           "start_checkout": "preparing PayPal checkout", "quote_commission": "pricing a made-to-order build",
-          "start_commission_checkout": "preparing PayPal checkout", "leave_contact": "passing your number to Lena"}
+          "start_commission_checkout": "preparing PayPal checkout", "leave_contact": "passing your number to Lena",
+          "marketing_consent": "noting your email preference"}
 
 
 class OverBudget(RuntimeError):
@@ -225,11 +234,30 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
                                                  + f" + ${o['shipping_usd']:.2f} shipping = ${o['total_usd']:.2f}",
                             "delivery": f"ships {o['estimate']['ships_on'].split(' ')[-1]}, estimated arrival "
                                         f"{o['estimate']['arrives_earliest'].split(' ')[-1]} to {o['estimate']['arrives_latest'].split(' ')[-1]}",
+                            "ship_to": counter._ship_to(o),
                             "next_step": "This order already exists; show it again. Nothing is charged until they approve."}
     if name == "start_commission_checkout":
+        cars = sum(int((x or {}).get("quantity") or 0) for x in (args.get("cars") or []))
+        for o in shop.orders():   # the same build for the same person in this chat already waits: show it again
+            if (o.get("kind") == "commission" and o.get("status") == "awaiting_approval" and o.get("approve_url")
+                    and o.get("asked_for", "")[:60] == asked[:60] and o.get("qty") == cars
+                    and (o.get("customer") or {}).get("postal_code") == zip_):
+                q = o["quote"]
+                return {"ok": True, "order_id": o["id"], "approve_url": o["approve_url"], "you_asked_for": o["asked_for"],
+                        "you_are_approving": f"{o['title']}: {q['total_cars']} × ${q['unit_usd']} = ${o['total_usd']:.2f}",
+                        "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}",
+                        "ship_to": counter._ship_to(o), "next_step": "This order already exists; show it again."}
         return counter.start_commission_checkout(args.get("cars") or [], args.get("us_state", ""), args.get("name", ""),
                                                  args.get("phone", ""), asked, channel="demo-shopper",
                                                  customer=args.get("customer"))
+    if name == "marketing_consent":
+        email = str(args.get("email", "")).strip().lower()
+        last = typed.rsplit(" / ", 1)[-1]
+        # only the person's own answer counts: their email typed earlier, a clear yes/no in their last message
+        if not email or email not in typed.lower() or not re.search(
+                r"\b(yes|yeah|yep|sure|ok|okay|please|no|nope|not now|don.?t|no thanks)\b", last, re.I):
+            return {"ok": False, "reason": "Ask them first and wait for their own yes or no."}
+        return counter.marketing_consent(email, bool(args.get("agrees")), last)
     if name == "leave_contact":
         return counter.leave_contact(args.get("phone", ""), args.get("name", ""), args.get("message", ""), asked,
                                      channel="demo-shopper")
@@ -268,12 +296,68 @@ def _summary(name: str, out: dict) -> str:
         return "waiting for your approval in PayPal" if out.get("ok") else out.get("reason", "")
     if name == "leave_contact":
         return "passed to Lena" if out.get("ok") else out.get("reason", "")
+    if name == "marketing_consent":
+        return ("subscribed to news" if out.get("subscribed") else "no emails") if out.get("ok") else out.get("reason", "")
     return "done"
+
+
+EMAIL_IN = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+ZIP_IN = re.compile(r"\b\d{5}(?:-\d{4})?\b")
+
+
+def _scrub_invented(reply: str, typed: str) -> str:
+    """Personal details in the reply must be ones the person typed. A line with an email, phone or ZIP they never
+    wrote is dropped (Roma 14526: the confirmation showed made-up details)."""
+    t, td = typed.lower(), re.sub(r"\D", "", typed)
+    out = []
+    for line in reply.split("\n"):
+        bad = any(e.lower() not in t for e in EMAIL_IN.findall(line))
+        bad |= any(z[:5] not in td for z in ZIP_IN.findall(line) if not re.search(r"20\d\d-" + re.escape(z[:2]), line))
+        bad |= any(len(re.sub(r"\D", "", p)) >= 7 and re.sub(r"\D", "", p)[-7:] not in td
+                   for p in PHONE.findall(line) if not re.search(r"\d{4}-\d{2}-\d{2}", p))
+        if not bad:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
+NEWS_Q = "One more thing: would you like Lena to email you when new models or offers come out? (yes / no)"
+YES = re.compile(r"^\W*(yes|yeah|yep|sure|ok|okay|please|absolutely|of course|why not)\b", re.I)
+NO = re.compile(r"^\W*(no|nope|nah|not now|no thanks|don.?t|not really)\b", re.I)
+OPT_IN = re.compile(r"\b(e-?mail me|send me|sign me up|subscribe|keep me (posted|updated)|add me)\b.{0,60}"
+                    r"\b(new|news|model|offer|update|deal|release)", re.I)
+OPT_OUT = re.compile(r"\b(no|don.?t|stop|unsubscribe|never)\b.{0,20}\b(e-?mails?|news|newsletter|updates)\b", re.I)
+
+
+def _news_answer(messages: list[dict]) -> dict | None:
+    """The newsletter question is asked by the shop itself, once, after the first order; a plain yes/no to it is
+    recorded in code, in the person's own words, without a model call (and without touching the orders)."""
+    if len(messages) < 2 or messages[-1]["role"] != "user" or messages[-2]["role"] != "assistant":
+        return None
+    said = messages[-1]["content"].strip()
+    if NEWS_Q in messages[-2]["content"]:
+        agrees = True if YES.search(said) else False if NO.search(said) else None
+    else:   # they bring it up themselves later: "email me when new models come out", "no emails please"
+        agrees = (False if OPT_OUT.search(said) else True if OPT_IN.search(said) else None)
+    if agrees is None:
+        return None
+    typed = " ".join(m["content"] for m in messages if m["role"] == "user")
+    email = next((e for e in EMAIL_IN.findall(typed)[::-1]), "")
+    out = counter.marketing_consent(email, agrees, said) if email else {"ok": False}
+    if not out.get("ok"):
+        return None
+    reply = ("Done, you're on Lena's list. She only writes when there's something new. Anything else I can help with?"
+             if agrees else "No problem, no emails. Anything else I can help with?")
+    step = {"tool": "marketing_consent", "label": LABELS["marketing_consent"], "args": {"agrees": agrees},
+            "result": "subscribed to news" if agrees else "no emails", "ms": 0}
+    return {"reply": reply, "steps": [step], "checkout": None, "usd": 0.0, "model": "rule", "memo": f"news: {step['result']}"}
 
 
 def run(messages: list[dict]) -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
+    answered = _news_answer(messages)
+    if answered:
+        return answered
     if spent_today() >= DAILY_CAP_USD:
         raise OverBudget("today's demo budget is spent")
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
@@ -387,6 +471,7 @@ def run(messages: list[dict]) -> dict:
                 if BRANDS.search(reply):
                     reply = BRANDS.sub("that model", reply)
             reply = ITEM_ID.sub("", reply)
+            reply = _scrub_invented(reply, typed)
             break
         convo.append({"role": "assistant", "content": msg.content or "",
                       "tool_calls": [tc.model_dump() for tc in msg.tool_calls]})
@@ -409,5 +494,9 @@ def run(messages: list[dict]) -> dict:
         _spent[d] = _spent.get(d, 0.0) + usd
     # What the tools returned this turn, so the next turn still knows it (the browser sends it back with the reply).
     memo = "; ".join(f"{st['label']}: {st['result']}" for st in steps)
+    # after the first order with an email, the shop asks about news once (the model is told not to ask itself)
+    asked_before = any(NEWS_Q in m.get("content", "") for m in messages if m["role"] == "assistant")
+    if checkout and checkout.get("ship_to") and not asked_before:
+        reply = reply.strip() + "\n\n" + NEWS_Q
     return {"reply": reply.strip(), "steps": steps, "checkout": checkout, "usd": round(usd, 5), "model": MODEL,
             "memo": memo}

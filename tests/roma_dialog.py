@@ -17,6 +17,7 @@ TURNS = [
     "Sam Rivera, 415-555-0134, sam.rivera@example.com, 1200 Lavaca St, Austin TX 78701",
     "Also a custom one: the yellow rear-engine coupe, 1973, red body, black interior, 12 of them, to California",
     "Same name, phone and email; ship that one to 500 Howard St, San Francisco CA 94105",
+    "Yes, email me when new models come out",
 ]
 
 history = []
@@ -29,4 +30,5 @@ for t in TURNS:
     print(f"AGENT: {r['reply']}")
     history.append({"role": "assistant", "content": r["reply"], "memo": r["memo"]})
 print(f"\ncallbacks: {[(q['id'], q['contact']['phone']) for q in shop.requests_()]}")
+print(f"customers: {[(c['email'], c['marketing']) for c in shop.customers()]}")
 print(f"orders: {[(o['id'], o.get('kind'), o['qty'], o['total_usd']) for o in shop.orders()]}")

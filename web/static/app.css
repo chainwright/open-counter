@@ -244,3 +244,6 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .sheet .qty{display:flex;align-items:center;gap:10px;margin:0 0 12px;color:#A9AEB4;font-size:14px}
 .sheet .qty input{width:80px;padding:10px;border-radius:10px;background:#08090A;color:#fff;border:1px solid var(--hair);font-size:15px}
 .sheet .qty span{margin-left:auto;color:var(--lamp);font:600 16px "Geist"}
+
+.cocard .shipto{margin:2px 12px 0;font-size:12.5px;color:#333;line-height:1.35}.cocard .shipto small{display:block;font-weight:600;color:#111;font-size:11px}
+.restart{display:block;margin:0 0 10px auto;background:none;border:0;color:var(--cyan);font:12px "Geist Mono";opacity:.75;cursor:pointer}

@@ -82,21 +82,38 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\[([^\]]*)\]\(\s*https:\/\/www\.sandbox\.paypal\.com[^)]*\)?/g, "$1 ↓").replace(/(https:\/\/www\.sandbox\.paypal\.com\S+)/g, "↓");
   const log = document.getElementById("log"), form = document.getElementById("askform"), input = document.getElementById("askin");
-  const history = [];
-  const add = (cls, html) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; };
+  // The chat survives a reload or coming back later (Roma 14526): kept in this browser for 7 days.
+  const KEY = "oc_chat_v1";
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) {}
+  if (saved && Date.now() - (saved.at || 0) > 7 * 864e5) saved = null;
+  const history = saved?.history || [];
+  const items = saved?.items || [];
+  let convId = saved?.conv_id || "";
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify({ conv_id: convId, history, items: items.slice(-120), at: Date.now() })); } catch (e) {} };
+  const add = (cls, html, keep = true) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; log.appendChild(d); log.scrollTop = log.scrollHeight; if (keep) items.push({ cls, html }); return d; };
+  if (items.length) {
+    items.forEach((it) => { const d = document.createElement("div"); d.className = it.cls; d.innerHTML = it.html; log.appendChild(d); });
+    const again = document.createElement("button"); again.type = "button"; again.className = "restart"; again.textContent = "Start a new chat";
+    again.addEventListener("click", () => { try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); });
+    log.parentElement.insertBefore(again, log.nextSibling);
+    requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
+  }
 
   async function ask(text) {
     if (!text.trim()) return;
     history.push({ role: "user", content: text });
     add("msg u", esc(text));
-    const t = add("think", "Reading your message");
+    persist();
+    const t = add("think", "Reading your message", false);
     const stages = ["Reading your message", "Checking the shelf", "Working out delivery", "Almost there"];
     let k = 0; const tick = setInterval(() => { k = Math.min(k + 1, stages.length - 1); t.textContent = stages[k]; }, 2200);
     try {
-      const r = await fetch("/api/shopper", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history }) });
+      const r = await fetch("/api/shopper", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history, conv_id: convId }) });
       const j = await r.json();
+      if (j.conv_id) convId = j.conv_id;
       clearInterval(tick); t.remove();
-      if (j.error) { add("msg a", esc(j.error)); return; }
+      if (j.error) { add("msg a", esc(j.error), false); return; }
       for (const s of j.steps) add("tl", `<i></i>${esc(s.label)} · ${esc(s.result)}`);
       add("msg a", md(j.reply));
       history.push({ role: "assistant", content: j.reply, memo: j.memo || "" });
@@ -104,9 +121,11 @@
         const c = j.checkout;
         add("cocard", `<div class="ap-pair"><div><small>You asked for</small>${esc(c.you_asked_for)}</div><div><small>You're approving</small>${esc(c.you_are_approving)}</div></div>
           <a class="pp" href="${esc(c.approve_url)}" target="_blank" rel="noopener"><span class="pp-a">Pay</span><span class="pp-b">Pal</span></a>
+          ${c.ship_to ? `<p class="shipto"><small>Ships to</small>${esc(c.ship_to)}</p>` : ""}
           <p class="fine">${esc(c.delivery)}. Nothing is charged until you approve in PayPal.</p>`);
         log.scrollTop = log.scrollHeight;
       }
+      persist();
     } catch (e) { clearInterval(tick); t.textContent = "Couldn't reach the counter. Try again."; }
   }
   form.addEventListener("submit", (e) => { e.preventDefault(); const v = input.value; input.value = ""; ask(v); });

@@ -175,3 +175,19 @@ def test_delivery_details_are_checked_and_go_to_paypal(monkeypatch):
     assert out["ok"] and sh["address"]["postal_code"] == "78701" and sh["name"]["full_name"] == "Sam Rivera"
     assert sent["b"]["payment_source"]["paypal"]["experience_context"]["shipping_preference"] == "SET_PROVIDED_ADDRESS"
     assert shop.order(out["order_id"])["customer"]["email"] == "sam@example.com"
+
+
+def test_chats_and_customers_are_kept_and_consent_is_explicit(monkeypatch):
+    cid = shop.log_turn("", "hi", "hello", [{"label": "searching", "result": "5 found"}], None)
+    shop.log_turn(cid, "3 yellow", "done", [], "OC-1")
+    c = shop.conversations()[0]
+    assert c["id"] == cid and len(c["turns"]) == 2 and c["orders"] == ["OC-1"]
+    cust = {"full_name": "Sam Rivera", "phone": "415-555-0134", "email": "Sam@Example.com",
+            "address_line_1": "1200 Lavaca St", "city": "Austin", "state": "TX", "postal_code": "78701"}
+    o = shop.new_order("sg-014", 1, "TX", "1 green", "t", customer=cust)
+    assert shop.customers()[0]["marketing"] is None and shop.customers()[0]["orders"] == [o["id"]]
+    assert counter.marketing_consent("sam@example.com", True, "yes please")["subscribed"] is True
+    assert not counter.marketing_consent("nobody@example.com", True, "yes")["ok"]
+    from opencounter import web
+    m = web._mask(shop.customers()[0])
+    assert m["name"] == "Sam R." and "Lavaca" not in str(m) and "415" not in str(m) and m["email"].startswith("S•••")

@@ -53,3 +53,12 @@ h1{font:900 46px/.9 "Big Shoulders Display";text-transform:uppercase;margin-top:
 .rq .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .rq .acts .btn{display:inline-flex;align-items:center;text-decoration:none}
 .rq .acts a.btn{font:600 13px "Geist";border-radius:9px;padding:8px 10px;background:var(--paper);color:#111;border:1px solid var(--paper)}
+
+.custs,.chats{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+.cu{background:var(--card,#16191c);border:1px solid var(--hair,#2a2e33);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;font-size:13px}
+.cu span{color:var(--mute,#9aa0a6);font:12px "Geist Mono"}.cu .n.y{color:#3ddc84}.cu .n.x{color:#ff8a80}
+.ch{background:var(--card,#16191c);border:1px solid var(--hair,#2a2e33);border-radius:12px;padding:10px 12px;font-size:13px}
+.ch summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;list-style:none}
+.ch summary span{flex:1;min-width:0;color:#e8eaec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch summary i{font:11px "Geist Mono";color:var(--mute,#9aa0a6);font-style:normal}
+.ch p{margin:8px 0 0;white-space:pre-wrap;line-height:1.45}.ch .q{color:#fff;font-weight:600}.ch .s{font:11px "Geist Mono";color:#38f2e5}.ch .a{color:#c9cdd1}

@@ -21,6 +21,14 @@ def _media_url(name: str) -> str:
     return f"{PUBLIC_URL}/media/{name}{v}"
 
 
+def _ship_to(o: dict) -> str:
+    c = o.get("customer") or {}
+    if not c:
+        return ""
+    return (f"{c['full_name']}, {c['address_line_1']}" + (f" {c['address_line_2']}" if c.get("address_line_2") else "")
+            + f", {c['city']}, {c['state']} {c['postal_code']} · {c['phone']} · {c['email']}")
+
+
 def _public(item: dict) -> dict:
     d = {k: item[k] for k in FIELDS}
     d["photo_url"] = _media_url(item["photo"])
@@ -90,6 +98,7 @@ def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone:
                                  + f" + ${q['shipping_usd']:.2f} shipping = ${o['total_usd']:.2f}",
             "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}, arrives "
                         f"{q['delivery']['arrives_earliest']} to {q['delivery']['arrives_latest']} (estimate)",
+            "ship_to": _ship_to(o),
             "next_step": "Show both lines, then open approve_url. Nothing is charged until they approve in PayPal."}
 
 
@@ -152,6 +161,7 @@ def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_
                                  f"({s['maker']}, {s['city']})",
             "delivery": f"ships {est['ships_on']}, estimated arrival {est['arrives_earliest']} to "
                         f"{est['arrives_latest']} ({est['carrier']}; estimate, not a guarantee)",
+            "ship_to": _ship_to(o),
             "next_step": "Show both lines to the person, then open approve_url. Nothing is charged until they "
                          "approve in PayPal."}
 
@@ -163,3 +173,13 @@ def order_status(order_id: str) -> dict:
     out = {k: o.get(k) for k in ("id", "title", "qty", "total_usd", "status", "tracking")}
     out["estimate"] = o["estimate"]
     return out
+
+
+def marketing_consent(email: str, agrees: bool, what_they_said: str) -> dict:
+    """Records the buyer's own yes/no to emails about new models and offers (asked once, after an order)."""
+    try:
+        c = shop.set_marketing(email, agrees, what_they_said)
+    except ValueError as e:
+        return {"ok": False, "reason": str(e)}
+    return {"ok": True, "subscribed": c["marketing"],
+            "next_step": "Thank them briefly; don't ask again." if c["marketing"] else "Fine, no emails. Don't ask again."}

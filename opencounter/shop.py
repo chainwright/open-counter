@@ -276,6 +276,7 @@ def new_commission_order(lines: list[dict], state: str, name: str, phone: str, a
         all_ = orders()
         all_.append(o)
         _save_orders(all_)
+    remember_customer(o.get("customer"), o["id"])
     return o
 
 
@@ -375,6 +376,7 @@ def _store_order(s, lines, est, cust, items_usd, state, asked_for, channel) -> d
         all_ = orders()
         all_.append(o)
         _save_orders(all_)
+    remember_customer(o.get("customer"), o["id"])
     return o
 
 
@@ -421,3 +423,73 @@ def take_stock(lid: str, qty: int) -> bool:
             item["sold_out_at"] = time.time()
         save_shop(s)
         return True
+
+
+# ---- conversations and customers (Roma 14526: keep chats, let Lena read them, build a customer list) ----
+
+def _json(name: str, default):
+    p = _path(name)
+    return json.loads(p.read_text()) if p.exists() else default
+
+
+def _save_json(name: str, data):
+    p = _path(name)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=1))
+    tmp.replace(p)
+
+
+def log_turn(cid: str, user_text: str, reply: str, steps: list[dict], order_id: str | None, channel: str = "demo-shopper"):
+    """One question and answer of a shopper chat, kept for Lena (newest chats first on her screen)."""
+    cid = re.sub(r"[^A-Za-z0-9_-]", "", cid or "")[:40] or "anon-" + uuid.uuid4().hex[:8]
+    now = time.time()
+    with _lock:
+        all_ = _json("conversations.json", {})
+        c = all_.setdefault(cid, {"id": cid, "started": now, "channel": channel, "turns": [], "orders": []})
+        c["turns"].append({"at": now, "user": user_text[:1000], "reply": reply[:2000],
+                           "steps": [s.get("label", "") + " · " + s.get("result", "") for s in steps][:8]})
+        c["turns"] = c["turns"][-80:]
+        if order_id and order_id not in c["orders"]:
+            c["orders"].append(order_id)
+        c["updated"] = now
+        if len(all_) > 500:   # keep the newest 500 chats
+            for k in sorted(all_, key=lambda k: all_[k].get("updated", 0))[:len(all_) - 500]:
+                del all_[k]
+        _save_json("conversations.json", all_)
+    return cid
+
+
+def conversations() -> list[dict]:
+    return sorted(_json("conversations.json", {}).values(), key=lambda c: c.get("updated", 0), reverse=True)
+
+
+def remember_customer(cust: dict | None, order_id: str):
+    """The buyer's details from an order, merged by email. Marketing consent stays unknown until they answer."""
+    if not cust or not cust.get("email"):
+        return
+    key = cust["email"].lower()
+    with _lock:
+        all_ = _json("customers.json", {})
+        c = all_.setdefault(key, {"email": cust["email"], "first_seen": time.time(), "orders": [], "marketing": None})
+        c.update({k: cust.get(k) for k in ("full_name", "phone", "address_line_1", "address_line_2", "city", "state",
+                                             "postal_code")})
+        c["last_seen"] = time.time()
+        if order_id not in c["orders"]:
+            c["orders"].append(order_id)
+        _save_json("customers.json", all_)
+
+
+def set_marketing(email: str, agrees: bool, said: str) -> dict:
+    """Only after the person answered in their own words; their answer is kept as the record of consent."""
+    key = (email or "").strip().lower()
+    with _lock:
+        all_ = _json("customers.json", {})
+        if key not in all_:
+            raise ValueError("No customer with that email yet; this is asked after an order.")
+        all_[key].update({"marketing": bool(agrees), "consent_at": time.time(), "consent_said": said[:300]})
+        _save_json("customers.json", all_)
+        return all_[key]
+
+
+def customers() -> list[dict]:
+    return sorted(_json("customers.json", {}).values(), key=lambda c: c.get("last_seen", 0), reverse=True)

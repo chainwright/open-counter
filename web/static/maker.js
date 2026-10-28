@@ -23,7 +23,7 @@
     if (!shown.length) return;
     feed.innerHTML = shown.map((o) => {
       const st = { awaiting_approval: "WAITING FOR BUYER", paid: "PAID · SHIP IT", shipped: "SHIPPED", cancelled: "CANCELLED", refunded_out_of_stock: "REFUNDED" }[o.status] || o.status.toUpperCase();
-      const where = o.ship_to?.city ? `${o.ship_to.city}, ${o.ship_to.state}` : o.ship_state;
+      const where = (o.customer?.name ? o.customer.name + " · " : "") + (o.ship_to?.city ? `${o.ship_to.city}, ${o.ship_to.state}` : (o.customer?.where || o.ship_state));
       const acts = o.status === "paid"
         ? `<div class="acts"><button class="p" data-note="${esc(o.id)}">Packing note</button><input placeholder="Tracking number" data-trk="${esc(o.id)}"><button data-ship="${esc(o.id)}">Shipped</button></div><div class="note" id="n-${esc(o.id)}" hidden></div>`
         : o.status === "shipped" ? `<div class="m">USPS ${esc(o.tracking?.number)}</div>` : "";
@@ -106,4 +106,22 @@
     load();
   });
   load(); setInterval(load, 10000);
+})();
+
+// Customers (masked on this public demo screen) and every shopper chat, so Lena can read what her AI said.
+(() => {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const when = (t) => new Date(t * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  async function load() {
+    const [cs, ch] = await Promise.all([fetch("/api/maker/customers").then((r) => r.json()), fetch("/api/maker/conversations").then((r) => r.json())]);
+    const yes = cs.filter((c) => c.marketing === true).length;
+    document.getElementById("c-count").textContent = cs.length ? `· ${cs.length} · ${yes} want news` : "";
+    if (cs.length) document.getElementById("custs").innerHTML = cs.map((c) => `<div class="cu"><b>${esc(c.name)}</b>
+      <span>${esc(c.where)} · ${esc(c.email)} · ${esc(c.phone)}</span>
+      <span class="n ${c.marketing === true ? "y" : c.marketing === false ? "x" : ""}">${c.marketing === true ? "News: yes" : c.marketing === false ? "News: no" : "News: not asked yet"} · ${c.orders.length} order${c.orders.length > 1 ? "s" : ""}</span></div>`).join("");
+    if (ch.length) document.getElementById("chats").innerHTML = ch.slice(0, 40).map((c) => `<details class="ch"><summary><b>${esc(when(c.updated))}</b>
+      <span>${esc((c.turns[0]?.user || "").slice(0, 70))}</span><i>${c.turns.length} msg${c.orders.length ? " · " + esc(c.orders.join(", ")) : ""}</i></summary>
+      ${c.turns.map((t) => `<p class="q">${esc(t.user)}</p>${t.steps.length ? `<p class="s">${t.steps.map(esc).join("<br>")}</p>` : ""}<p class="a">${esc(t.reply)}</p>`).join("")}</details>`).join("");
+  }
+  load(); setInterval(load, 15000);
 })();
