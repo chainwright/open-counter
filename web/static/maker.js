@@ -1,3 +1,16 @@
+// One period for every tab (Roma 14547): today, week, 2 weeks, month, quarter, year.
+window.OC = (() => {
+  let days = 14;
+  const start = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() / 1000 - (days - 1) * 86400; };
+  const label = () => ({ 1: "today", 7: "in the last 7 days", 14: "in the last 2 weeks", 30: "in the last month", 90: "in the last quarter", 365: "in the last year" })[days];
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("#ovp [data-d]"); if (!b) return;
+    days = +b.dataset.d; document.querySelectorAll("#ovp button").forEach((x) => x.classList.toggle("on", x === b));
+    document.dispatchEvent(new Event("oc-period"));
+  });
+  return { get days() { return days; }, start, label };
+})();
+
 // Lena's phone: live order feed (SSE), "sold to an AI agent" moment, packing note, tracking, stock.
 (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -14,7 +27,7 @@
 
   function render() {
     const feed = document.getElementById("feed");
-    const shown = orders.filter((o) => o.status !== "error");
+    const shown = orders.filter((o) => o.status !== "error" && o.created >= OC.start());
     document.getElementById("s-sold").textContent = shown.filter((o) => ["paid", "shipped"].includes(o.status) && o.channel !== "walk-in").length;
     document.getElementById("s-wait").textContent = shown.filter((o) => o.status === "awaiting_approval").length;
     const today = new Date().toDateString();
@@ -82,6 +95,7 @@
   };
   es.onerror = () => (document.getElementById("live").textContent = "○ reconnecting");
   es.onopen = () => (document.getElementById("live").textContent = "● live");
+  document.addEventListener("oc-period", render);
   load();
 })();
 
@@ -121,6 +135,7 @@
     const [tab, id] = (location.hash.slice(1) || "today").split("/");
     document.querySelectorAll(".tab").forEach((t) => (t.hidden = t.id !== "tab-" + tab));
     document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + tab));
+    document.getElementById("ovp").hidden = tab === "stock";
     if (tab === "chats") openChat(id);
   }
   window.addEventListener("hashchange", show);
@@ -132,7 +147,7 @@
 
   function renderChats() {
     const groups = {};
-    chats.forEach((c) => (groups[day(c.updated)] ||= []).push(c));
+    chats.filter((c) => c.updated >= OC.start()).forEach((c) => (groups[day(c.updated)] ||= []).push(c));
     const keys = Object.keys(groups).map(Number).sort((a, b) => b - a);
     document.getElementById("chatlist").innerHTML = keys.length ? keys.map((k) => `<div class="k sec">${esc(dayName(k).toUpperCase())} · ${groups[k].length} chat${groups[k].length > 1 ? "s" : ""}</div>
       <div class="rows">${groups[k].map(row).join("")}</div>`).join("") : `<p class="empty">No chats yet.</p>`;
@@ -152,7 +167,7 @@
   }
 
   function renderCustomers() {
-    const pick = custs.filter((c) => filter === "all" || (filter === "yes" && c.marketing === true) || (filter === "no" && c.marketing === false) || (filter === "none" && c.marketing == null));
+    const pick = custs.filter((c) => (c.last_seen || 0) >= OC.start()).filter((c) => filter === "all" || (filter === "yes" && c.marketing === true) || (filter === "no" && c.marketing === false) || (filter === "none" && c.marketing == null));
     document.getElementById("custs").innerHTML = pick.length ? pick.map((c) => `<div class="cu"><div><b>${esc(c.name)}</b><span>${esc(c.where)}</span></div>
       <span>${esc(c.email)} · ${esc(c.phone)}</span>
       <span class="n ${c.marketing === true ? "y" : c.marketing === false ? "x" : ""}">${c.marketing === true ? "Wants news" : c.marketing === false ? "No emails" : "Not asked yet"} · ${c.orders.length} order${c.orders.length > 1 ? "s" : ""}</span></div>`).join("")
@@ -166,10 +181,11 @@
     const key = prompt("Lena's key"); if (key) location.href = "/api/maker/news-list.csv?key=" + encodeURIComponent(key);
   });
 
-  let ovDays = 1;
+
   const PL = { 1: "today", 7: "in the last 7 days", 14: "in the last 2 weeks", 30: "in the last month", 90: "in the last quarter", 365: "in the last year" };
   function renderToday() {
-    const t0 = ovDays === 1 ? today() / 1000 : (today() - (ovDays - 1) * 864e5) / 1000;
+    const ovDays = OC.days;
+    const t0 = OC.start();
     const live = (o) => !["error", "cancelled", "refunded_out_of_stock"].includes(o.status);
     document.querySelectorAll("#tab-today .pl").forEach((e) => (e.textContent = PL[ovDays]));
     document.getElementById("t-chats").textContent = chats.filter((c) => c.started >= t0).length;
@@ -198,24 +214,21 @@
     document.getElementById("ovlatest").textContent = ovDays === 1 ? "TODAY'S CHATS" : "LATEST CHATS " + PL[ovDays].toUpperCase();
     document.getElementById("latest").innerHTML = recent.length ? recent.slice(0, 5).map(row).join("") : `<p class="empty">No chats ${PL[ovDays]}.</p>`;
   }
-  document.getElementById("ovp").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-d]"); if (!b) return;
-    ovDays = +b.dataset.d; document.querySelectorAll("#ovp button").forEach((x) => x.classList.toggle("on", x === b)); renderToday();
-  });
 
   async function load() {
     [chats, custs, orders, calls] = await Promise.all(["/api/maker/conversations", "/api/maker/customers", "/api/maker/orders", "/api/maker/requests"]
       .map((u) => fetch(u).then((r) => r.json()).catch(() => [])));
     renderChats(); renderCustomers(); renderToday(); show();
   }
+  document.addEventListener("oc-period", () => { renderChats(); renderCustomers(); renderToday(); show(); });
   load(); setInterval(load, 15000);
 })();
 
 // Insights: what sells (in the cars' colours), when shoppers come, where the AI got stuck (Roma 14532).
 (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  let days = 14;
   async function load() {
+    const days = OC.days;
     const d = await fetch(`/api/maker/insights?days=${days}`).then((r) => r.json());
     // bucket a long period into weeks so the lines stay readable
     const step = days > 60 ? 7 : 1;
@@ -242,9 +255,6 @@
     document.getElementById("stuck").innerHTML = d.stuck.length ? d.stuck.map((x) => `<a class="row" href="#chats/${esc(x.chat)}"><b>${esc(new Date(x.at * 1000).toLocaleDateString([], { month: "short", day: "numeric" }))}</b><span>${esc(x.asked)}</span><i>${esc(x.why)}</i></a>`).join("")
       : `<p class="empty">Nothing to fix in this period: every message got a proper answer.</p>`;
   }
-  document.getElementById("period").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-d]"); if (!b) return;
-    days = +b.dataset.d; document.querySelectorAll("#period button").forEach((x) => x.classList.toggle("on", x === b)); load();
-  });
+  document.addEventListener("oc-period", load);
   load(); setInterval(load, 30000);
 })();

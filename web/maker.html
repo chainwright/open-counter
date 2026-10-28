@@ -17,9 +17,9 @@
   <nav class="tabs" id="tabs">
     <a href="#today">Overview</a><a href="#orders">Orders <i id="n-orders"></i></a><a href="#chats">Chats <i id="n-chats"></i></a><a href="#insights">Insights</a><a href="#customers">Customers</a><a href="#stock">Stock</a>
   </nav>
+  <div class="chips period" id="ovp"><button data-d="1">Today</button><button data-d="7">Week</button><button data-d="14" class="on">2 weeks</button><button data-d="30">Month</button><button data-d="90">Quarter</button><button data-d="365">Year</button><span class="pnote" id="pnote"></span></div>
 
   <section class="tab" id="tab-today">
-    <div class="chips" id="ovp"><button data-d="1" class="on">Today</button><button data-d="7">Week</button><button data-d="14">2 weeks</button><button data-d="30">Month</button><button data-d="90">Quarter</button><button data-d="365">Year</button></div>
     <div class="tiles">
       <div><b id="t-chats">0</b><span>new chats <em class="pl">today</em></span></div>
       <div><b id="t-orders">0</b><span>orders <em class="pl">today</em></span></div>
@@ -46,7 +46,6 @@
   </section>
 
   <section class="tab" id="tab-insights" hidden>
-    <div class="chips" id="period"><button data-d="7">Week</button><button data-d="14" class="on">2 weeks</button><button data-d="30">Month</button><button data-d="90">Quarter</button><button data-d="365">Year</button></div>
     <div class="k sec">CARS ORDERED, BY MODEL</div>
     <div class="panel"><svg id="lines" viewBox="0 0 700 220" preserveAspectRatio="none"></svg><div class="keys" id="keys"></div></div>
     <div class="k sec">BEST SELLERS IN THIS PERIOD</div>
