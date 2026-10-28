@@ -265,3 +265,18 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .makers p{color:#C9CDD1;max-width:620px;line-height:1.5;margin:0 0 16px}
 .makers .mk{display:inline-block;background:var(--lamp,#FFE9C7);color:#111;text-decoration:none;font-weight:600;padding:12px 18px;border-radius:12px}
 @media (max-width:600px){.makers{margin:30px 16px}}
+
+.why{max-width:1100px;margin:0 auto;padding:60px 24px 10px}
+.stats3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:22px}
+.stats3 a{display:flex;flex-direction:column;gap:8px;padding:18px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.02);color:inherit;text-decoration:none}
+.stats3 a:hover{border-color:rgba(255,233,199,.45)}
+.stats3 b{font:900 54px/.9 "Big Shoulders Display";color:var(--lamp,#FFE9C7)}
+.stats3 span{font-size:13.5px;line-height:1.45;color:#C9CDD1}
+.whynote{margin-top:16px;max-width:760px;color:#A9AEB4;font-size:14px;line-height:1.55}.whynote a{color:var(--cyan,#38F2E5)}
+@media (max-width:700px){.stats3{grid-template-columns:1fr}.why{padding:44px 16px 6px}}
+
+.lenaside{display:flex;align-items:center;gap:12px;margin:12px 0 6px;padding:12px 14px;border:1px solid rgba(255,233,199,.35);border-radius:14px;background:rgba(255,233,199,.05)}
+.lenaside[hidden]{display:none}.lenaside .ls-dot{width:10px;height:10px;border-radius:50%;background:var(--lamp,#FFE9C7);flex:none;animation:lsp 1.6s infinite}
+.lenaside.paid .ls-dot{background:#3ddc84}@keyframes lsp{50%{opacity:.35}}
+.lenaside div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.lenaside small{font:500 10.5px "Geist Mono";letter-spacing:.14em;color:#A9AEB4}
+.lenaside b{font-size:14px}.lenaside span{font-size:12.5px;color:#C9CDD1}.lenaside a{color:var(--cyan,#38F2E5);font:500 12px "Geist Mono";text-decoration:none;white-space:nowrap}

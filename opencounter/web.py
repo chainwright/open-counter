@@ -140,14 +140,15 @@ def counter_json(slug: str):
                               "photo_url": f"{counter.PUBLIC_URL}/c/{slug}/photo.jpg",
                               "paypal_catalog_product": l.get("paypal_catalog_product")}],
                 "checkout": "Not open yet: the maker connects her own PayPal account to start taking orders."}
-    return counter.about_counter() | {"listings": counter.search_counter()["results"],
-                                       "mcp": f"{counter.PUBLIC_URL}/mcp/"}
+    return {"$schema": f"{counter.PUBLIC_URL}/static/schema/open-counter-card.v1.json"} | counter.about_counter() | {
+        "listings": counter.search_counter()["results"], "mcp": f"{counter.PUBLIC_URL}/mcp/"}
 
 
 @app.get("/.well-known/open-counter.json")
 def well_known():
     s = shop.shop()
-    return {"counters": [{"name": s["name"], "json": f"{counter.PUBLIC_URL}/c/{s['slug']}.json",
+    return {"schema": f"{counter.PUBLIC_URL}/static/schema/open-counter-card.v1.json",
+            "counters": [{"name": s["name"], "json": f"{counter.PUBLIC_URL}/c/{s['slug']}.json",
                           "mcp": f"{counter.PUBLIC_URL}/mcp/"}]
             + [{"name": c["name"], "json": f"{counter.PUBLIC_URL}/c/{c['slug']}.json"} for c in onboard.latest(20)]}
 

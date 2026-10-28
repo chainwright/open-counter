@@ -242,3 +242,12 @@ def test_made_to_order_spec_is_read_in_code_english_and_russian():
         "details": "с двумя чёрными полосами"}
     assert p("the yellow rear-engine coupe, 1973, red body, black interior, 12 of them")["body_colour"] == "red"
     assert p("I like Porsche") is None
+
+
+def test_shop_card_matches_its_published_schema():
+    jsonschema = pytest.importorskip("jsonschema")
+    from fastapi.testclient import TestClient
+    from opencounter import web
+    card = TestClient(web.app).get("/c/small-garage.json").json()
+    schema = json.loads((shop.ROOT / "web/static/schema/open-counter-card.v1.json").read_text())
+    jsonschema.validate(card, schema)

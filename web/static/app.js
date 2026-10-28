@@ -135,6 +135,7 @@
       add("msg a", md(j.reply));
       history.push({ role: "assistant", content: j.reply, memo: j.memo || "" });
       if (j.checkout) {
+        window.dispatchEvent(new CustomEvent("oc-checkout", { detail: j.checkout }));
         const c = j.checkout;
         // a newer order in this chat replaces the earlier one (stock orders): its button no longer pays
         if (c.order_id && !c.deposit_usd) log.querySelectorAll(".cocard:not([data-k=mto]) a.pp").forEach((a) => { const p = document.createElement("p"); p.className = "fine"; p.textContent = "Replaced by the newer order below."; a.replaceWith(p); });
@@ -228,4 +229,24 @@
   const vids = document.querySelectorAll(".steps4 video"); if (!vids.length || !("IntersectionObserver" in window)) return;
   const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) e.target.play().catch(() => {}); else e.target.pause(); }), { threshold: 0.35 });
   vids.forEach((v) => io.observe(v));
+})();
+
+// Lena's side, live, right under the chat: what the maker sees as your order moves (same feed as her screen).
+(() => {
+  const box = document.getElementById("lenaside"); if (!box) return;
+  const t = document.getElementById("ls-t"), sub = document.getElementById("ls-s");
+  const mine = new Set();
+  const says = { awaiting_approval: ["New order on Lena's phone", "Waiting for your OK in PayPal; nothing is charged yet."],
+    paid: ["SOLD TO AN AI AGENT", "Paid in PayPal. Lena packs it and adds the tracking number."],
+    deposit_paid: ["Deposit in: Lena starts building", "The rest is due before it ships."],
+    shipped: ["Shipped", "The tracking number went to PayPal; the buyer is told."],
+    replaced: ["Replaced by your newer order", "Only the newest order can be paid."],
+    refunded_out_of_stock: ["Refunded", "The last one sold a moment earlier; PayPal refunded you in full."] };
+  const show = (o) => { const w = says[o.status] || [o.status, ""]; box.hidden = false; box.classList.toggle("paid", ["paid", "deposit_paid", "shipped"].includes(o.status));
+    t.textContent = `${w[0]} · ${o.id}`; sub.textContent = `${o.title} · $${(o.total_usd || 0).toFixed(2)}. ${w[1]}`; };
+  window.addEventListener("oc-checkout", (e) => { mine.add(e.detail.order_id); fetch(`/api/orders/${e.detail.order_id}`).then((r) => r.json()).then((o) => o.id && show(o)).catch(() => {}); });
+  try {
+    const es = new EventSource("/api/maker/feed");
+    es.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.order && mine.has(m.order.id)) show(m.order); };
+  } catch (e) {}
 })();

@@ -13,6 +13,20 @@ The demo maker is Lena, who builds 1:43 replica cars by hand ($59 each). Any oth
 
 Built for the PayPal AI Hackathon 2026 by Elite Product LLC.
 
+## Why it matters
+- Traffic from AI assistants to US retail sites grew **693%** in the 2025 holidays vs 2024 ([Adobe Analytics](https://news.adobe.com/news/2026/01/adobe-holiday-shopping-season)).
+- About **70%** of Americans could imagine using AI tools to pick Christmas gifts ([Statista, 2025](https://www.statista.com/chart/35529/ai-tools-adoption-and-applications-for-holiday-shopping)).
+- Etsy alone had **5.6 million** active sellers at the end of 2025 ([Inside Retail](https://insideretail.us/etsy-vows-sustained-growth-after-revenue-lift/)): makers like Lena.
+- PayPal's agentic checkout (Store Sync, Agent Ready) is request-access and built around platform stores
+  ([PayPal docs](https://developer.paypal.com/agentic-commerce-services/about)). Open Counter gives a one-person shop the
+  same reach with what any PayPal account already has.
+
+## Does it work? Measured, not claimed
+`evals/run_evals.py` runs 30 scripted conversations against the live model (English and Russian, deadlines, discounts,
+a changed cart, made to order, a wrong ZIP, brand names, an injected instruction, talking to Lena) on a fresh shop each,
+with checks written in code. Latest results and every transcript: [`evals/RESULTS.md`](evals/RESULTS.md),
+`evals/transcripts.json`.
+
 ## Try it in two minutes
 - **Shop:** https://open-counter.onrender.com · chat with the shop's sales agent in section 01, turn any car in 3D.
 - **Lena's back office (open, no login):** https://open-counter.onrender.com/maker
@@ -95,6 +109,11 @@ flowchart LR
 - MCP (streamable HTTP) at `/mcp/`: `about_counter`, `search_counter`, `item_details`, `delivery_estimate`,
   `start_checkout` (one or several cars), `quote_commission`, `start_commission_checkout`, `leave_contact`, `order_status`.
 - JSON card: `/c/small-garage.json`; every counter: `/c/<slug>.json`; discovery: `/.well-known/open-counter.json`.
+- The card is a small open format: [JSON Schema](web/static/schema/open-counter-card.v1.json). Any shop can publish one
+  at a well-known URL; any agent can read it the same way. The two new ideas, in one line each:
+  1. **A shop card any AI agent can read and buy from**, with checkout that only a person can approve in PayPal.
+  2. **A sales agent the maker supervises**: she reads its chats, her assistant flags the bad answers, and her
+     lessons change its next answer.
 
 ## Run locally
 ```bash

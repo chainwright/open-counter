@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-counter.onrender.com/static/schema/open-counter-card.v1.json",
+  "title": "Open Counter card v1",
+  "description": "A small shop described so any AI shopping agent can read it, check delivery and start a PayPal checkout that a person approves. Published at /c/<slug>.json and listed at /.well-known/open-counter.json.",
+  "type": "object",
+  "required": ["shop", "maker", "ships_to", "listings"],
+  "properties": {
+    "shop": {"type": "string", "description": "Shop name"},
+    "maker": {"type": "string", "description": "The person who makes and ships the goods"},
+    "city": {"type": "string"},
+    "about": {"type": "string"},
+    "ships_to": {"type": "string", "description": "Country code; Open Counter v1 ships inside the US"},
+    "shipping_usd": {"type": "number"},
+    "buying_from_stock": {"type": "string"},
+    "made_to_order": {"type": "string", "description": "Rules for builds that aren't on the shelf: price, discounts, build time, what to ask"},
+    "payment": {"type": "string", "description": "Always: the buyer approves every order in PayPal; agents can't pay"},
+    "mcp": {"type": "string", "format": "uri", "description": "MCP endpoint (streamable HTTP) with the shop's tools"},
+    "listings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "price_usd", "stock"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "price_usd": {"type": "number"},
+          "stock": {"type": "integer", "minimum": 0},
+          "availability": {"type": "string"},
+          "materials": {},
+          "paint": {"type": "string"},
+          "scale": {"type": "string"},
+          "photo_url": {"type": "string", "format": "uri"},
+          "model_url": {"type": "string", "format": "uri", "description": "3D model (glTF binary)"},
+          "page_url": {"type": "string", "format": "uri"}
+        }
+      }
+    }
+  }
+}
