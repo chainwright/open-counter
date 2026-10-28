@@ -689,6 +689,23 @@ def _one_car_meant(text: str) -> str:
     return f"{fit[0]['title']} (item_id {fit[0]['id']}, ${fit[0]['price_usd']:.0f}, {fit[0]['stock']} in stock)" if len(fit) == 1 else ""
 
 
+ABBR = dict(zip(["alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut", "delaware",
+                 "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas", "kentucky",
+                 "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota", "mississippi", "missouri",
+                 "montana", "nebraska", "nevada", "new hampshire", "new jersey", "new mexico", "new york",
+                 "north carolina", "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania", "rhode island",
+                 "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont", "virginia", "washington",
+                 "west virginia", "wisconsin", "wyoming"],
+                "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH "
+                "OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split()))
+
+
+def _state_said(typed: str) -> str:
+    """A US state the person named in words ("California", "to west virginia"), the latest one."""
+    found = [(m.start(), ABBR[m.group(1).lower()]) for m in STATE_NAMES.finditer(typed)]
+    return max(found)[1] if found else ""
+
+
 def run(messages: list[dict], visitor: str = "") -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
@@ -750,10 +767,26 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                                   + (f"Отправлю на: {out.get('ship_to', '')}." if ru else f"It ships to {out.get('ship_to', '')}."),
                                   last_user, steps, checkout, lang_text)
     # One colour or one year that fits a single car on the shelf ("a blue one", "the red '65"): that's the car.
-    hint = _one_car_meant(last_user)
+    hint = "" if checkout else _one_car_meant(last_user)
     if hint:
+        # the quantity they gave before switching cars still stands ("3 blue ones", then "the red 65")
+        qty = None if re.search(r"\b\d{1,3}\b(?!\d)", re.sub(r"\b(19)?[67]\d\b", "", last_user)) else next(
+            (m.group(1) for u in reversed(typed.split(" / ")[:-1])
+             for m in [re.search(r"\b(\d{1,3})\s+(?:[a-zа-яё-]+\s+){0,2}(cars?|ones?|машин\w*|штук\w*)", u, re.I)] if m), None)
         convo.append({"role": "system", "content": f"The person means {hint}: it is the only car on the shelf that "
-                      "fits what they said. Offer it directly with its price and stock; don't ask which model."})
+                      "fits what they said. Offer it directly with its price and stock; don't ask which model."
+                      + (f" They asked for {qty} earlier; keep that quantity." if qty else "")})
+        now = re.search(r"\b(\d{1,3})\b", re.sub(r"\b(19)?[67]\d\b|\d{5}", "", last_user))
+        q, st = (now.group(1) if now else qty), _state_said(typed)
+        if q and st and not waiting and not checkout:
+            # car, quantity and state are all known: price it in code now, so the answer can't miss the total
+            item = re.search(r"item_id (\S+),", hint).group(1)
+            args = {"items": [{"item_id": item, "quantity": int(q)}], "us_state": st, "customer": {}}
+            out = _call_tool("start_checkout", args, asked, typed)
+            steps.append({"tool": "start_checkout", "label": LABELS["start_checkout"], "args": args,
+                          "result": _summary("start_checkout", out), "ms": 0})
+            convo.append({"role": "system", "content": "Already priced for you (don't call it again): "
+                          + json.dumps(out)[:1500] + " Say the total and dates, then ask for what's missing."})
     for _ in range(0 if by_code else MAX_STEPS):
         left = TURN_SECONDS - (time.time() - t_start)
         if left < 1.5:
