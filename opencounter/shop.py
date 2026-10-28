@@ -230,15 +230,42 @@ def commission_title(q: dict) -> str:
                                          f"{c['interior_colour']} interior" for c in q["cars"])
 
 
-def new_commission_order(lines: list[dict], state: str, name: str, phone: str, asked_for: str, channel: str) -> dict:
+EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.I)
+
+
+def clean_customer(c: dict | None, state: str) -> dict:
+    """Who the order ships to, checked before any money moves (Roma 14497: name, phone, email, exact address).
+    Raises ValueError naming everything still missing, so the agent asks once."""
+    c = {k: str(v or "").strip() for k, v in (c or {}).items()}
+    zip_ = re.sub(r"\D", "", c.get("postal_code", ""))
+    missing = [label for label, ok in (
+        ("first and last name", len(c.get("full_name", "").split()) >= 2),
+        ("phone number", len(re.sub(r"\D", "", c.get("phone", ""))) >= 7),
+        ("email (for the receipt and tracking)", bool(EMAIL.match(c.get("email", "")))),
+        ("street address", bool(re.search(r"\d", c.get("address_line_1", ""))) and len(c.get("address_line_1", "")) >= 5),
+        ("city", len(c.get("city", "")) >= 2),
+        ("ZIP code", len(zip_) == 5)) if not ok]
+    if missing:
+        raise ValueError("Still needed for the delivery: " + ", ".join(missing) + ".")
+    st = (c.get("state") or state or "").strip().upper()
+    if state and st != state.strip().upper():
+        raise ValueError(f"The address is in {st} but the order ships to {state.upper()}; check the state.")
+    return {"full_name": c["full_name"][:120], "phone": c["phone"][:40], "email": c["email"][:120],
+            "address_line_1": c["address_line_1"][:200], "address_line_2": c.get("address_line_2", "")[:200],
+            "city": c["city"][:80], "state": st, "postal_code": zip_}
+
+
+def new_commission_order(lines: list[dict], state: str, name: str, phone: str, asked_for: str, channel: str,
+                         customer: dict | None = None) -> dict:
     """A made-to-order order that waits for the buyer's PayPal approval, like a stock order, priced from the quote."""
     if not str(name or "").strip() or not str(phone or "").strip():
         raise ValueError("Ask for the person's name and a phone number, so Lena can call about the details.")
+    cust = clean_customer(customer, state) if customer else None
     q = commission_quote(lines, state)
     o = {"id": "OC-" + uuid.uuid4().hex[:8].upper(), "kind": "commission", "listing_id": "", "title": commission_title(q),
          "qty": q["total_cars"], "unit_usd": q["unit_usd"], "discount_usd": q["discount_usd"],
          "shipping_usd": q["shipping_usd"], "total_usd": q["total_usd"], "quote": q,
-         "contact": {"name": str(name).strip()[:120], "phone": str(phone).strip()[:40]},
+         "contact": {"name": str(name).strip()[:120], "phone": str(phone).strip()[:40]}, "customer": cust,
          "ship_state": state.upper(), "estimate": {"ok": True, "ships_on": q["delivery"]["ships_on"],
                                                    "arrives_earliest": q["delivery"]["arrives_earliest"],
                                                    "arrives_latest": q["delivery"]["arrives_latest"],
@@ -296,9 +323,21 @@ def _save_orders(o: list[dict]):
 
 
 def new_order(lid: str, qty: int, state: str, asked_for: str, channel: str,
-              items: list[dict] | None = None) -> dict:
+              items: list[dict] | None = None, customer: dict | None = None) -> dict:
     """Checks the maker's rules before any money moves. Raises ValueError with a sentence an agent can relay.
     items: several cars in one order, [{"item_id", "quantity"}]; otherwise lid/qty is the single line."""
+    s = shop()
+    lines = order_lines(lid, qty, items)
+    est = delivery_estimate(state)
+    if not est["ok"]:
+        raise ValueError(est["reason"])
+    cust = clean_customer(customer, state) if customer else None
+    items_usd = sum(ln["unit_usd"] * ln["qty"] for ln in lines)
+    return _store_order(s, lines, est, cust, items_usd, state, asked_for, channel)
+
+
+def order_lines(lid: str, qty: int, items: list[dict] | None = None) -> list[dict]:
+    """The checked lines of a stock order (merged by listing, stock respected)."""
     s = shop()
     want: dict[str, int] = {}
     for it in (items or [{"item_id": lid, "quantity": qty}]):
@@ -321,13 +360,13 @@ def new_order(lid: str, qty: int, state: str, asked_for: str, channel: str,
         lines.append({"listing_id": k, "title": item["title"], "qty": q, "unit_usd": item["price_usd"]})
     if not lines:
         raise ValueError("Say which car and how many.")
-    est = delivery_estimate(state)
-    if not est["ok"]:
-        raise ValueError(est["reason"])
-    items_usd = sum(ln["unit_usd"] * ln["qty"] for ln in lines)
+    return lines
+
+
+def _store_order(s, lines, est, cust, items_usd, state, asked_for, channel) -> dict:
     title = lines[0]["title"] if len(lines) == 1 else " + ".join(f"{ln['qty']} × {ln['title']}" for ln in lines)
     o = {"id": "OC-" + uuid.uuid4().hex[:8].upper(), "listing_id": lines[0]["listing_id"], "title": title,
-         "qty": sum(ln["qty"] for ln in lines), "lines": lines,
+         "qty": sum(ln["qty"] for ln in lines), "lines": lines, "customer": cust,
          "unit_usd": lines[0]["unit_usd"], "shipping_usd": s["rules"]["shipping_usd"],
          "total_usd": round(items_usd + s["rules"]["shipping_usd"], 2),
          "ship_state": state.upper(), "estimate": est, "asked_for": asked_for[:400], "channel": channel,

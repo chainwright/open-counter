@@ -62,19 +62,20 @@ def quote_commission(cars: list[dict], us_state: str = "") -> dict:
 
 
 def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone: str, what_the_shopper_asked: str,
-                              channel: str = "mcp") -> dict:
+                              channel: str = "mcp", customer: dict | None = None) -> dict:
     """Creates the made-to-order order and a PayPal approval link for the quoted total. Nothing is charged until the
     person approves in PayPal; Lena starts building once it's paid."""
     if not paypal.configured():
         return {"ok": False, "reason": "Checkout is offline right now; nothing was created or charged."}
     try:
-        o = shop.new_commission_order(cars, us_state, name, phone, what_the_shopper_asked, channel)
+        o = shop.new_commission_order(cars, us_state, name, phone, what_the_shopper_asked, channel, customer=customer)
     except ValueError as e:
         return {"ok": False, "reason": str(e)}
     s = shop.shop()
     line = {"id": "MADE-TO-ORDER", "title": o["title"], "price_usd": round(o["total_usd"] - o["shipping_usd"], 2)}
     try:
         pp = paypal.create_order(order_id=o["id"], shop=s, listing=line, qty=1, shipping_usd=o["shipping_usd"],
+                                 customer=o.get("customer"),
                                  return_url=f"{PUBLIC_URL}/paypal/return?oc={o['id']}",
                                  cancel_url=f"{PUBLIC_URL}/paypal/cancel?oc={o['id']}")
     except paypal.PayPalError:
@@ -118,13 +119,14 @@ def delivery_estimate(us_state: str, need_by: str = "") -> dict:
 
 
 def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_asked: str,
-                   channel: str = "mcp", items: list[dict] | None = None) -> dict:
+                   channel: str = "mcp", items: list[dict] | None = None, customer: dict | None = None) -> dict:
     """Creates an order that waits for the human. Returns the PayPal approval link and a side-by-side
     'you asked for / you are approving' summary the agent must show before sending the person to PayPal."""
     if not paypal.configured():
         return {"ok": False, "reason": "Checkout is offline right now; nothing was created or charged."}
     try:
-        o = shop.new_order(item_id, int(quantity or 0), us_state, what_the_shopper_asked, channel, items=items)
+        o = shop.new_order(item_id, int(quantity or 0), us_state, what_the_shopper_asked, channel, items=items,
+                           customer=customer)
     except ValueError as e:
         return {"ok": False, "reason": str(e)}
     s = shop.shop()
@@ -133,6 +135,7 @@ def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_
         pp = paypal.create_order(order_id=o["id"], shop=s, listing=item, qty=o["qty"],
                                  shipping_usd=o["shipping_usd"],
                                  lines=[(shop.listing(ln["listing_id"]), ln["qty"]) for ln in o["lines"]],
+                                 customer=o.get("customer"),
                                  return_url=f"{PUBLIC_URL}/paypal/return?oc={o['id']}",
                                  cancel_url=f"{PUBLIC_URL}/paypal/cancel?oc={o['id']}")
     except paypal.PayPalError as e:

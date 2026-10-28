@@ -14,8 +14,9 @@ shop.seed(force=True)
 TURNS = [
     "Hi, I like Porsche",
     "3 of the yellow ones to Austin",
+    "Sam Rivera, 415-555-0134, sam.rivera@example.com, 1200 Lavaca St, Austin TX 78701",
     "Also a custom one: the yellow rear-engine coupe, 1973, red body, black interior, 12 of them, to California",
-    "Sam Rivera, 415-555-0134",
+    "Same name, phone and email; ship that one to 500 Howard St, San Francisco CA 94105",
 ]
 
 history = []

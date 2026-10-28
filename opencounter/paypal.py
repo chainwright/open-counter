@@ -68,7 +68,8 @@ def money(x) -> str:
 
 
 def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping_usd: float,
-                 return_url: str, cancel_url: str, lines: list[tuple[dict, int]] | None = None) -> dict:
+                 return_url: str, cancel_url: str, lines: list[tuple[dict, int]] | None = None,
+                 customer: dict | None = None) -> dict:
     """One purchase unit with the exact item, quantity and shipping. Amounts are recomputed here from the
     listing, never taken from the agent's words. The buyer's address comes from their PayPal account."""
     lines = lines or [(listing, qty)]
@@ -93,6 +94,15 @@ def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping
             "brand_name": shop["name"], "shipping_preference": "GET_FROM_FILE", "user_action": "PAY_NOW",
             "return_url": return_url, "cancel_url": cancel_url}}},
     }
+    if customer:   # the address the buyer gave the agent: PayPal shows it and ships there
+        body["purchase_units"][0]["shipping"] = {
+            "name": {"full_name": customer["full_name"]},
+            "address": {"address_line_1": customer["address_line_1"], "address_line_2": customer.get("address_line_2") or None,
+                        "admin_area_2": customer["city"], "admin_area_1": customer["state"],
+                        "postal_code": customer["postal_code"], "country_code": "US"}}
+        if not body["purchase_units"][0]["shipping"]["address"]["address_line_2"]:
+            del body["purchase_units"][0]["shipping"]["address"]["address_line_2"]
+        body["payment_source"]["paypal"]["experience_context"]["shipping_preference"] = "SET_PROVIDED_ADDRESS"
     return _call("POST", "/v2/checkout/orders", body, request_id=f"create-{order_id}")
 
 

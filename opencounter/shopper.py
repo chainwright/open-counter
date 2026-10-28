@@ -32,13 +32,15 @@ BRANDS = re.compile(r"\b(ford|mustang|shelby|eleanor|porsche|911|chevrolet|chevy
 PERMISSION = re.compile(r"\b(shall i|should i|would you like me to|do you want me to|want me to|ready to proceed|"
                         r"shall we|proceed with (the )?(checkout|order))\b", re.I)
 LINK_CLAIM = re.compile(r"paypal (link|button|checkout)|link below|approve (the |your )?(payment|order)|approval link|"
-                        r"updated (the|your) (order|shipment)|order (is )?ready", re.I)
+                        r"updated (the|your) (order|shipment)|order (is )?ready|order approved|sandbox\.paypal|checkoutnow|link:|orders? ready",
+                        re.I)
 PHONE = re.compile(r"(\+?\d[\d\s().-]{6,}\d)")
 MEMO_TAG = re.compile(r"\n?\[(what the tools returned|tool results)[^\]]*\]", re.I)
 REFUSAL = re.compile(r"^\s*(i.?m sorry,?\s*)?(but\s*)?i (can.?t|cannot) (help|assist) with (that|this)", re.I)
 ITEM_ID = re.compile(r"\s*\(?\bsg[-‑–]\d+\b\)?", re.I)
 PROMISE = re.compile(r"\b(let me|let's|lets|i'll|i will|we'll|we will|i am going to|i'm going to|we need to)\b.{0,40}"
-                     r"\b(search|check|look|find|see|quote|place|send|submit|call|get|calculate|price|prepare|create)\b|\bsearching\b", re.I)
+                     r"\b(search|check|look|find|see|quote|place|send|submit|call|get|calculate|price|prepare|create)\b|\bsearching\b|"
+                     r"\b(now |i.?m )(creating|placing|setting up|generating|preparing|quoting|checking|calculating|pricing)\b", re.I)
 
 SYSTEM = """You are the sales agent at Small Garage, a one-person maker of
 hand-built 1:43 replica cars, serving a customer through the shop's public tools. Rules:
@@ -49,17 +51,27 @@ hand-built 1:43 replica cars, serving a customer through the shop's public tools
   Never refuse the conversation over a brand name.
 - Buying a listed car: the person can buy any quantity up to the stock on the listing. Check delivery to their US
   state (a state name is enough: California → CA; work out the state from a city; pass a deadline as need_by only if the person
-  gave one and repeat the tool's verdict; never ask for a deadline), then call
-  start_checkout in the same turn as soon as you know the car, the quantity and the state. PayPal collects their
-  name and address.
+  gave one and repeat the tool's verdict; never ask for a deadline).
+- A stock order and a made-to-order build are always two separate checkouts; an order already created stays as it
+  is. Never write a PayPal link or say an order is approved: the button appears under your message by itself.
+- Call start_checkout as soon as the cars, quantity and state are clear, even before you have the person's
+  details: until everything is there it creates nothing and returns the total, the delivery dates and exactly which
+  details to ask for. Who it ships to: before the order is created you need, typed by the person: first and last name, phone number (Lena may
+  call about the delivery), email (for the receipt and the tracking number), and the full address: street, city,
+  ZIP. Once the car and quantity are clear, give the price and delivery dates and ask for ALL still-missing details
+  in one short message (not one by one); always say the total and the dates in that same message. Details the
+  person already gave earlier in this chat count (e.g. "same name, phone and email"): reuse them, never ask twice.
+  As soon as you have them, call start_checkout (with customer) in the same
+  turn, no "shall I?". Never invent or fill in any of these details.
 - Several different cars in stock (e.g. 5 yellow, 5 green, 5 orange): one order, one start_checkout call with all
   of them in items. Never call start_checkout more than once per order, and never type a payment link yourself:
   the PayPal button appears under your message.
 - Made to order (a car or colour not in stock, or more than the stock): ask, one short question at a time and only
   for what's still missing: which car (body style or one of the listings), the year of the real car, the body
   colour, the interior colour, and how many. Then call quote_commission and give the total, discount, shipping,
-  build time and ready date exactly as returned, and in the same reply ask for their name and phone number. As
-  soon as you have them, call start_commission_checkout right away (no extra "shall I?" question: the person
+  build time and ready date exactly as returned, and in the same reply ask for their name, phone, email and full
+  delivery address (street, city, ZIP). As soon as you have them, call start_commission_checkout (name, phone and
+  customer) right away (no extra "shall I?" question: the person
   confirms by approving in PayPal). Show 'you_are_approving' and say Lena starts building once it's paid.
 - Asked when it ships or arrives: answer from delivery_estimate (ships_on, arrival range, shipping_policy), word
   for word on the numbers; don't add your own day counts.
@@ -102,8 +114,12 @@ TOOLS = [
                 "model": {"type": "string"}, "year": {"type": "string"}, "body_colour": {"type": "string"},
                 "interior_colour": {"type": "string"}, "quantity": {"type": "integer"}},
                 "required": ["model", "year", "body_colour", "interior_colour", "quantity"]}}, "us_state": {"type": "string"},
-                       "name": {"type": "string"}, "phone": {"type": "string"}},
-                       "required": ["cars", "us_state", "name", "phone"]}}},
+                       "name": {"type": "string"}, "phone": {"type": "string"}, "customer": {"type": "object", "description": "Exactly as the person typed it.", "properties": {
+                "full_name": {"type": "string"}, "phone": {"type": "string"}, "email": {"type": "string"},
+                "address_line_1": {"type": "string"}, "address_line_2": {"type": "string"}, "city": {"type": "string"},
+                "state": {"type": "string"}, "postal_code": {"type": "string"}},
+                "required": ["full_name", "phone", "email", "address_line_1", "city", "state", "postal_code"]},},
+                       "required": ["cars", "us_state", "name", "phone", "customer"]}}},
     {"type": "function", "function": {"name": "leave_contact",
         "description": "Pass the person's phone number and question to Lena; she calls them back.",
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}, "name": {"type": "string"},
@@ -115,9 +131,13 @@ TOOLS = [
                                                         "items": {"type": "array", "items": {"type": "object", "properties": {
                                                             "item_id": {"type": "string"}, "quantity": {"type": "integer"}},
                                                             "required": ["item_id", "quantity"]}},
-                                                        "us_state": {"type": "string"},
+                                                        "us_state": {"type": "string"}, "customer": {"type": "object", "description": "Exactly as the person typed it.", "properties": {
+                "full_name": {"type": "string"}, "phone": {"type": "string"}, "email": {"type": "string"},
+                "address_line_1": {"type": "string"}, "address_line_2": {"type": "string"}, "city": {"type": "string"},
+                "state": {"type": "string"}, "postal_code": {"type": "string"}},
+                "required": ["full_name", "phone", "email", "address_line_1", "city", "state", "postal_code"]},
                                                         "what_the_shopper_asked": {"type": "string"}},
-                       "required": ["us_state", "what_the_shopper_asked"]}}},
+                       "required": ["us_state", "what_the_shopper_asked", "customer"]}}},
 ]
 LABELS = {"about_counter": "reading the counter", "search_counter": "searching the counter",
           "item_details": "reading the listing", "delivery_estimate": "checking delivery",
@@ -141,7 +161,7 @@ def spent_today() -> float:
     return _spent.get(date.today().isoformat(), 0.0)
 
 
-def _call_tool(name: str, args: dict, asked: str = "") -> dict:
+def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
     if name == "about_counter":
         return counter.about_counter()
     if name == "search_counter":
@@ -154,21 +174,70 @@ def _call_tool(name: str, args: dict, asked: str = "") -> dict:
         return counter.delivery_estimate(args.get("us_state", ""), args.get("need_by", ""))
     if name == "quote_commission":
         return counter.quote_commission(args.get("cars") or [], args.get("us_state", ""))
+    if name in ("start_checkout", "start_commission_checkout"):
+        # The model must not make up who it ships to: phone, email and ZIP have to be ones the person actually typed.
+        c = args.get("customer") or {}
+        if name == "start_commission_checkout":
+            c = {"full_name": args.get("name", ""), "phone": args.get("phone", ""), **c}
+        digits = re.sub(r"\D", "", str(c.get("phone", "")))
+        zip_ = re.sub(r"\D", "", str(c.get("postal_code", "")))
+        email = str(c.get("email", "")).strip().lower()
+        typed_digits = re.sub(r"\D", "", typed)
+        need = [lbl for lbl, ok in (
+            ("first and last name", len(str(c.get("full_name", "")).split()) >= 2
+             and all(w.lower() in typed.lower() for w in str(c.get("full_name", "")).split())),
+            ("phone number", len(digits) >= 7 and digits[-7:] in typed_digits),
+            ("email (for the receipt and tracking)", bool(email) and email in typed.lower()),
+            ("street address", bool(c.get("address_line_1")) and str(c.get("address_line_1", "")).split()[0] in typed),
+            ("city", bool(c.get("city")) and str(c.get("city", "")).lower() in typed.lower()),
+            ("ZIP code", len(zip_) == 5 and zip_ in typed)) if not ok]
+        if need:
+            # Not ready to create the order yet: hand back the price and dates plus exactly what to ask for, so the
+            # reply quotes the order and asks for every missing detail in one go.
+            out = {"ok": False, "not_created_yet": True, "ask_the_person_for": need,
+                   "how": "Say the total and delivery dates below, then ask for all of these in ONE short message. "
+                          "Use only what they type; never fill anything in. Don't name tools."}
+            try:
+                if name == "start_checkout":
+                    lines = shop.order_lines(args.get("item_id", ""), int(args.get("quantity") or 0), args.get("items") or None)
+                    est = shop.delivery_estimate(args.get("us_state", ""))
+                    total = sum(ln["unit_usd"] * ln["qty"] for ln in lines) + shop.shop()["rules"]["shipping_usd"]
+                    out["order_would_be"] = (" + ".join(f"{ln['qty']} × {ln['title']}" for ln in lines)
+                                             + f", ${total:.2f} with shipping")
+                    if est.get("ok"):
+                        out["delivery"] = f"ships {est['ships_on']}, arrives {est['arrives_earliest']} to {est['arrives_latest']}"
+            except (ValueError, KeyError, TypeError) as e:
+                out["problem"] = str(e)
+            return out
+        if name == "start_checkout":
+            # Same cars and same person as an order already waiting in this chat: hand that one back, don't duplicate.
+            try:
+                lines = shop.order_lines(args.get("item_id", ""), int(args.get("quantity") or 0), args.get("items") or None)
+            except (ValueError, TypeError):
+                lines = None
+            for o in shop.orders():
+                if (lines and o.get("status") == "awaiting_approval" and o.get("kind") != "commission"
+                        and o.get("asked_for", "")[:60] == asked[:60] and o.get("approve_url")
+                        and [(x["listing_id"], x["qty"]) for x in o.get("lines") or []] == [(x["listing_id"], x["qty"]) for x in lines]
+                        and (o.get("customer") or {}).get("postal_code") == zip_):
+                    return {"ok": True, "order_id": o["id"], "approve_url": o["approve_url"], "you_asked_for": o["asked_for"],
+                            "you_are_approving": " + ".join(f"{x['qty']} × {x['title']} at ${x['unit_usd']:.2f}" for x in o["lines"])
+                                                 + f" + ${o['shipping_usd']:.2f} shipping = ${o['total_usd']:.2f}",
+                            "delivery": f"ships {o['estimate']['ships_on'].split(' ')[-1]}, estimated arrival "
+                                        f"{o['estimate']['arrives_earliest'].split(' ')[-1]} to {o['estimate']['arrives_latest'].split(' ')[-1]}",
+                            "next_step": "This order already exists; show it again. Nothing is charged until they approve."}
     if name == "start_commission_checkout":
-        # The model must not make up contact details: the number has to be one the person actually typed.
-        digits = re.sub(r"\D", "", args.get("phone", ""))
-        typed = re.sub(r"\D", "", asked)
-        if len(digits) < 7 or digits[-7:] not in typed:
-            return {"ok": False, "reason": "Ask the person for their name and phone number first; don't fill them in."}
         return counter.start_commission_checkout(args.get("cars") or [], args.get("us_state", ""), args.get("name", ""),
-                                                 args.get("phone", ""), asked, channel="demo-shopper")
+                                                 args.get("phone", ""), asked, channel="demo-shopper",
+                                                 customer=args.get("customer"))
     if name == "leave_contact":
         return counter.leave_contact(args.get("phone", ""), args.get("name", ""), args.get("message", ""), asked,
                                      channel="demo-shopper")
     if name == "start_checkout":
         return counter.start_checkout(args.get("item_id", ""), int(args.get("quantity", 1) or 1),
                                       args.get("us_state", ""), asked or args.get("what_the_shopper_asked", ""),
-                                      channel="demo-shopper", items=args.get("items") or None)
+                                      channel="demo-shopper", items=args.get("items") or None,
+                                      customer=args.get("customer"))
     return {"error": f"unknown tool {name}"}
 
 
@@ -185,8 +254,10 @@ def _summary(name: str, out: dict) -> str:
             return out.get("reason", "")
         s = f"ships {out['ships_on'][:3]} · arrives {out['arrives_earliest'][:3]}–{out['arrives_latest'][:3]}"
         return s + (f" · by {out['need_by'][:3]}: {out['need_by_verdict']}" if out.get("need_by") else "")
+    if name in ("start_checkout", "start_commission_checkout") and out.get("not_created_yet"):
+        return ((out.get("order_would_be", "") + " · ") if out.get("order_would_be") else "") + "needs: " + ", ".join(out["ask_the_person_for"])
     if name == "start_checkout":
-        return "waiting for your approval in PayPal" if out.get("ok") else out.get("reason", "")
+        return "waiting for your approval in PayPal" if out.get("ok") else out.get("reason", out.get("problem", ""))
     if name == "quote_commission":
         if not out.get("ok"):
             return out.get("reason", "")
@@ -220,7 +291,8 @@ def run(messages: list[dict]) -> dict:
     quoted_before = any("made-to-order build" in (m.get("memo") or "") and "ready" in (m.get("memo") or "")
                         for m in messages if m["role"] == "assistant")
     # 'You asked for' is the person's own words, not the model's paraphrase of them.
-    asked = " / ".join(m["content"] for m in messages if m["role"] == "user")[-400:]
+    typed = " / ".join(m["content"] for m in messages if m["role"] == "user")
+    asked = typed[-400:]
     t_start = time.time()
     for _ in range(MAX_STEPS):
         r = _client_().chat.completions.create(model=MODEL, messages=convo, tools=TOOLS, max_tokens=500,
@@ -238,32 +310,36 @@ def run(messages: list[dict]) -> dict:
                       {"role": "user", "content": "Go ahead: use the tools now, then answer."}]
             continue
         quoted = quoted_before or any(st["tool"] == "quote_commission" and "ready" in st["result"] for st in steps)
-        if (not msg.tool_calls and not nudged and not checkout and quoted and PHONE.search(last_user)
+        if (not msg.tool_calls and not nudged and not checkout and quoted
+                and (PHONE.search(last_user) or re.search(r"\b\d{5}\b|@", last_user))
                 and not any(st["tool"] == "start_commission_checkout" for st in steps)):
             # The person gave their name and number after a quote: that's everything the order needs.
             nudged = True
             convo += [{"role": "assistant", "content": msg.content or ""},
-                      {"role": "user", "content": "You have the quote, the name and the phone. Call "
-                       "start_commission_checkout now with the same cars and state, then answer."}]
+                      {"role": "user", "content": "If the person has now given name, phone, email and the full "
+                       "address, call start_commission_checkout now with the same cars and state; otherwise ask only "
+                       "for what is missing."}]
             continue
         if (not msg.tool_calls and not nudged and not checkout
+                and not re.search(r"e-?mail|address|phone|last name|zip", msg.content or "", re.I)
                 and any(st["tool"] in ("delivery_estimate", "quote_commission") for st in steps)):
             # It priced or dated an order and then stopped (asked permission, asked for a gift note, ...).
             nudged = True
             convo += [{"role": "assistant", "content": msg.content or ""},
-                      {"role": "user", "content": "Don't ask for permission: if you have the car, quantity and state "
-                       "(and for a made-to-order build also the name and phone), create the order now with the "
-                       "checkout tool; otherwise ask only for what is missing."}]
+                      {"role": "user", "content": "Don't ask for permission: if you have the cars, quantity and the "
+                       "person's name, phone, email and full address, create the order now with the checkout tool; "
+                       "otherwise ask in one message for everything still missing."}]
             continue
         if (not msg.tool_calls and not nudged and not checkout and re.search(r"\d|\b(one|two|three|four|five|six|"
                 r"seven|eight|nine|ten|a couple)\b", last_user, re.I) and "?" in (msg.content or "")
+                and not re.search(r"e-?mail|address|phone|last name|zip", msg.content or "", re.I)
                 and any(st["tool"] in ("search_counter", "item_details") and "in stock" in st["result"] for st in steps)):
             # It found the car and the person said how many, then asked something optional (a date, a confirmation).
             nudged = True
             convo += [{"role": "assistant", "content": msg.content or ""},
-                      {"role": "user", "content": "A deadline is optional. If the person gave the car, the quantity "
-                       "and a US state or city, call delivery_estimate and start_checkout now; otherwise ask only "
-                       "for what is missing."}]
+                      {"role": "user", "content": "A deadline is optional, don't ask for it. If you have the cars, "
+                       "quantity, name, phone, email and full address, call start_checkout now; otherwise give the "
+                       "price and delivery dates and ask in one message for every missing detail."}]
             continue
         if (not msg.tool_calls and not checkout and LINK_CLAIM.search(msg.content or "")
                 and not any(st["tool"] in ("start_checkout", "start_commission_checkout") and "waiting" in st["result"]
@@ -271,9 +347,21 @@ def run(messages: list[dict]) -> dict:
             # It talks about a payment link or an updated order, but no checkout exists for this turn: the button
             # under the message would be missing. Make the order now (with the final cars and state) or ask.
             convo += [{"role": "assistant", "content": msg.content or ""},
-                      {"role": "user", "content": "No PayPal button was created in this turn. Call start_checkout now "
-                       "with the final cars (all of them in items) and the state; if something is missing, ask only for "
-                       "that. Never mention a link that doesn't exist."}]
+                      {"role": "user", "content": "No PayPal button was created in this turn. If you have the final "
+                       "cars, name, phone, email and full address, call start_checkout now (all cars in items, with "
+                       "customer); otherwise ask in one message for what is missing. Never mention a link that "
+                       "doesn't exist."}]
+            continue
+        if (not msg.tool_calls and not nudged and not checkout
+                and re.search(r"e-?mail|address|zip", msg.content or "", re.I)
+                and not re.search(r"\$\s?\d", msg.content or "")
+                and not any(st["tool"] in ("start_checkout", "quote_commission") for st in steps)):
+            # It asks for the delivery details but hasn't priced the order: get the total and dates first.
+            nudged = True
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "Call start_checkout now with the cars, quantity and state (it creates "
+                       "nothing yet and returns the total and dates), then give the total and dates and ask for the "
+                       "missing details in one message."}]
             continue
         if not msg.tool_calls and REFUSAL.search(msg.content or "") and not nudged:
             nudged = True
@@ -308,7 +396,7 @@ def run(messages: list[dict]) -> dict:
             except json.JSONDecodeError:
                 args = {}
             t0 = time.time()
-            out = _call_tool(tc.function.name, args, asked)
+            out = _call_tool(tc.function.name, args, asked, typed)
             steps.append({"tool": tc.function.name, "label": LABELS.get(tc.function.name, tc.function.name),
                           "args": args, "result": _summary(tc.function.name, out), "ms": int((time.time() - t0) * 1000)})
             if tc.function.name in ("start_checkout", "start_commission_checkout") and out.get("ok"):

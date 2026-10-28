@@ -157,3 +157,21 @@ def test_several_cars_are_one_order_and_stock_moves_all_or_nothing():
     assert all(shop.listing(i)["stock"] == 30 for i in ids)
     assert shop.take_stock_lines(o["lines"])
     assert all(shop.listing(i)["stock"] == 25 for i in ids)
+
+
+def test_delivery_details_are_checked_and_go_to_paypal(monkeypatch):
+    with pytest.raises(ValueError, match="email.*ZIP"):
+        shop.clean_customer({"full_name": "Sam Rivera", "phone": "415-555-0134", "address_line_1": "1200 Lavaca St",
+                             "city": "Austin"}, "TX")
+    cust = {"full_name": "Sam Rivera", "phone": "415-555-0134", "email": "sam@example.com",
+            "address_line_1": "1200 Lavaca St", "city": "Austin", "state": "TX", "postal_code": "78701"}
+    with pytest.raises(ValueError, match="TX.*CA"):
+        shop.clean_customer(cust, "CA")
+    sent = {}
+    monkeypatch.setattr(paypal, "_call", lambda m, p, body=None, **k: sent.setdefault("b", body) and {"id": "X", "links": []})
+    monkeypatch.setattr(paypal, "configured", lambda: True)
+    out = counter.start_checkout("sg-014", 2, "TX", "2 green", customer=cust)
+    sh = sent["b"]["purchase_units"][0]["shipping"]
+    assert out["ok"] and sh["address"]["postal_code"] == "78701" and sh["name"]["full_name"] == "Sam Rivera"
+    assert sent["b"]["payment_source"]["paypal"]["experience_context"]["shipping_preference"] == "SET_PROVIDED_ADDRESS"
+    assert shop.order(out["order_id"])["customer"]["email"] == "sam@example.com"
