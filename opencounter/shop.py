@@ -371,8 +371,13 @@ def order_lines(lid: str, qty: int, items: list[dict] | None = None) -> list[dic
     for k, q in want.items():
         item = listing(k)
         if not item and k:
-            hits = search(k)   # an agent passed a name or colour instead of the id: accept one clear match
-            item = hits[0] if len(hits) == 1 else None
+            # an agent passed a name or colour instead of the id: accept an exact title, or one clear match
+            low = k.lower().split(",")[0].strip()
+            item = next((x for x in shop()["listings"] if x["title"].lower().split(",")[0] == low
+                         or x["title"].lower() == k.lower()), None)
+            if not item:
+                hits = search(k)
+                item = hits[0] if len(hits) == 1 else None
             k = item["id"] if item else k
         if not item:
             raise ValueError(f"No listing '{k}' at {s['name']}.")

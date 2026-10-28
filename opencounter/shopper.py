@@ -478,10 +478,10 @@ US_STATE_NAMES = {n.lower() for n in (
     "south carolina", "south dakota", "west virginia", "puerto rico"} - {"puerto rico"}
 
 
-def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | None = None) -> str:
+def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | None = None, lang_text: str = "") -> str:
     """Two answers a shopper must never miss, added in code if the model left them out: the deadline verdict, and
     the answer to 'can I get a discount?'."""
-    ru = bool(re.search(r"[а-яё]", last_user, re.I))
+    ru = bool(re.search(r"[а-яё]", lang_text or last_user, re.I))
     ok = next((m for m in (re.search(r"by ([\w ]+): on time", st["result"]) for st in steps) if m), None)
     if ok and not re.search(r"on time|in time|arrive[sd]? (by|before)|успе", reply, re.I):
         reply = (f"Хорошая новость: успеет к сроку ({ok.group(1).strip()}). " if ru else
@@ -556,6 +556,11 @@ def run(messages: list[dict], visitor: str = "") -> dict:
     # 'You asked for' is the person's own words, not the model's paraphrase of them.
     typed = " / ".join(m["content"] for m in messages if m["role"] == "user")
     asked = typed[-400:]
+    # the conversation's language: a message that is only a name and an address doesn't switch it
+    lang_text = next((m["content"] for m in reversed(messages) if m["role"] == "user"
+                      and len(re.findall(r"[а-яё]", m["content"], re.I)) + len(re.findall(r"[a-z]", m["content"], re.I)) > 0
+                      and (re.search(r"[а-яё]{3,}", m["content"], re.I) and not PHONE.search(m["content"])
+                           or not PHONE.search(m["content"]))), last_user)
     t_start = time.time()
     for _ in range(MAX_STEPS):
         r = _client_().chat.completions.create(model=MODEL, messages=convo, tools=TOOLS, max_tokens=500,
@@ -719,9 +724,9 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                     reply = BRANDS.sub("that model", reply)
             reply = ITEM_ID.sub("", reply)
             reply = _scrub_invented(reply, typed)
-            fixed, fusd = _polish(reply, last_user)
+            fixed, fusd = _polish(reply, lang_text)
             reply, usd = _scrub_invented(fixed, typed), usd + fusd
-            reply = _must_say(reply, last_user, steps, checkout)
+            reply = _must_say(reply, last_user, steps, checkout, lang_text)
             break
         convo.append({"role": "assistant", "content": msg.content or "",
                       "tool_calls": [tc.model_dump() for tc in msg.tool_calls]})
@@ -760,7 +765,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply)
                          if not re.search(r"(news|email|e-mail|почт|рассыл).{0,40}(\?|new models|offers|новы|акци)", x, re.I)) or reply
     if checkout and checkout.get("ship_to") and not asked_before:
-        reply = reply.strip() + "\n\n" + (NEWS_Q_RU if re.search(r"[а-яё]", last_user, re.I) else NEWS_Q)
+        reply = reply.strip() + "\n\n" + (NEWS_Q_RU if re.search(r"[а-яё]", lang_text, re.I) else NEWS_Q)
     if not reply.strip():
         reply = "Sorry, I lost my thread there. Could you say that again in a few words?"
     return {"reply": reply.strip(), "steps": steps, "checkout": checkout, "usd": round(usd, 5), "model": MODEL,
