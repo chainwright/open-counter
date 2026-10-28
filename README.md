@@ -22,8 +22,8 @@ Built for the PayPal AI Hackathon 2026 by Elite Product LLC.
   same reach with what any PayPal account already has.
 
 ## Does it work? Measured, not claimed
-`evals/run_evals.py` runs 30 scripted conversations against the live model (English and Russian, deadlines, discounts,
-a changed cart, made to order, a wrong ZIP, brand names, an injected instruction, talking to Lena) on a fresh shop each,
+`evals/run_evals.py` runs 31 scripted conversations against the live model (English and Russian, deadlines, discounts,
+a changed cart, details typed over several messages, made to order, a wrong ZIP, brand names, an injected instruction, talking to Lena) on a fresh shop each,
 with checks written in code. Latest results and every transcript: [`evals/RESULTS.md`](evals/RESULTS.md),
 `evals/transcripts.json`.
 
