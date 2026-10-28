@@ -97,7 +97,7 @@
       if (j.error) { add("msg a", esc(j.error)); return; }
       for (const s of j.steps) add("tl", `<i></i>${esc(s.label)} · ${esc(s.result)}`);
       add("msg a", md(j.reply));
-      history.push({ role: "assistant", content: j.reply });
+      history.push({ role: "assistant", content: j.reply, memo: j.memo || "" });
       if (j.checkout) {
         const c = j.checkout;
         add("cocard", `<div class="ap-pair"><div><small>You asked for</small>${esc(c.you_asked_for)}</div><div><small>You're approving</small>${esc(c.you_are_approving)}</div></div>

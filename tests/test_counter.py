@@ -102,3 +102,41 @@ def test_promise_without_action_is_recognised():
 def test_sold_out_listing_states_commission_terms_not_the_shelf_price():
     a = counter.item_details("sg-009")["availability"]
     assert "sold out" in a and "$89" in a and "3 weeks" in a
+
+
+# ---- commissions (Roma's test 27.10: the agent made up prices, lead times and agreed to 50 cars) ----
+def test_commission_price_discount_and_lead_time_come_from_the_rules():
+    d = date(2026, 10, 27)
+    one = shop.commission_quote([{"item_id": "sg-009", "colour": "yellow", "quantity": 1}], "CA", today=d)
+    assert one["unit_usd"] == 89 and one["volume_discount_percent"] == 0 and one["build_weeks"] == 3
+    assert one["shipping_usd"] == 6.5 and one["total_usd"] == 95.5
+    mix = [{"item_id": "sg-009", "colour": "yellow", "quantity": 15},
+           {"item_id": "sg-009", "colour": "light blue", "quantity": 5},
+           {"item_id": "sg-012", "colour": "red", "quantity": 5}]
+    q = shop.commission_quote(mix, "CA", today=d)
+    assert q["total_cars"] == 25 and q["volume_discount_percent"] == 15 and q["shipping_usd"] == 0
+    assert q["total_usd"] == round(25 * 89 * 0.85, 2)
+    assert q["build_weeks"] == 3 + 8                       # 23 cars beyond the first two, 3 a week
+    ten = shop.commission_quote([{"body": "fastback", "colour": "blue", "quantity": 10}], today=d)
+    assert ten["volume_discount_percent"] == 10 and ten["shipping_usd"] == 0
+
+
+def test_commission_refuses_missing_colour_and_too_many_cars():
+    with pytest.raises(ValueError, match="colour"):
+        shop.commission_quote([{"item_id": "sg-014", "quantity": 2}])
+    with pytest.raises(ValueError, match="at most 40"):
+        shop.commission_quote([{"item_id": "sg-014", "colour": "green", "quantity": 50}])
+
+
+def test_commission_request_needs_contact_and_charges_nothing():
+    cars = [{"item_id": "sg-015", "colour": "highland blue", "quantity": 3}]
+    r = counter.request_commission("Sam", "", "555", "1 Main St, Fresno, CA 93701", "CA", cars)
+    assert not r["ok"] and "email" in r["reason"]
+    r = counter.request_commission("Sam", "sam@example.com", "555-0100", "1 Main St, Fresno, CA 93701", "CA", cars)
+    assert r["ok"] and r["request_id"].startswith("CR-") and "invoice" in r["next_step"]
+    assert shop.orders() == [] and len(shop.requests_()) == 1
+
+
+def test_sold_out_listing_says_when_the_next_batch_is():
+    yellow = counter.item_details("sg-009")
+    assert yellow["next_batch"] == "2026-11-20" and "next small batch" in yellow["availability"]

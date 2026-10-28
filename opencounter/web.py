@@ -109,9 +109,9 @@ async def api_checkout(req: Request):
 @app.post("/api/shopper")
 async def api_shopper(req: Request):
     b = await req.json()
-    msgs = [m for m in b.get("messages", []) if isinstance(m.get("content"), str)][-12:]
-    for m in msgs:
-        m["content"] = m["content"][:1000]
+    # The whole conversation (up to 40 turns), so the agent remembers quantities, colours and quotes already given.
+    msgs = [{"role": m.get("role"), "content": m["content"][:1000], "memo": str(m.get("memo") or "")[:800]}
+            for m in b.get("messages", []) if isinstance(m.get("content"), str)][-40:]
     try:
         out = await asyncio.to_thread(shopper.run, msgs)
     except shopper.OverBudget as e:

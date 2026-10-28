@@ -19,7 +19,22 @@
   "shipping_usd": 6.5,
   "commissions": true,
   "commission_lead_weeks": 3,
-  "commission_from_usd": 89
+  "commission_from_usd": 89,
+  "commission_usd": 89,
+  "commission_cars_per_week": 3,
+  "commission_max_per_request": 40,
+  "commission_volume_discounts": [
+   {
+    "min_cars": 10,
+    "percent": 10
+   },
+   {
+    "min_cars": 25,
+    "percent": 15
+   }
+  ],
+  "commission_free_shipping_from": 10,
+  "commission_how": "Lena reads every request herself, replies by email within 2 days, and sends a PayPal invoice once she confirms. Nothing is charged before that."
  },
  "listings": [
   {
@@ -44,7 +59,8 @@
     "gift",
     "dad"
    ],
-   "model": "green_fastback.glb"
+   "model": "green_fastback.glb",
+   "next_batch": null
   },
   {
    "id": "sg-015",
@@ -66,7 +82,8 @@
     "blue",
     "American"
    ],
-   "model": "blue_fastback.glb"
+   "model": "blue_fastback.glb",
+   "next_batch": null
   },
   {
    "id": "sg-011",
@@ -87,7 +104,8 @@
     "1970",
     "orange"
    ],
-   "model": "orange_coupe.glb"
+   "model": "orange_coupe.glb",
+   "next_batch": null
   },
   {
    "id": "sg-009",
@@ -110,7 +128,8 @@
     "German",
     "rear-engine"
    ],
-   "model": "yellow_german.glb"
+   "model": "yellow_german.glb",
+   "next_batch": "2026-11-20"
   },
   {
    "id": "sg-012",
@@ -132,7 +151,8 @@
     "American",
     "classic"
    ],
-   "model": "red_convertible.glb"
+   "model": "red_convertible.glb",
+   "next_batch": null
   }
  ]
 }

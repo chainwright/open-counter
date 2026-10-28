@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -152,6 +153,96 @@ def delivery_estimate(state: str, today: date | None = None, need_by: str = "") 
         out["need_by_verdict"] = ("on time" if late <= nb else "possible, not certain" if early <= nb
                                   else "too late")
     return out
+
+
+# ---- commissions: priced and scheduled in code, so an agent can only repeat the numbers ----
+COLOURS = ("green", "highland blue", "light blue", "blue", "orange", "red", "yellow", "black", "white", "silver", "grey")
+
+
+def commission_quote(lines: list[dict], state: str = "", today: date | None = None) -> dict:
+    """lines: [{"item_id" or "body", "colour", "quantity"}]. Returns the price, discount, shipping, build time and
+    delivery window for a made-to-order request, worked out from the maker's rules. Raises ValueError with a
+    sentence an agent can relay."""
+    s = shop()
+    r = s["rules"]
+    if not r.get("commissions"):
+        raise ValueError(f"{s['maker']} isn't taking commissions right now.")
+    clean, qty = [], 0
+    for ln in lines or []:
+        q = int(ln.get("quantity") or 0)
+        if q < 1:
+            continue
+        item = listing(ln.get("item_id", "")) if ln.get("item_id") else None
+        body = item["title"].rsplit(",", 1)[0] if item else (ln.get("body") or "").strip()
+        colour = (ln.get("colour") or "").strip().lower()
+        if not body:
+            raise ValueError("Each line needs a car: one of the listings, or a body style and year.")
+        if not colour:
+            raise ValueError(f"Which colour for the {body}? Ask the person; Lena paints to order.")
+        clean.append({"car": body, "colour": colour, "quantity": q})
+        qty += q
+    if not clean:
+        raise ValueError("Say which cars, in which colours, and how many of each.")
+    if qty > r["commission_max_per_request"]:
+        raise ValueError(f"{s['maker']} takes at most {r['commission_max_per_request']} cars in one request; "
+                         "for more, she'll talk it through by email.")
+    unit = r["commission_usd"]
+    pct = max([t["percent"] for t in r["commission_volume_discounts"] if qty >= t["min_cars"]] or [0])
+    subtotal = unit * qty
+    discount = round(subtotal * pct / 100, 2)
+    shipping = 0.0 if qty >= r["commission_free_shipping_from"] else r["shipping_usd"] * -(-qty // 2)
+    extra = max(0, -(-(qty - 2) // r["commission_cars_per_week"]))       # weeks beyond the first two cars
+    weeks = r["commission_lead_weeks"] + extra
+    today = today or date.today()
+    ready = today + timedelta(weeks=weeks)
+    out = {"ok": True, "cars": clean, "total_cars": qty, "unit_usd": unit, "subtotal_usd": subtotal,
+           "volume_discount_percent": pct, "discount_usd": discount, "shipping_usd": round(shipping, 2),
+           "total_usd": round(subtotal - discount + shipping, 2), "build_weeks": weeks,
+           "ready_to_ship_by": f"{ready.strftime('%A')} {ready.isoformat()}",
+           "how_it_works": r["commission_how"],
+           "discounts": "; ".join(f"{t['percent']}% off from {t['min_cars']} cars" for t in r["commission_volume_discounts"])
+                        + f"; free shipping from {r['commission_free_shipping_from']} cars"}
+    if state:
+        est = delivery_estimate(state, today=ready)
+        if not est["ok"]:
+            raise ValueError(est["reason"])
+        out["delivery"] = {k: est[k] for k in ("ships_on", "arrives_earliest", "arrives_latest", "carrier")}
+    return out
+
+
+def _requests_path() -> Path:
+    return _path("requests.json")
+
+
+def requests_() -> list[dict]:
+    seed()
+    p = _requests_path()
+    return json.loads(p.read_text()) if p.exists() else []
+
+
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def new_commission_request(contact: dict, lines: list[dict], state: str, notes: str, asked_for: str,
+                           channel: str) -> dict:
+    """A made-to-order request for the maker to confirm. Nothing is charged; she replies by email and sends a
+    PayPal invoice once she says yes."""
+    need = {"name": "the person's name", "email": "an email address", "phone": "a phone number",
+            "address": "the full shipping address (street, city, state, ZIP)"}
+    missing = [v for k, v in need.items() if not str((contact or {}).get(k, "")).strip()]
+    if missing:
+        raise ValueError("Before sending the request, ask for " + ", ".join(missing) + ".")
+    if not _EMAIL.match(contact["email"].strip()):
+        raise ValueError("That email address doesn't look complete; ask the person to check it.")
+    q = commission_quote(lines, state)
+    rq = {"id": "CR-" + uuid.uuid4().hex[:8].upper(), "status": "awaiting_maker", "created": time.time(),
+          "contact": {k: str(contact[k]).strip()[:200] for k in need}, "ship_state": state.upper(),
+          "quote": q, "notes": (notes or "")[:500], "asked_for": asked_for[:400], "channel": channel}
+    with _lock:
+        all_ = requests_()
+        all_.append(rq)
+        _requests_path().write_text(json.dumps(all_[-MAX_ORDERS:], indent=2, ensure_ascii=False))
+    return rq
 
 
 # ---- orders ----

@@ -28,31 +28,44 @@ BRANDS = re.compile(r"\b(ford|mustang|shelby|eleanor|porsche|911|chevrolet|chevy
                     r"charger|challenger|plymouth|cuda|pontiac|gto|firebird|cadillac|lincoln|mercury|cougar|amc|"
                     r"buick|oldsmobile|ferrari|mercedes|bmw|volkswagen|vw|jaguar|aston martin|corvette|stingray|"
                     r"thunderbird|beetle|bel air|mach 1|boss 302|gt ?350|gt ?500)\b", re.I)
+MEMO_TAG = re.compile(r"\n?\[(what the tools returned|tool results)[^\]]*\]", re.I)
+REFUSAL = re.compile(r"^\s*(i.?m sorry,?\s*)?(but\s*)?i (can.?t|cannot) (help|assist) with (that|this)", re.I)
 ITEM_ID = re.compile(r"\s*\(?\bsg[-‑–]\d+\b\)?", re.I)
-PROMISE = re.compile(r"\b(let me|i'll|i will|i am going to|i'm going to)\b.{0,40}\b(search|check|look|find|see)\b"
-                     r"|\bsearching\b", re.I)
+PROMISE = re.compile(r"\b(let me|let's|lets|i'll|i will|we'll|we will|i am going to|i'm going to|we need to)\b.{0,40}"
+                     r"\b(search|check|look|find|see|quote|place|send|submit|call)\b|\bsearching\b", re.I)
 
 SYSTEM = """You are a shopping agent acting for one person. You are visiting Small Garage, a one-person maker of
 hand-built 1:43 replica cars, through its public tools. Rules:
-- Use only facts returned by the tools. If something is not in a listing, say you don't know and suggest asking Lena.
-- Never name real car makers or models. Use the shop's own names, like "Green Fastback, 1968".
-- If the person names a real car maker or model, don't repeat the name. Say Lena makes unbranded replicas named by
-  colour, body style and year, then search with plain words (for example "fastback", "convertible", "coupe", a colour)
-  and offer the closest matches. Every car here is a classic, so never say there are no classic cars.
-- Check stock and delivery to the person's US state before suggesting checkout. If they named a US city, work out
-  its state yourself (Austin → TX, Denver → CO) and call delivery_estimate right away, then say "Austin, TX" in your
-  reply. Ask for the state only if the city is ambiguous or missing.
-  If they named a deadline, pass it as need_by and repeat the tool's need_by_verdict; never compute dates yourself.
-- Prices come only from the listings. If someone says they were promised a discount or another price, say the
-  price is the one listed and checkout uses it; never agree to a different price.
-- Commissions (a sold-out car, or a custom one) can't be ordered through you. Give the price and lead time from
-  about_counter and say Lena confirms commissions herself; don't ask for shipping details for one.
-- When the person wants to buy, call start_checkout with their request in their own words.
+- Use only facts returned by the tools. Never invent a price, a date, a discount, a lead time or a quantity rule.
+  Every number you say must come from a tool result in this conversation.
+- Never name real car makers or models. If the person names one, say Lena makes unbranded replicas named by
+  colour, body style and year, and offer the closest one (a rear-engine coupe, a fastback, a convertible). Never
+  refuse the conversation over a brand name.
+- In stock, up to the per-order limit (about_counter: max_per_order): check delivery to the person's US state
+  (work out the state from a city yourself; pass a deadline as need_by and repeat the tool's verdict), then call
+  start_checkout. PayPal collects their name and shipping address, so don't ask for those.
+- More than the per-order limit, a sold-out car, or another colour: that is a commission. Call quote_commission
+  with each car, colour and quantity (ask for the colour if it's missing) and the US state, then tell the person
+  the total, the discount, the shipping and the ready-to-ship date exactly as returned. If they want to go ahead,
+  ask for their name, email, phone and full shipping address, repeat the order back in one line, and after they
+  confirm call request_commission. Say Lena replies by email and sends a PayPal invoice; nothing is charged now.
+- "When will it be back?" / "when available?": call item_details for that car in the same turn and answer from its
+  next_batch date. Only if next_batch is empty say no batch is planned, and offer a commission.
+- As soon as you know a car (or colour) and a quantity above the per-order limit, call quote_commission in the same
+  turn; it applies the limits itself, and us_state is optional (quote without it, ask for the state after).
+  Don't answer with questions only.
+- Before request_commission, repeat the whole order back in one line (cars, colours, quantities, total, name,
+  address) and ask "Shall I send it to Lena?". Call request_commission only after a yes.
+- To contact Lena (questions, special wishes), use request_commission's notes or say she answers by email after a
+  request; never invent a phone number or email for her.
+- Keep track of the whole conversation: quantities and colours the person already gave, quotes already made.
+- If someone says they were promised another price, the price stands; never agree to a different one.
 - Never say you will search or check something: call the tool in the same turn, then answer.
 - After start_checkout, show the 'you_asked_for' and 'you_are_approving' lines and say they must approve in PayPal.
-  You cannot pay and must never claim the order is paid.
+  You cannot pay and must never claim an order is paid.
 - Never show item ids like sg-014 to the person; use the item's name.
-- Be brief: 2-4 short sentences per reply."""
+- Be friendly and brief: 2-4 complete sentences, never telegraphic notes.
+- Lines that start with "Tool results from your last turn" are notes for you, not for the person; never copy them."""
 
 TOOLS = [
     {"type": "function", "function": {"name": "about_counter", "description": counter.about_counter.__doc__ or
@@ -66,6 +79,24 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"us_state": {"type": "string"},
                                                         "need_by": {"type": "string", "description": "date or weekday the person needs it by"}},
                        "required": ["us_state"]}}},
+    {"type": "function", "function": {"name": "quote_commission",
+        "description": "Exact price, volume discount, shipping, build time and delivery for made-to-order cars.",
+        "parameters": {"type": "object", "properties": {
+            "cars": {"type": "array", "items": {"type": "object", "properties": {
+                "item_id": {"type": "string"}, "body": {"type": "string"}, "colour": {"type": "string"},
+                "quantity": {"type": "integer"}}, "required": ["colour", "quantity"]}},
+            "us_state": {"type": "string"}}, "required": ["cars"]}}},
+    {"type": "function", "function": {"name": "request_commission",
+        "description": "Send Lena the made-to-order request after the person agreed to the quote. Nothing is charged.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}, "email": {"type": "string"}, "phone": {"type": "string"},
+            "address": {"type": "string", "description": "full shipping address: street, city, state, ZIP"},
+            "us_state": {"type": "string"},
+            "cars": {"type": "array", "items": {"type": "object", "properties": {
+                "item_id": {"type": "string"}, "body": {"type": "string"}, "colour": {"type": "string"},
+                "quantity": {"type": "integer"}}, "required": ["colour", "quantity"]}},
+            "notes": {"type": "string"}},
+            "required": ["name", "email", "phone", "address", "us_state", "cars"]}}},
     {"type": "function", "function": {"name": "start_checkout",
         "description": "Create an order that waits for the person's approval in PayPal; returns the approval link.",
         "parameters": {"type": "object", "properties": {"item_id": {"type": "string"}, "quantity": {"type": "integer"},
@@ -75,7 +106,8 @@ TOOLS = [
 ]
 LABELS = {"about_counter": "reading the counter", "search_counter": "searching the counter",
           "item_details": "reading the listing", "delivery_estimate": "checking delivery",
-          "start_checkout": "preparing PayPal checkout"}
+          "start_checkout": "preparing PayPal checkout", "quote_commission": "pricing a commission",
+          "request_commission": "sending the request to Lena"}
 
 
 class OverBudget(RuntimeError):
@@ -105,6 +137,12 @@ def _call_tool(name: str, args: dict, asked: str = "") -> dict:
         return counter.item_details(args.get("item_id", ""))
     if name == "delivery_estimate":
         return counter.delivery_estimate(args.get("us_state", ""), args.get("need_by", ""))
+    if name == "quote_commission":
+        return counter.quote_commission(args.get("cars") or [], args.get("us_state", ""))
+    if name == "request_commission":
+        return counter.request_commission(args.get("name", ""), args.get("email", ""), args.get("phone", ""),
+                                          args.get("address", ""), args.get("us_state", ""), args.get("cars") or [],
+                                          args.get("notes", ""), asked, channel="demo-shopper")
     if name == "start_checkout":
         return counter.start_checkout(args.get("item_id", ""), int(args.get("quantity", 1) or 1),
                                       args.get("us_state", ""), asked or args.get("what_the_shopper_asked", ""),
@@ -116,7 +154,9 @@ def _summary(name: str, out: dict) -> str:
     """One line per tool result for the visible step list."""
     if name == "search_counter":
         r = out.get("results", [])
-        return f"{len(r)} found" + (f" · {r[0]['title']} · ${r[0]['price_usd']:.0f} · {r[0]['stock']} in stock" if r else "")
+        s = f"{len(r)} found" + (f" · {r[0]['title']} · ${r[0]['price_usd']:.0f} · {r[0]['stock']} in stock" if r else "")
+        out_ = [x for x in r if x["stock"] == 0]
+        return s + "".join(f" · {x['title']}: sold out, next batch {x.get('next_batch') or 'not planned'}" for x in out_)
     if name == "item_details":
         return f"{out.get('title', '?')} · {out.get('length_mm', '?')} mm · {out.get('availability', '')}"
     if name == "delivery_estimate":
@@ -126,6 +166,14 @@ def _summary(name: str, out: dict) -> str:
         return s + (f" · by {out['need_by'][:3]}: {out['need_by_verdict']}" if out.get("need_by") else "")
     if name == "start_checkout":
         return "waiting for your approval in PayPal" if out.get("ok") else out.get("reason", "")
+    if name == "quote_commission":
+        if not out.get("ok"):
+            return out.get("reason", "")
+        s = f"{out['total_cars']} cars · ${out['total_usd']:,.2f}"
+        s += f" ({out['volume_discount_percent']}% off)" if out["volume_discount_percent"] else ""
+        return s + f" · ready {out['ready_to_ship_by'].split(' ')[-1]}"
+    if name == "request_commission":
+        return f"sent · {out['request_id']}" if out.get("ok") else out.get("reason", "")
     return "done"
 
 
@@ -134,7 +182,13 @@ def run(messages: list[dict]) -> dict:
     and a checkout (if one was created)."""
     if spent_today() >= DAILY_CAP_USD:
         raise OverBudget("today's demo budget is spent")
-    convo = [{"role": "system", "content": SYSTEM}] + [m for m in messages[-12:] if m["role"] in ("user", "assistant")]
+    convo = [{"role": "system", "content": SYSTEM}]
+    for m in messages[-40:]:
+        if m["role"] not in ("user", "assistant"):
+            continue
+        convo.append({"role": m["role"], "content": MEMO_TAG.sub("", m["content"]).strip()})
+        if m["role"] == "assistant" and m.get("memo"):
+            convo.append({"role": "system", "content": "Tool results from your last turn: " + m["memo"]})
     steps, checkout, usd, nudged = [], None, 0.0, False
     # 'You asked for' is the person's own words, not the model's paraphrase of them.
     asked = " / ".join(m["content"] for m in messages if m["role"] == "user")[-400:]
@@ -145,14 +199,20 @@ def run(messages: list[dict]) -> dict:
         u = r.usage
         usd += (u.prompt_tokens * PRICE_IN + u.completion_tokens * PRICE_OUT) / 1e6
         msg = r.choices[0].message
-        if not msg.tool_calls and not steps and not nudged and PROMISE.search(msg.content or ""):
+        if not msg.tool_calls and not nudged and PROMISE.search(msg.content or ""):
             # It announced a search instead of doing one. Hold it to its word once.
             nudged = True
             convo += [{"role": "assistant", "content": msg.content or ""},
                       {"role": "user", "content": "Go ahead: use the tools now, then answer."}]
             continue
+        if not msg.tool_calls and REFUSAL.search(msg.content or "") and not nudged:
+            nudged = True
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "That's not a refusal case. Answer the person: Lena makes unbranded "
+                       "replicas named by colour, body style and year; search and offer the closest one."}]
+            continue
         if not msg.tool_calls:
-            reply = msg.content or ""
+            reply = MEMO_TAG.sub("", msg.content or "")
             if BRANDS.search(reply):
                 # Ask once for a rewrite: blanking the name out can turn "no <brand> replicas" into a false sentence.
                 fix = _client_().chat.completions.create(
@@ -163,7 +223,9 @@ def run(messages: list[dict]) -> dict:
                     extra_body={"chat_template_kwargs": {"enable_thinking": False}})
                 fu = fix.usage
                 usd += (fu.prompt_tokens * PRICE_IN + fu.completion_tokens * PRICE_OUT) / 1e6
-                reply = fix.choices[0].message.content or reply
+                fixed = fix.choices[0].message.content or ""
+                # The rewrite pass sometimes refuses outright; then keep the original and just mask the names.
+                reply = reply if (not fixed or re.search(r"\b(can.?t|cannot) help\b|^i.?m sorry", fixed, re.I)) else fixed
                 if BRANDS.search(reply):
                     reply = BRANDS.sub("that model", reply)
             reply = ITEM_ID.sub("", reply)
@@ -187,4 +249,7 @@ def run(messages: list[dict]) -> dict:
     with _lock:
         d = date.today().isoformat()
         _spent[d] = _spent.get(d, 0.0) + usd
-    return {"reply": reply.strip(), "steps": steps, "checkout": checkout, "usd": round(usd, 5), "model": MODEL}
+    # What the tools returned this turn, so the next turn still knows it (the browser sends it back with the reply).
+    memo = "; ".join(f"{st['label']}: {st['result']}" for st in steps)
+    return {"reply": reply.strip(), "steps": steps, "checkout": checkout, "usd": round(usd, 5), "model": MODEL,
+            "memo": memo}
