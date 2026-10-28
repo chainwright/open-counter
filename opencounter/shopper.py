@@ -64,6 +64,8 @@ How to answer
 Selling from stock
 - Any quantity up to the stock shown. If they want more than the stock, say how many are in stock and offer both: buy
   those now, or have all of them made to order (with the volume discount). Several different cars go into ONE start_checkout call (items).
+- Answers must be quick: for cars on the shelf go straight to start_checkout (all cars in items, by name is fine); it
+  checks stock itself, so don't call item_details first.
 - As soon as cars, quantity and state are clear, call start_checkout: until the person's details are there it creates
   nothing and returns the total, dates and what to ask for. Give the total and dates, and ask in ONE message for
   what's missing: first and last name, phone, email, and street, city and ZIP. Details given earlier count; never ask
@@ -614,6 +616,23 @@ def gather_customer(user_msgs: list[str]) -> dict:
     return c
 
 
+def _earlier_steps(messages: list[dict]) -> list[dict]:
+    """The tool results of the last turn that had any, rebuilt from its memo (for an answer written by code)."""
+    labels: dict[str, str] = {}
+    for k, v in LABELS.items():   # two tools share "preparing PayPal checkout": the stock one comes first
+        labels.setdefault(v, k)
+    for m in reversed(messages):
+        if m["role"] == "assistant" and m.get("memo"):
+            out = []
+            for part in m["memo"].split("; ") if " · " not in m["memo"] else re.split(r"; (?=[a-z ]+: )", m["memo"]):
+                lab, _, res = part.partition(": ")
+                if lab in labels:
+                    out.append({"tool": labels[lab], "label": lab, "result": res, "args": {}, "ms": 0})
+            if out:
+                return out
+    return []
+
+
 def _cart_waiting(messages: list[dict]) -> tuple[list[dict], str] | None:
     """The cart and state of the last order the agent priced but couldn't create yet (details were missing)."""
     for m in reversed(messages):
@@ -622,10 +641,10 @@ def _cart_waiting(messages: list[dict]) -> tuple[list[dict], str] | None:
         memo = m.get("memo") or ""
         if "waiting for your approval" in memo:
             return None   # an order already exists after it
-        pv = re.search(r"preparing PayPal checkout: (.+?); shipping \$[\d.]+; total .*?\bto ([A-Z]{2}) · needs:", memo)
+        pv = re.search(r"preparing PayPal checkout: (.+?); shipping \$[\d.]+; total .*?(?:\bto ([A-Z]{2}) · )?needs:", memo)
         if pv:
             items = [{"item_id": t.strip(), "quantity": int(q)} for q, t in re.findall(r"(\d+) × (.+?) at \$", pv.group(1))]
-            return (items, pv.group(2)) if items else None
+            return (items, pv.group(2) or "") if items else None   # no state priced yet: the ZIP will say
     return None
 
 
@@ -642,6 +661,14 @@ def _fallback_reply(steps: list[dict], ru: bool) -> str:
                     f"заказ в PayPal, пришлите одним сообщением: имя и фамилию, телефон, email, адрес с ZIP." if ru else
                     f"That's ${m.group(3)} with ${m.group(2)} shipping ({m.group(1)}); {m.group(4).strip()}. To create the "
                     f"PayPal order, send in one message: {m.group(5)}.")
+        q = re.search(r"^(\d+) cars · \$([\d,.]+)( \(\d+% off\))? · ready (\S+)", r)
+        if st["tool"] == "quote_commission" and q:
+            return (f"{q.group(1)} шт. под заказ: ${q.group(2)}{q.group(3) or ''}, готово к отправке {q.group(4)}. "
+                    "Оплата счётом PayPal: половина сейчас, остальное перед отправкой. Пришлите одним сообщением имя "
+                    "и фамилию, телефон, email и адрес с ZIP." if ru else
+                    f"{q.group(1)} made to order: ${q.group(2)}{q.group(3) or ''} in total, ready to ship {q.group(4)}. "
+                    "It's paid with a PayPal invoice: half now, the rest before it ships. Send your first and last name, "
+                    "phone, email and address with ZIP in one message, and I'll create it.")
         if st["tool"] in ("search_counter", "item_details") and re.search(r"\$\d+|in stock", r):
             return ((f"Вот что есть: {r}. Сколько штук и в какой штат отправить?") if ru else
                     (f"Here's what I found: {r}. How many would you like, and which US state should it go to?"))
@@ -706,8 +733,8 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         items, st = waiting
         # only when the address is in the state that was priced; otherwise the person is asked which one is right
         if all(cust.get(k) for k in ("full_name", "phone", "email", "address_line_1", "city", "postal_code", "state")) \
-                and cust["state"] == st:
-            args = {"items": items, "us_state": st, "customer": cust, "what_the_shopper_asked": asked}
+                and cust["state"] == (st or cust["state"]):
+            args = {"items": items, "us_state": st or cust["state"], "customer": cust, "what_the_shopper_asked": asked}
             t0 = time.time()
             out = _call_tool("start_checkout", args, asked, typed)
             if out.get("ok"):
@@ -731,7 +758,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         left = TURN_SECONDS - (time.time() - t_start)
         if left < 1.5:
             # the person has waited long enough: answer with what the tools already found instead of thinking on
-            reply = _must_say(_fallback_reply(steps, bool(re.search(r"[а-яё]", lang_text, re.I))),
+            reply = _must_say(_fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I))),
                               last_user, steps, checkout, lang_text)
             by_code = True
             break
@@ -740,8 +767,8 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                 model=MODEL, messages=convo, tools=TOOLS, max_tokens=500, temperature=0.2,
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}})
         except Exception:   # the model host was slow or failed: say what we have, never an endless wait
-            reply = _must_say(_fallback_reply(steps, bool(re.search(r"[а-яё]", lang_text, re.I))),
-                              last_user, steps, checkout, lang_text)
+            reply = _must_say(_fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I))),
+                              last_user, steps or _earlier_steps(messages), checkout, lang_text)
             by_code = True
             break
         u = r.usage

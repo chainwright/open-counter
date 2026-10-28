@@ -68,7 +68,7 @@ CASES = [
     ("colour and year only (Roma's chat)", ["Hi I would like to buy a blue 3 cars", "Model 65, California",
                                            "On your website, there's a red car with the number 65 on it, I'd like to buy that one."],
      [("names the car", has(r"red american convertible|convertible")), ("says a price", has(r"\$\s?\d")),
-      ("no stalling", lacks(r"let me|i'?ll (confirm|check|pull)|one moment|which (model|one)"))]),
+      ("no stalling", lacks(r"let me (?!know)|i'?ll (confirm|check|pull)|one moment|which (model|one)"))]),
     ("stock: over the stock goes to made to order", ["I need 40 green fastbacks to Texas"],
      [("no stock order", orders(0)), ("mentions 30 / made to order", has(r"\b30\b|made.to.order|build"))]),
     ("deadline: on time", ["A gift for my dad who loved his '68 green fastback. Under $60, Denver, by next Friday."],
