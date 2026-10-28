@@ -7,7 +7,6 @@
  "currency": "USD",
  "rules": {
   "ships_to": "US",
-  "max_per_order": 2,
   "handling_days": 1,
   "ship_days": [
    "Mon",
@@ -18,11 +17,7 @@
   ],
   "shipping_usd": 6.5,
   "commissions": true,
-  "commission_lead_weeks": 3,
-  "commission_from_usd": 89,
   "commission_usd": 89,
-  "commission_cars_per_week": 3,
-  "commission_max_per_request": 40,
   "commission_volume_discounts": [
    {
     "min_cars": 10,
@@ -34,14 +29,29 @@
    }
   ],
   "commission_free_shipping_from": 10,
-  "commission_how": "Lena reads every request herself, replies by email within 2 days, and sends a PayPal invoice once she confirms. Nothing is charged before that."
+  "commission_lead_tiers": [
+   {
+    "up_to": 2,
+    "weeks": 1
+   },
+   {
+    "up_to": 10,
+    "weeks": 2
+   },
+   {
+    "up_to": 20,
+    "weeks": 3
+   }
+  ],
+  "commission_extra_week_per": 10,
+  "commission_max_cars": 100
  },
  "listings": [
   {
    "id": "sg-014",
    "title": "Green American Fastback, 1968",
    "price_usd": 59.0,
-   "stock": 1,
+   "stock": 30,
    "photo": "green_fastback.jpg",
    "scale": "1:43",
    "length_mm": 108,
@@ -66,7 +76,7 @@
    "id": "sg-015",
    "title": "Highland Blue Fastback, 1967",
    "price_usd": 59.0,
-   "stock": 2,
+   "stock": 30,
    "photo": "blue_fastback.jpg",
    "scale": "1:43",
    "length_mm": 107,
@@ -89,7 +99,7 @@
    "id": "sg-011",
    "title": "Orange Muscle Coupe, 1970",
    "price_usd": 59.0,
-   "stock": 1,
+   "stock": 30,
    "photo": "orange_coupe.jpg",
    "scale": "1:43",
    "length_mm": 112,
@@ -111,7 +121,7 @@
    "id": "sg-009",
    "title": "Yellow German Rear-Engine Coupé, 1973",
    "price_usd": 59.0,
-   "stock": 0,
+   "stock": 30,
    "photo": "yellow_german.jpg",
    "scale": "1:43",
    "length_mm": 97,
@@ -129,13 +139,13 @@
     "rear-engine"
    ],
    "model": "yellow_german.glb",
-   "next_batch": "2026-11-20"
+   "next_batch": null
   },
   {
    "id": "sg-012",
    "title": "Red American Convertible, 1965",
    "price_usd": 59.0,
-   "stock": 1,
+   "stock": 30,
    "photo": "red_convertible.jpg",
    "scale": "1:43",
    "length_mm": 118,

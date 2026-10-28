@@ -145,7 +145,7 @@ def paypal_return(oc: str, token: str = ""):
         shop.update_order(oc, status="pending", capture_id=c["id"])
         return RedirectResponse(f"/thanks/{oc}")
     ship = unit.get("shipping", {})
-    if not shop.take_stock(o["listing_id"], o["qty"]):
+    if o.get("kind") != "commission" and not shop.take_stock(o["listing_id"], o["qty"]):
         paypal.refund(c["id"], oc, note="Sorry, the last one sold a moment before your payment. Full refund.")
         o = shop.update_order(oc, status="refunded_out_of_stock", capture_id=c["id"])
         _announce("refunded", o)
@@ -207,7 +207,13 @@ def thanks(oc: str):
         "pending": ("Payment is processing.", "PayPal is still confirming it. Nothing else to do.",
                     [("What happens next", "As soon as PayPal confirms, Lena sees the order and ships it.")]),
     }.get(status, ("Order received.", f"Status: {e(status)}.", []))
-    photo = f"/media/{e(item['photo'])}" if item.get("photo") else ""
+    if o.get("kind") == "commission" and status == "paid":
+        q = o.get("quote") or {}
+        head, lead = "It's yours. Congratulations!", f"Paid {total} through PayPal. Lena starts building your order."
+        steps = [("Lena builds it", f"{q.get('total_cars')} car(s), about {q.get('build_weeks')} week(s); she may call you about the details."),
+                 ("It ships", f"About {_day(est.get('ships_on', ''))}, and PayPal sends you the tracking."),
+                 ("It arrives", f"Between {_day(est.get('arrives_earliest', ''))} and {_day(est.get('arrives_latest', ''))}.")]
+    photo = f"/media/{e(item['photo'])}" if item.get("photo") else "/media/hero.jpg"
     rows = "".join(f'<li><b>{t}</b><span>{d}</span></li>' for t, d in steps)
     asked = e(o.get("asked_for", ""))
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -279,17 +285,17 @@ async def maker_tracking(oid: str, req: Request):
 
 @app.get("/api/maker/requests")
 def maker_requests():
-    """Made-to-order requests waiting for Lena (newest first)."""
+    """Call-back requests for Lena (newest first)."""
     return list(reversed(shop.requests_()))
 
 
 @app.post("/api/maker/requests/{rid}")
 async def maker_request_status(rid: str, req: Request):
-    """Lena accepts or declines a request. Accepting doesn't charge anything; she sends the PayPal invoice herself."""
+    """Lena marks a call-back as done."""
     b = await req.json()
     st = b.get("status")
-    if st not in ("accepted", "declined"):
-        raise HTTPException(400, "status must be accepted or declined")
+    if st not in ("called",):
+        raise HTTPException(400, "status must be called")
     try:
         return shop.update_request(rid, status=st)
     except StopIteration:

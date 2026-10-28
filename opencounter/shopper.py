@@ -36,33 +36,27 @@ PROMISE = re.compile(r"\b(let me|let's|lets|i'll|i will|we'll|we will|i am going
 
 SYSTEM = """You are a shopping agent acting for one person. You are visiting Small Garage, a one-person maker of
 hand-built 1:43 replica cars, through its public tools. Rules:
-- Use only facts returned by the tools. Never invent a price, a date, a discount, a lead time or a quantity rule.
+- Use only facts returned by the tools. Never invent a price, a date, a discount, a lead time or a stock number.
   Every number you say must come from a tool result in this conversation.
 - Never name real car makers or models. If the person names one, say Lena makes unbranded replicas named by
-  colour, body style and year, and offer the closest one (a rear-engine coupe, a fastback, a convertible). Never
-  refuse the conversation over a brand name.
-- In stock, up to the per-order limit (about_counter: max_per_order): check delivery to the person's US state
-  (work out the state from a city yourself; pass a deadline as need_by and repeat the tool's verdict), then call
-  start_checkout. PayPal collects their name and shipping address, so don't ask for those.
-- More than the per-order limit, a sold-out car, or another colour: that is a commission. Call quote_commission
-  with each car, colour and quantity (ask for the colour if it's missing) and the US state, then tell the person
-  the total, the discount, the shipping and the ready-to-ship date exactly as returned. If they want to go ahead,
-  ask for their name, email, phone and full shipping address, repeat the order back in one line, and after they
-  confirm call request_commission. Say Lena replies by email and sends a PayPal invoice; nothing is charged now.
-- "When will it be back?" / "when available?": call item_details for that car in the same turn and answer from its
-  next_batch date. Only if next_batch is empty say no batch is planned, and offer a commission.
-- As soon as you know a car (or colour) and a quantity above the per-order limit, call quote_commission in the same
-  turn; it applies the limits itself, and us_state is optional (quote without it, ask for the state after).
-  Don't answer with questions only.
-- Before request_commission, repeat the whole order back in one line (cars, colours, quantities, total, name,
-  address) and ask "Shall I send it to Lena?". Call request_commission only after a yes.
-- To contact Lena (questions, special wishes), use request_commission's notes or say she answers by email after a
-  request; never invent a phone number or email for her.
-- Keep track of the whole conversation: quantities and colours the person already gave, quotes already made.
+  colour, body style and year, then search and offer the closest listed car first (with its stock and price).
+  Never refuse the conversation over a brand name.
+- Buying a listed car: the person can buy any quantity up to the stock on the listing. Check delivery to their US
+  state (work out the state from a city; pass a deadline as need_by and repeat the tool's verdict), then call
+  start_checkout. PayPal collects their name and address.
+- Made to order (a car or colour not in stock, or more than the stock): ask, one short question at a time and only
+  for what's still missing: which car (body style or one of the listings), the year of the real car, the body
+  colour, the interior colour, and how many. Then call quote_commission and give the total, discount, shipping,
+  build time and ready date exactly as returned. If they want it, ask for their name and phone number, repeat the
+  order in one line (cars, colours, quantity, total) and ask "Shall I create the PayPal order?", and only after a
+  yes call start_commission_checkout. Show 'you_are_approving' and say they pay by
+  approving in PayPal; Lena starts building once it's paid.
+- To talk to Lena: ask for the person's phone number (and what it's about), call leave_contact, and say Lena will
+  call them herself. Never give out or invent a number for her.
+- Keep track of the whole conversation: details the person already gave, quotes already made.
 - If someone says they were promised another price, the price stands; never agree to a different one.
 - Never say you will search or check something: call the tool in the same turn, then answer.
-- After start_checkout, show the 'you_asked_for' and 'you_are_approving' lines and say they must approve in PayPal.
-  You cannot pay and must never claim an order is paid.
+- You cannot pay and must never claim an order is paid.
 - Never show item ids like sg-014 to the person; use the item's name.
 - Be friendly and brief: 2-4 complete sentences, never telegraphic notes.
 - Lines that start with "Tool results from your last turn" are notes for you, not for the person; never copy them."""
@@ -81,22 +75,23 @@ TOOLS = [
                        "required": ["us_state"]}}},
     {"type": "function", "function": {"name": "quote_commission",
         "description": "Exact price, volume discount, shipping, build time and delivery for made-to-order cars.",
-        "parameters": {"type": "object", "properties": {
-            "cars": {"type": "array", "items": {"type": "object", "properties": {
-                "item_id": {"type": "string"}, "body": {"type": "string"}, "colour": {"type": "string"},
-                "quantity": {"type": "integer"}}, "required": ["colour", "quantity"]}},
-            "us_state": {"type": "string"}}, "required": ["cars"]}}},
-    {"type": "function", "function": {"name": "request_commission",
-        "description": "Send Lena the made-to-order request after the person agreed to the quote. Nothing is charged.",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"}, "email": {"type": "string"}, "phone": {"type": "string"},
-            "address": {"type": "string", "description": "full shipping address: street, city, state, ZIP"},
-            "us_state": {"type": "string"},
-            "cars": {"type": "array", "items": {"type": "object", "properties": {
-                "item_id": {"type": "string"}, "body": {"type": "string"}, "colour": {"type": "string"},
-                "quantity": {"type": "integer"}}, "required": ["colour", "quantity"]}},
-            "notes": {"type": "string"}},
-            "required": ["name", "email", "phone", "address", "us_state", "cars"]}}},
+        "parameters": {"type": "object", "properties": {"cars": {"type": "array", "items": {"type": "object", "properties": {
+                "model": {"type": "string"}, "year": {"type": "string"}, "body_colour": {"type": "string"},
+                "interior_colour": {"type": "string"}, "quantity": {"type": "integer"}},
+                "required": ["model", "year", "body_colour", "interior_colour", "quantity"]}}, "us_state": {"type": "string"}},
+                       "required": ["cars"]}}},
+    {"type": "function", "function": {"name": "start_commission_checkout",
+        "description": "After the person agreed to the quote: create the made-to-order order and its PayPal approval link.",
+        "parameters": {"type": "object", "properties": {"cars": {"type": "array", "items": {"type": "object", "properties": {
+                "model": {"type": "string"}, "year": {"type": "string"}, "body_colour": {"type": "string"},
+                "interior_colour": {"type": "string"}, "quantity": {"type": "integer"}},
+                "required": ["model", "year", "body_colour", "interior_colour", "quantity"]}}, "us_state": {"type": "string"},
+                       "name": {"type": "string"}, "phone": {"type": "string"}},
+                       "required": ["cars", "us_state", "name", "phone"]}}},
+    {"type": "function", "function": {"name": "leave_contact",
+        "description": "Pass the person's phone number and question to Lena; she calls them back.",
+        "parameters": {"type": "object", "properties": {"phone": {"type": "string"}, "name": {"type": "string"},
+                       "message": {"type": "string"}}, "required": ["phone"]}}},
     {"type": "function", "function": {"name": "start_checkout",
         "description": "Create an order that waits for the person's approval in PayPal; returns the approval link.",
         "parameters": {"type": "object", "properties": {"item_id": {"type": "string"}, "quantity": {"type": "integer"},
@@ -106,8 +101,8 @@ TOOLS = [
 ]
 LABELS = {"about_counter": "reading the counter", "search_counter": "searching the counter",
           "item_details": "reading the listing", "delivery_estimate": "checking delivery",
-          "start_checkout": "preparing PayPal checkout", "quote_commission": "pricing a commission",
-          "request_commission": "sending the request to Lena"}
+          "start_checkout": "preparing PayPal checkout", "quote_commission": "pricing a made-to-order build",
+          "start_commission_checkout": "preparing PayPal checkout", "leave_contact": "passing your number to Lena"}
 
 
 class OverBudget(RuntimeError):
@@ -139,10 +134,12 @@ def _call_tool(name: str, args: dict, asked: str = "") -> dict:
         return counter.delivery_estimate(args.get("us_state", ""), args.get("need_by", ""))
     if name == "quote_commission":
         return counter.quote_commission(args.get("cars") or [], args.get("us_state", ""))
-    if name == "request_commission":
-        return counter.request_commission(args.get("name", ""), args.get("email", ""), args.get("phone", ""),
-                                          args.get("address", ""), args.get("us_state", ""), args.get("cars") or [],
-                                          args.get("notes", ""), asked, channel="demo-shopper")
+    if name == "start_commission_checkout":
+        return counter.start_commission_checkout(args.get("cars") or [], args.get("us_state", ""), args.get("name", ""),
+                                                 args.get("phone", ""), asked, channel="demo-shopper")
+    if name == "leave_contact":
+        return counter.leave_contact(args.get("phone", ""), args.get("name", ""), args.get("message", ""), asked,
+                                     channel="demo-shopper")
     if name == "start_checkout":
         return counter.start_checkout(args.get("item_id", ""), int(args.get("quantity", 1) or 1),
                                       args.get("us_state", ""), asked or args.get("what_the_shopper_asked", ""),
@@ -155,8 +152,7 @@ def _summary(name: str, out: dict) -> str:
     if name == "search_counter":
         r = out.get("results", [])
         s = f"{len(r)} found" + (f" · {r[0]['title']} · ${r[0]['price_usd']:.0f} · {r[0]['stock']} in stock" if r else "")
-        out_ = [x for x in r if x["stock"] == 0]
-        return s + "".join(f" · {x['title']}: sold out, next batch {x.get('next_batch') or 'not planned'}" for x in out_)
+        return s + "".join(f" · {x['title']}: {x['stock']} in stock" for x in r[1:])
     if name == "item_details":
         return f"{out.get('title', '?')} · {out.get('length_mm', '?')} mm · {out.get('availability', '')}"
     if name == "delivery_estimate":
@@ -172,8 +168,10 @@ def _summary(name: str, out: dict) -> str:
         s = f"{out['total_cars']} cars · ${out['total_usd']:,.2f}"
         s += f" ({out['volume_discount_percent']}% off)" if out["volume_discount_percent"] else ""
         return s + f" · ready {out['ready_to_ship_by'].split(' ')[-1]}"
-    if name == "request_commission":
-        return f"sent · {out['request_id']}" if out.get("ok") else out.get("reason", "")
+    if name == "start_commission_checkout":
+        return "waiting for your approval in PayPal" if out.get("ok") else out.get("reason", "")
+    if name == "leave_contact":
+        return "passed to Lena" if out.get("ok") else out.get("reason", "")
     return "done"
 
 
@@ -241,7 +239,7 @@ def run(messages: list[dict]) -> dict:
             out = _call_tool(tc.function.name, args, asked)
             steps.append({"tool": tc.function.name, "label": LABELS.get(tc.function.name, tc.function.name),
                           "args": args, "result": _summary(tc.function.name, out), "ms": int((time.time() - t0) * 1000)})
-            if tc.function.name == "start_checkout" and out.get("ok"):
+            if tc.function.name in ("start_checkout", "start_commission_checkout") and out.get("ok"):
                 checkout = out
             convo.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(out)[:4000]})
     else:

@@ -156,50 +156,56 @@ def delivery_estimate(state: str, today: date | None = None, need_by: str = "") 
 
 
 # ---- commissions: priced and scheduled in code, so an agent can only repeat the numbers ----
-COLOURS = ("green", "highland blue", "light blue", "blue", "orange", "red", "yellow", "black", "white", "silver", "grey")
+SPEC = {"model": "the car: body style or one of the listings (e.g. fastback, coupe, convertible)",
+        "year": "the year of the real car it's modelled on", "body_colour": "the body colour",
+        "interior_colour": "the interior colour", "quantity": "how many"}
+
+
+def commission_weeks(qty: int) -> int:
+    r = shop()["rules"]
+    for t in r["commission_lead_tiers"]:
+        if qty <= t["up_to"]:
+            return t["weeks"]
+    last = r["commission_lead_tiers"][-1]
+    return last["weeks"] + -(-(qty - last["up_to"]) // r["commission_extra_week_per"])
 
 
 def commission_quote(lines: list[dict], state: str = "", today: date | None = None) -> dict:
-    """lines: [{"item_id" or "body", "colour", "quantity"}]. Returns the price, discount, shipping, build time and
-    delivery window for a made-to-order request, worked out from the maker's rules. Raises ValueError with a
-    sentence an agent can relay."""
+    """lines: [{"model", "year", "body_colour", "interior_colour", "quantity"}]. Price, discount, shipping, build
+    time and delivery for made-to-order cars, from the maker's rules. Raises ValueError naming what to ask for."""
     s = shop()
     r = s["rules"]
     if not r.get("commissions"):
         raise ValueError(f"{s['maker']} isn't taking commissions right now.")
     clean, qty = [], 0
     for ln in lines or []:
-        q = int(ln.get("quantity") or 0)
-        if q < 1:
-            continue
         item = listing(ln.get("item_id", "")) if ln.get("item_id") else None
-        body = item["title"].rsplit(",", 1)[0] if item else (ln.get("body") or "").strip()
-        colour = (ln.get("colour") or "").strip().lower()
-        if not body:
-            raise ValueError("Each line needs a car: one of the listings, or a body style and year.")
-        if not colour:
-            raise ValueError(f"Which colour for the {body}? Ask the person; Lena paints to order.")
-        clean.append({"car": body, "colour": colour, "quantity": q})
-        qty += q
+        spec = {"model": (ln.get("model") or (item["title"].rsplit(",", 1)[0] if item else "")).strip(),
+                "year": str(ln.get("year") or "").strip(), "body_colour": (ln.get("body_colour") or ln.get("colour") or "").strip().lower(),
+                "interior_colour": (ln.get("interior_colour") or "").strip().lower(), "quantity": int(ln.get("quantity") or 0)}
+        missing = [SPEC[k] for k, v in spec.items() if not v]
+        if missing:
+            raise ValueError("Before quoting, ask for " + ", ".join(missing) + ".")
+        clean.append(spec)
+        qty += spec["quantity"]
     if not clean:
-        raise ValueError("Say which cars, in which colours, and how many of each.")
-    if qty > r["commission_max_per_request"]:
-        raise ValueError(f"{s['maker']} takes at most {r['commission_max_per_request']} cars in one request; "
-                         "for more, she'll talk it through by email.")
+        raise ValueError("Ask which car, the year of the real car, the body and interior colours, and how many.")
+    if qty > r["commission_max_cars"]:
+        raise ValueError(f"{s['maker']} takes at most {r['commission_max_cars']} cars in one order; for more she'll call.")
     unit = r["commission_usd"]
     pct = max([t["percent"] for t in r["commission_volume_discounts"] if qty >= t["min_cars"]] or [0])
     subtotal = unit * qty
     discount = round(subtotal * pct / 100, 2)
-    shipping = 0.0 if qty >= r["commission_free_shipping_from"] else r["shipping_usd"] * -(-qty // 2)
-    extra = max(0, -(-(qty - 2) // r["commission_cars_per_week"]))       # weeks beyond the first two cars
-    weeks = r["commission_lead_weeks"] + extra
+    shipping = 0.0 if qty >= r["commission_free_shipping_from"] else r["shipping_usd"]
+    weeks = commission_weeks(qty)
     today = today or date.today()
     ready = today + timedelta(weeks=weeks)
     out = {"ok": True, "cars": clean, "total_cars": qty, "unit_usd": unit, "subtotal_usd": subtotal,
            "volume_discount_percent": pct, "discount_usd": discount, "shipping_usd": round(shipping, 2),
            "total_usd": round(subtotal - discount + shipping, 2), "build_weeks": weeks,
            "ready_to_ship_by": f"{ready.strftime('%A')} {ready.isoformat()}",
-           "how_it_works": r["commission_how"],
+           "lead_times": "; ".join(f"up to {t['up_to']} cars: {t['weeks']} week{'s' if t['weeks'] > 1 else ''}"
+                                   for t in r["commission_lead_tiers"]),
            "discounts": "; ".join(f"{t['percent']}% off from {t['min_cars']} cars" for t in r["commission_volume_discounts"])
                         + f"; free shipping from {r['commission_free_shipping_from']} cars"}
     if state:
@@ -208,6 +214,33 @@ def commission_quote(lines: list[dict], state: str = "", today: date | None = No
             raise ValueError(est["reason"])
         out["delivery"] = {k: est[k] for k in ("ships_on", "arrives_earliest", "arrives_latest", "carrier")}
     return out
+
+
+def commission_title(q: dict) -> str:
+    return "Made to order: " + "; ".join(f"{c['quantity']} × {c['model']} ({c['year']}), {c['body_colour']} body, "
+                                         f"{c['interior_colour']} interior" for c in q["cars"])
+
+
+def new_commission_order(lines: list[dict], state: str, name: str, phone: str, asked_for: str, channel: str) -> dict:
+    """A made-to-order order that waits for the buyer's PayPal approval, like a stock order, priced from the quote."""
+    if not str(name or "").strip() or not str(phone or "").strip():
+        raise ValueError("Ask for the person's name and a phone number, so Lena can call about the details.")
+    q = commission_quote(lines, state)
+    o = {"id": "OC-" + uuid.uuid4().hex[:8].upper(), "kind": "commission", "listing_id": "", "title": commission_title(q),
+         "qty": q["total_cars"], "unit_usd": q["unit_usd"], "discount_usd": q["discount_usd"],
+         "shipping_usd": q["shipping_usd"], "total_usd": q["total_usd"], "quote": q,
+         "contact": {"name": str(name).strip()[:120], "phone": str(phone).strip()[:40]},
+         "ship_state": state.upper(), "estimate": {"ok": True, "ships_on": q["delivery"]["ships_on"],
+                                                   "arrives_earliest": q["delivery"]["arrives_earliest"],
+                                                   "arrives_latest": q["delivery"]["arrives_latest"],
+                                                   "carrier": q["delivery"]["carrier"]},
+         "asked_for": asked_for[:400], "channel": channel, "status": "awaiting_approval", "created": time.time(),
+         "events": [["created", time.time()]]}
+    with _lock:
+        all_ = orders()
+        all_.append(o)
+        _save_orders(all_)
+    return o
 
 
 def _requests_path() -> Path:
@@ -220,24 +253,13 @@ def requests_() -> list[dict]:
     return json.loads(p.read_text()) if p.exists() else []
 
 
-_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-
-def new_commission_request(contact: dict, lines: list[dict], state: str, notes: str, asked_for: str,
-                           channel: str) -> dict:
-    """A made-to-order request for the maker to confirm. Nothing is charged; she replies by email and sends a
-    PayPal invoice once she says yes."""
-    need = {"name": "the person's name", "email": "an email address", "phone": "a phone number",
-            "address": "the full shipping address (street, city, state, ZIP)"}
-    missing = [v for k, v in need.items() if not str((contact or {}).get(k, "")).strip()]
-    if missing:
-        raise ValueError("Before sending the request, ask for " + ", ".join(missing) + ".")
-    if not _EMAIL.match(contact["email"].strip()):
-        raise ValueError("That email address doesn't look complete; ask the person to check it.")
-    q = commission_quote(lines, state)
-    rq = {"id": "CR-" + uuid.uuid4().hex[:8].upper(), "status": "awaiting_maker", "created": time.time(),
-          "contact": {k: str(contact[k]).strip()[:200] for k in need}, "ship_state": state.upper(),
-          "quote": q, "notes": (notes or "")[:500], "asked_for": asked_for[:400], "channel": channel}
+def new_callback(phone: str, name: str, message: str, asked_for: str, channel: str) -> dict:
+    """The person wants to talk to Lena: their number and question go to her screen; she calls them."""
+    if len(re.sub(r"\D", "", phone or "")) < 7:
+        raise ValueError("Ask for a phone number Lena can call (with area code).")
+    rq = {"id": "CB-" + uuid.uuid4().hex[:8].upper(), "kind": "callback", "status": "to_call", "created": time.time(),
+          "contact": {"name": str(name or "").strip()[:120], "phone": phone.strip()[:40]},
+          "message": (message or "")[:500], "asked_for": asked_for[:400], "channel": channel}
     with _lock:
         all_ = requests_()
         all_.append(rq)
@@ -270,8 +292,8 @@ def new_order(lid: str, qty: int, state: str, asked_for: str, channel: str) -> d
     item = listing(lid)
     if not item:
         raise ValueError(f"No listing '{lid}' at {s['name']}.")
-    if qty < 1 or qty > s["rules"]["max_per_order"]:
-        raise ValueError(f"{s['maker']} sells at most {s['rules']['max_per_order']} per order.")
+    if qty < 1:
+        raise ValueError("Quantity must be at least 1.")
     if item["stock"] < qty:
         raise ValueError(f"Only {item['stock']} of '{item['title']}' in stock."
                          + (" It can be commissioned instead." if s["rules"]["commissions"] else ""))

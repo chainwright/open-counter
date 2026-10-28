@@ -43,20 +43,22 @@ def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_
     return counter.start_checkout(item_id, quantity, us_state, what_the_shopper_asked, channel="mcp")
 
 
-@mcp.tool(description=("Exact price, volume discount, shipping, build time and delivery window for made-to-order "
-                       "cars (more than the per-order limit, a sold-out car, or another colour). cars is a list of "
-                       "{item_id or body, colour, quantity}."))
+@mcp.tool(description=("Exact price, volume discount, shipping, build time and delivery for made-to-order cars. "
+                       "cars is a list of {model, year (of the real car), body_colour, interior_colour, quantity}."))
 def quote_commission(cars: list[dict], us_state: str = "") -> dict:
     return counter.quote_commission(cars, us_state)
 
 
-@mcp.tool(description=("Send the maker a made-to-order request after the person has seen the quote and agreed. "
-                       "Needs their name, email, phone and full shipping address. Nothing is charged: the maker "
-                       "confirms by email and sends a PayPal invoice."))
-def request_commission(name: str, email: str, phone: str, address: str, us_state: str, cars: list[dict],
-                       notes: str = "", what_the_shopper_asked: str = "") -> dict:
-    return counter.request_commission(name, email, phone, address, us_state, cars, notes, what_the_shopper_asked,
-                                      channel="mcp")
+@mcp.tool(description=("Create the made-to-order order after the person agreed to the quote, and get a PayPal "
+                       "approval link. Needs their name and phone; PayPal collects the address."))
+def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone: str,
+                              what_the_shopper_asked: str) -> dict:
+    return counter.start_commission_checkout(cars, us_state, name, phone, what_the_shopper_asked, channel="mcp")
+
+
+@mcp.tool(description="Pass the person's phone number and question to the maker; she calls them back.")
+def leave_contact(phone: str, name: str = "", message: str = "", what_the_shopper_asked: str = "") -> dict:
+    return counter.leave_contact(phone, name, message, what_the_shopper_asked, channel="mcp")
 
 
 @mcp.tool(description="Status of an order: awaiting_approval, paid, shipped (with tracking), cancelled.")

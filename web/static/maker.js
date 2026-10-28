@@ -27,7 +27,8 @@
       const acts = o.status === "paid"
         ? `<div class="acts"><button class="p" data-note="${esc(o.id)}">Packing note</button><input placeholder="Tracking number" data-trk="${esc(o.id)}"><button data-ship="${esc(o.id)}">Shipped</button></div><div class="note" id="n-${esc(o.id)}" hidden></div>`
         : o.status === "shipped" ? `<div class="m">USPS ${esc(o.tracking?.number)}</div>` : "";
-      return `<div class="o"><img src="${esc(photos[o.listing_id] || "")}" alt=""><div>
+      const mto = o.kind === "commission" ? `<div class="m">MADE TO ORDER · build ${o.quote?.build_weeks} wk · ready ${esc((o.quote?.ready_to_ship_by || "").split(" ").pop())}${o.contact ? ` · ${esc(o.contact.name)} <a href="tel:${esc(o.contact.phone)}">${esc(o.contact.phone)}</a>` : ""}</div>` : "";
+      return `<div class="o"><img src="${esc(photos[o.listing_id] || "")}" alt=""><div>${mto}
         <span class="badge ${esc(o.status)}">${st}</span>
         <h3>${esc(o.title)}</h3>
         <div class="m">$${o.total_usd.toFixed(2)} · ${esc(where)} · via ${o.channel === "web" ? "shop page (human)" : o.channel === "mcp" ? "AI agent (MCP)" : o.channel === "demo-shopper" || o.channel === "web-agent" ? "AI agent" : esc(o.channel)}</div>
@@ -37,7 +38,7 @@
 
   function renderStock(c) {
     document.getElementById("stock").innerHTML = c.listings.map((l) => `<a class="s" href="/#${esc(l.id)}"><img src="${esc(l.photo_url)}" alt=""><div><b>${esc(l.title.replace(/, \d{4}$/, ""))}</b><span>${l.stock > 0 ? l.stock + " left" : "sold out"} · $${l.price_usd.toFixed(0)}</span></div></a>`).join("");
-    document.getElementById("rules").textContent = `Rules agents must follow: ships to ${c.ships_to} only · max ${c.max_per_order} per order · $${c.shipping_usd.toFixed(2)} shipping · commissions ${c.commissions} · every order approved by the buyer in PayPal.`;
+    document.getElementById("rules").textContent = `Rules agents must follow: ships to ${c.ships_to} only · any quantity up to the stock shown · $${c.shipping_usd.toFixed(2)} shipping · made to order: ${c.made_to_order} · every order approved by the buyer in PayPal.`;
   }
 
   function toast(o) {
@@ -84,27 +85,20 @@
   load();
 })();
 
-// Made-to-order requests sent by shoppers' agents: what, how many, the quote worked out in code, and who's asking.
+// People who asked Lena to call them (the agent took their number).
 (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const box = document.getElementById("reqs"); if (!box) return;
-  const ST = { awaiting_maker: "NEW · REPLY BY EMAIL", accepted: "ACCEPTED · SEND INVOICE", declined: "DECLINED" };
   async function load() {
-    const rs = await fetch("/api/maker/requests").then((r) => r.json()).catch(() => []);
+    const rs = (await fetch("/api/maker/requests").then((r) => r.json()).catch(() => [])).filter((r) => r.kind === "callback");
     box.hidden = !rs.length; if (!rs.length) return;
-    box.innerHTML = `<h2 class="rq-h">Commission requests <span>${rs.filter((r) => r.status === "awaiting_maker").length} new</span></h2>` + rs.map((r) => {
-      const q = r.quote, c = r.contact;
-      const cars = q.cars.map((x) => `<li><b>${x.quantity} ×</b> ${esc(x.car)} <i>in ${esc(x.colour)}</i></li>`).join("");
-      const money = `$${q.total_usd.toLocaleString("en-US", { minimumFractionDigits: 2 })}` + (q.volume_discount_percent ? ` · ${q.volume_discount_percent}% off ($${q.discount_usd.toFixed(2)})` : "") + (q.shipping_usd ? ` · shipping $${q.shipping_usd.toFixed(2)}` : " · free shipping");
-      const subj = encodeURIComponent(`Your Small Garage commission ${r.id}`);
-      return `<div class="rq ${esc(r.status)}"><span class="badge rqb">${ST[r.status] || esc(r.status)}</span>
-        <h3>${q.total_cars} cars · ${money}</h3><ul>${cars}</ul>
-        <div class="m">Build ${q.build_weeks} weeks · ready to ship ${esc(q.ready_to_ship_by)} · via ${r.channel === "mcp" ? "AI agent (MCP)" : "AI agent"}</div>
-        <div class="who"><b>${esc(c.name)}</b> · <a href="mailto:${esc(c.email)}?subject=${subj}">${esc(c.email)}</a> · ${esc(c.phone)}<br>${esc(c.address)}</div>
-        ${r.notes ? `<div class="asked">"${esc(r.notes)}"</div>` : ""}
-        ${r.status === "awaiting_maker" ? `<div class="acts"><a class="p btn" href="mailto:${esc(c.email)}?subject=${subj}">Reply by email</a><button data-rq="${esc(r.id)}" data-st="accepted">Accept</button><button data-rq="${esc(r.id)}" data-st="declined">Decline</button></div>` : ""}
-      </div>`;
-    }).join("");
+    box.innerHTML = `<h2 class="rq-h">Call back <span>${rs.filter((r) => r.status === "to_call").length} waiting</span></h2>` + rs.map((r) => `
+      <div class="rq ${esc(r.status)}"><span class="badge rqb">${r.status === "to_call" ? "CALL THEM" : "CALLED"}</span>
+        <h3><a href="tel:${esc(r.contact.phone)}">${esc(r.contact.phone)}</a>${r.contact.name ? " · " + esc(r.contact.name) : ""}</h3>
+        ${r.message ? `<div class="asked">"${esc(r.message)}"</div>` : ""}
+        <div class="m">via ${r.channel === "mcp" ? "AI agent (MCP)" : "AI agent"} · ${new Date(r.created * 1000).toLocaleString()}</div>
+        ${r.status === "to_call" ? `<div class="acts"><a class="p btn" href="tel:${esc(r.contact.phone)}">Call</a><button data-rq="${esc(r.id)}" data-st="called">Done</button></div>` : ""}
+      </div>`).join("");
   }
   box.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-rq]"); if (!b) return;

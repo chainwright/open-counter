@@ -20,54 +20,77 @@ def _public(item: dict) -> dict:
         d["model_url"] = f"{PUBLIC_URL}/media/{item['model']}"   # a 3D model of the replica (glTF binary)
     d["page_url"] = f"{PUBLIC_URL}/c/{shop.shop()['slug']}#{item['id']}"
     r = shop.shop()["rules"]
-    if item["stock"] > 0:
-        d["availability"] = "in stock"
-    else:
-        nb = item.get("next_batch")
-        d["availability"] = "sold out" + (f"; next small batch ready about {nb}" if nb else "; no batch planned yet") + (
-            f"; can be commissioned at ${r['commission_usd']} per car (not the shelf price), {r['commission_lead_weeks']} weeks "
-            "for 1-2 cars; use quote_commission for more cars or exact dates" if r["commissions"] else "")
-        d["next_batch"] = nb
+    d["availability"] = (f"{item['stock']} in stock" if item["stock"] > 0 else "sold out") + (
+        "; any car can also be made to order (use quote_commission)" if r["commissions"] else "")
     return d
 
 
 def about_counter() -> dict:
     s = shop.shop()
     r = s["rules"]
+    tiers = "; ".join(f"up to {t['up_to']} cars: {t['weeks']} week{'s' if t['weeks'] > 1 else ''}" for t in r["commission_lead_tiers"])
     return {"shop": s["name"], "maker": s["maker"], "city": s["city"], "about": s["about"],
-            "ships_to": r["ships_to"], "max_per_order": r["max_per_order"], "shipping_usd": r["shipping_usd"],
-            "commissions": (f"${r['commission_usd']} per car in any colour; {r['commission_lead_weeks']} weeks for 1-2 cars, "
-                            f"about {r['commission_cars_per_week']} more cars a week after that; "
-                            + "; ".join(f"{t['percent']}% off from {t['min_cars']} cars" for t in r["commission_volume_discounts"])
-                            + f"; free shipping from {r['commission_free_shipping_from']} cars. "
-                            "Use quote_commission for exact numbers, request_commission to send Lena a request.")
+            "ships_to": r["ships_to"], "shipping_usd": r["shipping_usd"],
+            "buying_from_stock": "any quantity up to the stock shown on the listing",
+            "made_to_order": (f"${r['commission_usd']} per car; build time {tiers}; then about 1 more week per "
+                              f"{r['commission_extra_week_per']} cars; "
+                              + "; ".join(f"{t['percent']}% off from {t['min_cars']} cars" for t in r["commission_volume_discounts"])
+                              + f"; free shipping from {r['commission_free_shipping_from']} cars. Ask for the car, the "
+                              "year of the real car, body colour, interior colour and quantity, then quote_commission, "
+                              "then start_commission_checkout (paid through PayPal like any order).")
             if r["commissions"] else "not taken",
-            "buying_more_than_max": f"Orders above {r['max_per_order']} cars, and any sold-out car, go through a commission request.",
+            "talk_to_lena": "Lena doesn't give out a number; use leave_contact with the person's phone and she calls them.",
             "payment": "PayPal; the buyer approves every order in PayPal"}
 
 
 def quote_commission(cars: list[dict], us_state: str = "") -> dict:
     """Exact price, volume discount, shipping, build time and delivery window for made-to-order cars.
-    cars: [{"item_id" (or "body"), "colour", "quantity"}]."""
+    cars: [{"model", "year", "body_colour", "interior_colour", "quantity"}]."""
     try:
         return shop.commission_quote(cars, us_state)
     except ValueError as e:
         return {"ok": False, "reason": str(e)}
 
 
-def request_commission(name: str, email: str, phone: str, address: str, us_state: str, cars: list[dict],
-                       notes: str = "", what_the_shopper_asked: str = "", channel: str = "mcp") -> dict:
-    """Sends Lena a made-to-order request. Nothing is charged: she confirms by email, then sends a PayPal invoice."""
+def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone: str, what_the_shopper_asked: str,
+                              channel: str = "mcp") -> dict:
+    """Creates the made-to-order order and a PayPal approval link for the quoted total. Nothing is charged until the
+    person approves in PayPal; Lena starts building once it's paid."""
+    if not paypal.configured():
+        return {"ok": False, "reason": "Checkout is offline right now; nothing was created or charged."}
     try:
-        rq = shop.new_commission_request({"name": name, "email": email, "phone": phone, "address": address},
-                                         cars, us_state, notes, what_the_shopper_asked, channel)
+        o = shop.new_commission_order(cars, us_state, name, phone, what_the_shopper_asked, channel)
     except ValueError as e:
         return {"ok": False, "reason": str(e)}
-    q = rq["quote"]
-    return {"ok": True, "request_id": rq["id"], "status": "sent to Lena, waiting for her reply",
-            "summary": "; ".join(f"{c['quantity']} × {c['car']} in {c['colour']}" for c in q["cars"]),
-            "total_usd": q["total_usd"], "ready_to_ship_by": q["ready_to_ship_by"],
-            "next_step": q["how_it_works"]}
+    s = shop.shop()
+    line = {"id": "MADE-TO-ORDER", "title": o["title"], "price_usd": round(o["total_usd"] - o["shipping_usd"], 2)}
+    try:
+        pp = paypal.create_order(order_id=o["id"], shop=s, listing=line, qty=1, shipping_usd=o["shipping_usd"],
+                                 return_url=f"{PUBLIC_URL}/paypal/return?oc={o['id']}",
+                                 cancel_url=f"{PUBLIC_URL}/paypal/cancel?oc={o['id']}")
+    except paypal.PayPalError:
+        shop.update_order(o["id"], status="error")
+        return {"ok": False, "reason": "PayPal could not create the order; nothing was charged."}
+    link = paypal.approve_link(pp)
+    shop.update_order(o["id"], paypal_order_id=pp["id"], approve_url=link)
+    q = o["quote"]
+    return {"ok": True, "order_id": o["id"], "approve_url": link, "you_asked_for": what_the_shopper_asked,
+            "you_are_approving": f"{o['title']}: {q['total_cars']} × ${q['unit_usd']}"
+                                 + (f" − {q['volume_discount_percent']}% (${q['discount_usd']:.2f})" if q["discount_usd"] else "")
+                                 + f" + ${q['shipping_usd']:.2f} shipping = ${o['total_usd']:.2f}",
+            "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}, arrives "
+                        f"{q['delivery']['arrives_earliest']} to {q['delivery']['arrives_latest']} (estimate)",
+            "next_step": "Show both lines, then open approve_url. Nothing is charged until they approve in PayPal."}
+
+
+def leave_contact(phone: str, name: str = "", message: str = "", what_the_shopper_asked: str = "",
+                  channel: str = "mcp") -> dict:
+    """Passes the person's phone number and question to Lena; she calls them back."""
+    try:
+        rq = shop.new_callback(phone, name, message, what_the_shopper_asked, channel)
+    except ValueError as e:
+        return {"ok": False, "reason": str(e)}
+    return {"ok": True, "request_id": rq["id"], "next_step": "Passed to Lena; she'll call this number herself."}
 
 
 def search_counter(query: str = "", max_price_usd: float | None = None) -> dict:

@@ -237,3 +237,7 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .made-note{margin:14px 0 0;color:var(--mute);font:400 12px "Geist Mono",monospace}
 @media (max-width:900px){.steps4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:520px){.steps4{grid-template-columns:1fr}}
+
+.sheet .qty{display:flex;align-items:center;gap:10px;margin:0 0 12px;color:#A9AEB4;font-size:14px}
+.sheet .qty input{width:80px;padding:10px;border-radius:10px;background:#08090A;color:#fff;border:1px solid var(--hair);font-size:15px}
+.sheet .qty span{margin-left:auto;color:var(--lamp);font:600 16px "Geist"}

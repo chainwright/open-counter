@@ -20,7 +20,7 @@ def test_search_only_returns_listed_items_and_explains_match():
 
 
 def test_rules_refuse_before_any_money_moves():
-    for args, word in [(("sg-009", 1, "CO"), "stock"), (("sg-014", 3, "CO"), "at most"), (("sg-014", 1, "ZZ"), "US")]:
+    for args, word in [(("sg-009", 31, "CO"), "stock"), (("sg-014", 0, "CO"), "at least"), (("sg-014", 1, "ZZ"), "US")]:
         with pytest.raises(ValueError, match=word):
             shop.new_order(*args, "x", "t")
     assert shop.orders() == []
@@ -46,28 +46,27 @@ def test_total_is_recomputed_from_the_listing_not_from_the_agent(monkeypatch):
 
 
 def test_stock_is_taken_once_at_capture():
+    assert shop.take_stock("sg-014", 29) is True
     assert shop.take_stock("sg-014", 1) is True
     assert shop.take_stock("sg-014", 1) is False
 
 
 def test_public_listing_has_no_private_fields():
     item = counter.item_details("sg-014")
-    assert "keywords" not in item and item["availability"] == "in stock"
+    assert "keywords" not in item and item["availability"].startswith("30 in stock")
     assert json.dumps(counter.about_counter()).count("PayPal") >= 1
 
 
 def test_demo_restock_brings_a_sold_out_car_back_later_not_sooner(monkeypatch):
     monkeypatch.setattr(shop, "DEMO", True)
-    assert shop.take_stock("sg-014", 1)
+    assert shop.take_stock("sg-014", 30)
     sold = shop.listing("sg-014")
     assert sold["stock"] == 0 and sold["sold_out_at"]
     s = shop.shop()
     assert not shop._demo_restock(s, now=sold["sold_out_at"] + shop.RESTOCK_AFTER_S - 1)
     assert shop._demo_restock(s, now=sold["sold_out_at"] + shop.RESTOCK_AFTER_S)
     back = next(x for x in s["listings"] if x["id"] == "sg-014")
-    assert back["stock"] == 1 and "sold_out_at" not in back
-    seeded_zero = next(x for x in s["listings"] if x["id"] == "sg-009")
-    assert seeded_zero["stock"] == 0  # the commission example stays sold out
+    assert back["stock"] == 30 and "sold_out_at" not in back
 
 
 def test_order_log_is_capped():
@@ -99,44 +98,49 @@ def test_promise_without_action_is_recognised():
         assert not shopper.PROMISE.search(s), s
 
 
-def test_sold_out_listing_states_commission_terms_not_the_shelf_price():
-    a = counter.item_details("sg-009")["availability"]
-    assert "sold out" in a and "$89" in a and "3 weeks" in a
+def test_about_counter_states_made_to_order_terms():
+    a = counter.about_counter()["made_to_order"]
+    assert "$89" in a and "up to 2 cars: 1 week" in a and "up to 20 cars: 3 weeks" in a and "15% off from 25" in a
 
 
-# ---- commissions (Roma's test 27.10: the agent made up prices, lead times and agreed to 50 cars) ----
-def test_commission_price_discount_and_lead_time_come_from_the_rules():
+# ---- Roma's rules, 27.10: 30 of each in stock, any quantity up to stock; made to order priced and timed in code ----
+def test_any_quantity_up_to_stock():
+    assert all(x["stock"] == 30 for x in shop.shop()["listings"])
+    o = shop.new_order("sg-014", 30, "CA", "all of them", "t")
+    assert o["qty"] == 30
+    with pytest.raises(ValueError, match="in stock"):
+        shop.new_order("sg-015", 31, "CA", "x", "t")
+
+
+def test_made_to_order_lead_time_price_and_discount():
     d = date(2026, 10, 27)
-    one = shop.commission_quote([{"item_id": "sg-009", "colour": "yellow", "quantity": 1}], "CA", today=d)
-    assert one["unit_usd"] == 89 and one["volume_discount_percent"] == 0 and one["build_weeks"] == 3
-    assert one["shipping_usd"] == 6.5 and one["total_usd"] == 95.5
-    mix = [{"item_id": "sg-009", "colour": "yellow", "quantity": 15},
-           {"item_id": "sg-009", "colour": "light blue", "quantity": 5},
-           {"item_id": "sg-012", "colour": "red", "quantity": 5}]
-    q = shop.commission_quote(mix, "CA", today=d)
-    assert q["total_cars"] == 25 and q["volume_discount_percent"] == 15 and q["shipping_usd"] == 0
-    assert q["total_usd"] == round(25 * 89 * 0.85, 2)
-    assert q["build_weeks"] == 3 + 8                       # 23 cars beyond the first two, 3 a week
-    ten = shop.commission_quote([{"body": "fastback", "colour": "blue", "quantity": 10}], today=d)
-    assert ten["volume_discount_percent"] == 10 and ten["shipping_usd"] == 0
+    spec = lambda n: [{"model": "rear-engine coupe", "year": "1973", "body_colour": "yellow",
+                       "interior_colour": "black", "quantity": n}]
+    weeks = {n: shop.commission_quote(spec(n), today=d)["build_weeks"] for n in (1, 2, 3, 10, 11, 20, 21, 30)}
+    assert weeks == {1: 1, 2: 1, 3: 2, 10: 2, 11: 3, 20: 3, 21: 4, 30: 4}
+    q = shop.commission_quote(spec(25), "CA", today=d)
+    assert q["unit_usd"] == 89 and q["volume_discount_percent"] == 15 and q["shipping_usd"] == 0
+    assert q["total_usd"] == round(25 * 89 * 0.85, 2) and q["ready_to_ship_by"].endswith("2026-11-24")
+    assert q["delivery"]["ships_on"]
 
 
-def test_commission_refuses_missing_colour_and_too_many_cars():
-    with pytest.raises(ValueError, match="colour"):
-        shop.commission_quote([{"item_id": "sg-014", "quantity": 2}])
-    with pytest.raises(ValueError, match="at most 40"):
-        shop.commission_quote([{"item_id": "sg-014", "colour": "green", "quantity": 50}])
+def test_made_to_order_asks_for_every_detail():
+    with pytest.raises(ValueError) as e:
+        shop.commission_quote([{"model": "fastback", "body_colour": "blue", "quantity": 3}])
+    assert "year" in str(e.value) and "interior" in str(e.value)
+    with pytest.raises(ValueError, match="name and a phone"):
+        shop.new_commission_order([{"model": "fastback", "year": "1967", "body_colour": "blue",
+                                    "interior_colour": "white", "quantity": 3}], "CA", "", "", "x", "t")
 
 
-def test_commission_request_needs_contact_and_charges_nothing():
-    cars = [{"item_id": "sg-015", "colour": "highland blue", "quantity": 3}]
-    r = counter.request_commission("Sam", "", "555", "1 Main St, Fresno, CA 93701", "CA", cars)
-    assert not r["ok"] and "email" in r["reason"]
-    r = counter.request_commission("Sam", "sam@example.com", "555-0100", "1 Main St, Fresno, CA 93701", "CA", cars)
-    assert r["ok"] and r["request_id"].startswith("CR-") and "invoice" in r["next_step"]
-    assert shop.orders() == [] and len(shop.requests_()) == 1
+def test_made_to_order_becomes_a_normal_order_without_touching_stock():
+    o = shop.new_commission_order([{"model": "fastback", "year": "1967", "body_colour": "blue",
+                                    "interior_colour": "white", "quantity": 12}], "CA", "Sam", "415-555-0134", "x", "t")
+    assert o["kind"] == "commission" and o["status"] == "awaiting_approval" and o["total_usd"] == round(12 * 89 * 0.9, 2)
+    assert all(x["stock"] == 30 for x in shop.shop()["listings"])
 
 
-def test_sold_out_listing_says_when_the_next_batch_is():
-    yellow = counter.item_details("sg-009")
-    assert yellow["next_batch"] == "2026-11-20" and "next small batch" in yellow["availability"]
+def test_talk_to_lena_takes_a_phone_number():
+    assert not counter.leave_contact("12")["ok"]
+    r = counter.leave_contact("(415) 555-0134", "Sam", "When will the yellow one be back?")
+    assert r["ok"] and shop.requests_()[0]["kind"] == "callback"
