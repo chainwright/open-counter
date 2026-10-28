@@ -152,7 +152,7 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .foot a{color:var(--lamp);text-decoration:none}
 @media (max-width:900px){.beats{grid-template-columns:1fr}section:not(.hero){padding:80px 16px}}
 
-.buy{margin-top:12px;width:100%;border:0;border-radius:10px;padding:11px;background:var(--paper);color:#111;font:600 14px "Geist";cursor:pointer}
+.buy{width:100%;border:0;border-radius:10px;padding:11px;background:var(--paper);color:#111;font:600 14px "Geist";cursor:pointer}
 .buy[disabled]{opacity:.4;cursor:default}
 .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:50}
 .sheet{width:min(460px,100%);background:#111316;border:1px solid var(--hair);border-radius:20px 20px 0 0;padding:22px;font-family:-apple-system,system-ui,sans-serif}
@@ -218,3 +218,10 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .v3d-x{position:absolute;right:12px;top:10px;z-index:2;width:40px;height:40px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:24px;cursor:pointer}
 .v3d-cap{position:absolute;left:20px;bottom:16px;display:flex;flex-direction:column;gap:4px;color:var(--paper);pointer-events:none}
 .v3d-cap b{font:800 26px "Big Shoulders Display",sans-serif;text-transform:uppercase;color:var(--lamp)}.v3d-cap span{font:400 13px "Geist Mono",monospace;color:var(--mute)}
+
+/* Buy and View in 3D side by side, half and half (Roma 14432) */
+.acts2{margin-top:12px;display:flex;gap:8px}.acts2>button{flex:1 1 0;min-width:0}
+.m3d{border:1px solid rgba(255,233,199,.55);border-radius:10px;padding:11px 8px;background:linear-gradient(180deg,rgba(255,233,199,.16),rgba(255,233,199,.06));
+  color:var(--lamp);font:600 14px "Geist";cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
+.m3d:hover{background:rgba(255,233,199,.22);border-color:var(--lamp)}
+.m3d .cube{width:14px;height:14px;border:2px solid currentColor;border-radius:3px;transform:rotate(45deg) skew(-8deg,-8deg)}
