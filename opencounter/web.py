@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from . import assistant, counter, paypal, shop, shopper, sample
+from . import assistant, counter, onboard, paypal, shop, shopper, sample
 from .mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -112,7 +112,17 @@ def media(name: str):
 @app.get("/c/{slug}.json")
 def counter_json(slug: str):
     if slug != shop.shop()["slug"]:
-        raise HTTPException(404)
+        c = onboard.counter(slug)
+        if not c:
+            raise HTTPException(404)
+        l = c["listing"]
+        return {"shop": c["name"], "maker": c["maker"], "ships_from": c["ships_from"], "ships_to": "US",
+                "opened_with": "Open Counter (listing words written by NVIDIA Nemotron VL from the maker's photo)",
+                "listings": [{**{k: l.get(k) for k in ("id", "title", "price_usd", "stock", "category", "materials", "size",
+                                                        "colour", "made_by_hand", "short_description", "keywords")},
+                              "photo_url": f"{counter.PUBLIC_URL}/c/{slug}/photo.jpg",
+                              "paypal_catalog_product": l.get("paypal_catalog_product")}],
+                "checkout": "Not open yet: the maker connects her own PayPal account to start taking orders."}
     return counter.about_counter() | {"listings": counter.search_counter()["results"],
                                        "mcp": f"{counter.PUBLIC_URL}/mcp/"}
 
@@ -121,7 +131,69 @@ def counter_json(slug: str):
 def well_known():
     s = shop.shop()
     return {"counters": [{"name": s["name"], "json": f"{counter.PUBLIC_URL}/c/{s['slug']}.json",
-                          "mcp": f"{counter.PUBLIC_URL}/mcp/"}]}
+                          "mcp": f"{counter.PUBLIC_URL}/mcp/"}]
+            + [{"name": c["name"], "json": f"{counter.PUBLIC_URL}/c/{c['slug']}.json"} for c in onboard.latest(20)]}
+
+
+@app.get("/c/{slug}/photo.jpg")
+def counter_photo(slug: str):
+    p = (shop._path("counters") / f"{slug}.jpg").resolve()
+    if p.parent != shop._path("counters").resolve() or not p.exists():
+        raise HTTPException(404)
+    return FileResponse(p, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.post("/api/open/draft")
+async def open_draft(req: Request):
+    b = await req.json()
+    img = str(b.get("image") or "")
+    if len(img) < 100 or len(img) > 8_000_000:
+        raise HTTPException(400, "Add a photo (up to about 6 MB).")
+    try:
+        return await asyncio.to_thread(onboard.draft, img, str(b.get("note") or ""))
+    except shopper.OverBudget as e:
+        return JSONResponse({"error": str(e)}, 429)
+
+
+@app.post("/api/open/publish")
+async def open_publish(req: Request):
+    b = await req.json()
+    try:
+        c = await asyncio.to_thread(onboard.publish, b.get("listing") or {}, float(b.get("price_usd") or 0),
+                                    int(b.get("stock") or 0), str(b.get("ships_from") or ""), str(b.get("maker") or ""),
+                                    str(b.get("shop_name") or ""), str(b.get("image") or ""))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, str(e))
+    return {"slug": c["slug"], "page": f"{counter.PUBLIC_URL}/c/{c['slug']}", "json": f"{counter.PUBLIC_URL}/c/{c['slug']}.json",
+            "paypal_catalog_product": c["listing"].get("paypal_catalog_product")}
+
+
+@app.get("/api/open/latest")
+def open_latest():
+    return [{"slug": c["slug"], "name": c["name"], "title": c["listing"]["title"], "price_usd": c["listing"]["price_usd"]}
+            for c in onboard.latest(8)]
+
+
+@app.get("/open")
+def open_page():
+    return _stamped("open.html")
+
+
+@app.get("/c/{slug}")
+def counter_page(slug: str):
+    if slug == shop.shop()["slug"]:
+        return RedirectResponse("/")
+    c = onboard.counter(slug)
+    if not c:
+        raise HTTPException(404)
+    e, l = html.escape, c["listing"]
+    return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{e(c['name'])} · Open Counter</title><link rel="stylesheet" href="/static/open.css"></head><body><main class="cp">
+<span class="k">OPEN COUNTER · A MAKER'S SHOP, READABLE BY ANY AI</span><h1>{e(c['name'])}</h1><p class="by">by {e(c['maker'])} · ships from {e(c['ships_from'])}</p>
+<article class="item"><img src="/c/{e(slug)}/photo.jpg" alt=""><div><h2>{e(l['title'])}</h2><p>{e(l.get('short_description') or '')}</p>
+<p class="meta">${l['price_usd']:.2f} · {l['stock']} available{(' · ' + e(', '.join(l.get('materials') or []))) if l.get('materials') else ''}</p></div></article>
+<p class="agents">For AI agents: <a href="/c/{e(slug)}.json">/c/{e(slug)}.json</a>{(' · PayPal catalog product ' + e(l['paypal_catalog_product'])) if l.get('paypal_catalog_product') else ''}</p>
+<a class="back" href="/open">Open your own counter →</a></main></body></html>""")
 
 
 # ---- agent HTTP API (for agents that don't speak MCP, and for the built-in demo shopper) ----
@@ -582,7 +654,8 @@ def _stamped(name: str) -> HTMLResponse:
     """The page with each static file stamped by its modification time, so phones never keep an old copy."""
     html = (WEB / name).read_text()
     for f in (WEB / "static").iterdir():
-        html = html.replace(f"/static/{f.name}", f"/static/{f.name}?v={int(f.stat().st_mtime)}")
+        if f.is_file():   # files only, and only a whole path ending in a quote (a folder name is a prefix of others)
+            html = html.replace(f'/static/{f.name}"', f'/static/{f.name}?v={int(f.stat().st_mtime)}"')
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 

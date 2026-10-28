@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open your counter — Open Counter</title>
+<meta name="description" content="Any maker: one photo and a sentence, and your shop is readable by every AI shopping agent.">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/open.css">
+</head>
+<body>
+<main class="wrap">
+  <a class="home" href="/">← Lena's shop</a>
+  <span class="k">FOR ANY MAKER</span>
+  <h1>Open your counter<br>in two minutes.</h1>
+  <p class="lead">Lena is one maker. There are millions like her. Take one photo, write one sentence, and your shop becomes
+    readable to every AI shopping agent. Price and stock are yours to set; the AI only writes the words.</p>
+
+  <section class="step"><b>1</b><div><h2>Your product photo</h2>
+    <div class="samples" id="samples">
+      <button data-src="/static/open/mug.jpg"><img src="/static/open/mug.jpg" alt="Stoneware mug"><span>Mug</span></button>
+      <button data-src="/static/open/candle.jpg"><img src="/static/open/candle.jpg" alt="Soy candle"><span>Candle</span></button>
+      <button data-src="/static/open/wallet.jpg"><img src="/static/open/wallet.jpg" alt="Leather wallet"><span>Wallet</span></button>
+      <label class="up"><input type="file" id="file" accept="image/*"><span>Upload yours</span></label>
+    </div>
+    <img id="preview" class="preview" alt="" hidden>
+  </div></section>
+
+  <section class="step"><b>2</b><div><h2>About you and the price</h2>
+    <div class="grid">
+      <label>Your name<input id="maker" placeholder="Rosa Diaz"></label>
+      <label>Shop name<input id="shopname" placeholder="Clay & Kiln"></label>
+      <label>Price, USD<input id="price" type="number" min="1" step="0.01" placeholder="32"></label>
+      <label>How many you have<input id="stock" type="number" min="1" placeholder="6"></label>
+      <label>Ships from (state)<input id="from" maxlength="2" placeholder="TX"></label>
+      <label class="wide">One sentence about it<input id="note" placeholder="Wheel-thrown, glazed by hand, holds 12 oz"></label>
+    </div>
+    <button class="go" id="draft" disabled>Write my listing with AI</button><span class="hint" id="dhint"></span>
+  </div></section>
+
+  <section class="step" id="s3" hidden><b>3</b><div><h2>Check what the AI wrote</h2>
+    <p class="fine" id="model"></p>
+    <div class="grid">
+      <label class="wide">Title<input id="t_title"></label>
+      <label class="wide">Description<textarea id="t_desc" rows="3"></textarea></label>
+      <label>Materials<input id="t_mat"></label><label>Size<input id="t_size"></label>
+      <label>Colour<input id="t_col"></label><label>Keywords<input id="t_kw"></label>
+    </div>
+    <button class="go" id="publish">Open my counter</button><span class="hint" id="phint"></span>
+  </div></section>
+
+  <section class="done" id="s4" hidden>
+    <span class="k">YOUR COUNTER IS OPEN</span>
+    <h2 id="dname"></h2>
+    <p>Any AI shopping agent can now read it. Three addresses, same facts:</p>
+    <ul><li>Shop page: <a id="dpage" target="_blank"></a></li><li>Agent card (JSON): <a id="djson" target="_blank"></a></li>
+      <li>PayPal Catalog product: <code id="dprod"></code></li></ul>
+    <pre id="dcard"></pre>
+    <p class="fine">Next step for a real shop: connect your own PayPal account, and orders start the way they do at Lena's.</p>
+  </section>
+
+  <section class="recent"><span class="k">COUNTERS OPENED RECENTLY</span><div id="recent"></div></section>
+</main>
+<script src="/static/open.js"></script>
+</body>
+</html>
