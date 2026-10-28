@@ -13,7 +13,7 @@ from datetime import date
 
 from openai import OpenAI
 
-from . import counter
+from . import counter, shop
 
 MODEL = os.environ.get("SHOPPER_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 PRICE_IN, PRICE_OUT = 0.30, 0.90  # USD per 1M tokens, Token Factory catalog
@@ -31,6 +31,8 @@ BRANDS = re.compile(r"\b(ford|mustang|shelby|eleanor|porsche|911|chevrolet|chevy
 # "Shall I proceed?" after everything is known: the sales agent should place the order, not ask (Roma 14457).
 PERMISSION = re.compile(r"\b(shall i|should i|would you like me to|do you want me to|want me to|ready to proceed|"
                         r"shall we|proceed with (the )?(checkout|order))\b", re.I)
+LINK_CLAIM = re.compile(r"paypal (link|button|checkout)|link below|approve (the |your )?(payment|order)|approval link|"
+                        r"updated (the|your) (order|shipment)|order (is )?ready", re.I)
 PHONE = re.compile(r"(\+?\d[\d\s().-]{6,}\d)")
 MEMO_TAG = re.compile(r"\n?\[(what the tools returned|tool results)[^\]]*\]", re.I)
 REFUSAL = re.compile(r"^\s*(i.?m sorry,?\s*)?(but\s*)?i (can.?t|cannot) (help|assist) with (that|this)", re.I)
@@ -203,7 +205,10 @@ def run(messages: list[dict]) -> dict:
     and a checkout (if one was created)."""
     if spent_today() >= DAILY_CAP_USD:
         raise OverBudget("today's demo budget is spent")
-    convo = [{"role": "system", "content": SYSTEM}]
+    # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
+    shelf = "; ".join(f"{x['id']} = {x['title']}, ${x['price_usd']:.0f}, {x['stock']} in stock"
+                      for x in shop.shop()["listings"])
+    convo = [{"role": "system", "content": SYSTEM + "\nThe shelf right now (use these item_id values): " + shelf}]
     for m in messages[-40:]:
         if m["role"] not in ("user", "assistant"):
             continue
@@ -259,6 +264,16 @@ def run(messages: list[dict]) -> dict:
                       {"role": "user", "content": "A deadline is optional. If the person gave the car, the quantity "
                        "and a US state or city, call delivery_estimate and start_checkout now; otherwise ask only "
                        "for what is missing."}]
+            continue
+        if (not msg.tool_calls and not checkout and LINK_CLAIM.search(msg.content or "")
+                and not any(st["tool"] in ("start_checkout", "start_commission_checkout") and "waiting" in st["result"]
+                            for st in steps) and sum(1 for c in convo if c.get("content", "").startswith("No PayPal button")) < 1):
+            # It talks about a payment link or an updated order, but no checkout exists for this turn: the button
+            # under the message would be missing. Make the order now (with the final cars and state) or ask.
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "No PayPal button was created in this turn. Call start_checkout now "
+                       "with the final cars (all of them in items) and the state; if something is missing, ask only for "
+                       "that. Never mention a link that doesn't exist."}]
             continue
         if not msg.tool_calls and REFUSAL.search(msg.content or "") and not nudged:
             nudged = True

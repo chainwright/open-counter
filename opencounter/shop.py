@@ -307,6 +307,10 @@ def new_order(lid: str, qty: int, state: str, asked_for: str, channel: str,
     lines = []
     for k, q in want.items():
         item = listing(k)
+        if not item and k:
+            hits = search(k)   # an agent passed a name or colour instead of the id: accept one clear match
+            item = hits[0] if len(hits) == 1 else None
+            k = item["id"] if item else k
         if not item:
             raise ValueError(f"No listing '{k}' at {s['name']}.")
         if q < 1:
