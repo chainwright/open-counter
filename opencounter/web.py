@@ -8,6 +8,7 @@ import html
 import json
 import os
 import re
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -172,42 +173,54 @@ def api_order(oid: str):
 
 
 # ---- PayPal: the human approved (or cancelled) ----
+_settling = threading.Lock()
+
+
+def _settle(oc: str) -> dict:
+    """Capture an approved order and hand it to Lena. Called from the buyer's return to the site AND from PayPal's
+    CHECKOUT.ORDER.APPROVED webhook, so a buyer who approves and closes the tab still gets their order.
+    One at a time, and the capture carries a PayPal-Request-Id, so the two paths can never charge twice."""
+    with _settling:
+        o = shop.order(oc)
+        if o["status"] in ("paid", "shipped", "refunded_out_of_stock", "refunded"):
+            return o
+        cap = paypal.capture(o["paypal_order_id"], oc)
+        unit = cap["purchase_units"][0]
+        c = unit["payments"]["captures"][0]
+        if c["status"] != "COMPLETED":
+            return shop.update_order(oc, status="pending", capture_id=c["id"])
+        ship = unit.get("shipping", {})
+        lines = o.get("lines") or [{"listing_id": o["listing_id"], "qty": o["qty"]}]
+        if o.get("kind") != "commission" and not shop.take_stock_lines(lines):
+            paypal.refund(c["id"], oc, note="Sorry, the last one sold a moment before your payment. Full refund.")
+            o = shop.update_order(oc, status="refunded_out_of_stock", capture_id=c["id"])
+            _announce("refunded", o)
+            return o
+        real_state = (ship.get("address", {}).get("admin_area_1") or "").upper()
+        extra = {}
+        if real_state and real_state != o["ship_state"]:
+            # The agent guessed one state; PayPal holds the buyer's real address. The estimate follows the address.
+            extra = {"estimate": shop.delivery_estimate(real_state), "agent_state": o["ship_state"],
+                     "ship_state": real_state}
+        o = shop.update_order(oc, status="paid", capture_id=c["id"], paid_at=time.time(),
+                              ship_to={"name": ship.get("name", {}).get("full_name"),
+                                       "city": ship.get("address", {}).get("admin_area_2"),
+                                       "state": real_state},
+                              payer=cap.get("payer", {}).get("name", {}).get("given_name"), **extra)
+        _announce("paid", o)
+        return o
+
+
 @app.get("/paypal/return")
 def paypal_return(oc: str, token: str = ""):
     o = shop.order(oc)
     if not o or (token and token != o.get("paypal_order_id")):
         raise HTTPException(404)
-    if o["status"] == "paid":
-        return RedirectResponse(f"/thanks/{oc}")
     try:
-        cap = paypal.capture(o["paypal_order_id"], oc)
+        _settle(oc)
     except paypal.PayPalError as e:
         shop.update_order(oc, status="error", error=str(e))
         return HTMLResponse("<p>PayPal could not complete the payment. Nothing was charged.</p>", 502)
-    unit = cap["purchase_units"][0]
-    c = unit["payments"]["captures"][0]
-    if c["status"] != "COMPLETED":
-        shop.update_order(oc, status="pending", capture_id=c["id"])
-        return RedirectResponse(f"/thanks/{oc}")
-    ship = unit.get("shipping", {})
-    lines = o.get("lines") or [{"listing_id": o["listing_id"], "qty": o["qty"]}]
-    if o.get("kind") != "commission" and not shop.take_stock_lines(lines):
-        paypal.refund(c["id"], oc, note="Sorry, the last one sold a moment before your payment. Full refund.")
-        o = shop.update_order(oc, status="refunded_out_of_stock", capture_id=c["id"])
-        _announce("refunded", o)
-        return RedirectResponse(f"/thanks/{oc}")
-    real_state = (ship.get("address", {}).get("admin_area_1") or "").upper()
-    extra = {}
-    if real_state and real_state != o["ship_state"]:
-        # The agent guessed one state; PayPal holds the buyer's real address. The estimate follows the address.
-        extra = {"estimate": shop.delivery_estimate(real_state), "agent_state": o["ship_state"],
-                 "ship_state": real_state}
-    o = shop.update_order(oc, status="paid", capture_id=c["id"], paid_at=time.time(),
-                          ship_to={"name": ship.get("name", {}).get("full_name"),
-                                   "city": ship.get("address", {}).get("admin_area_2"),
-                                   "state": real_state},
-                          payer=cap.get("payer", {}).get("name", {}).get("given_name"), **extra)
-    _announce("paid", o)
     return RedirectResponse(f"/thanks/{oc}")
 
 
@@ -304,8 +317,20 @@ async def webhook(req: Request):
     if not ok:
         return JSONResponse({"ok": False}, 400)
     res = event.get("resource", {})
+    kind = event.get("event_type", "")
     oc = res.get("custom_id") or (res.get("purchase_units") or [{}])[0].get("custom_id")
-    if oc and shop.order(oc) and event.get("event_type") == "PAYMENT.CAPTURE.REFUNDED":
+    o = shop.order(oc) if oc else None
+    if not o:
+        return {"ok": True, "ignored": "not our order"}
+    shop.update_order(oc, events=o["events"] + [[f"webhook:{kind}", time.time()]])
+    if kind == "CHECKOUT.ORDER.APPROVED" and o["status"] == "awaiting_approval":
+        # approved in PayPal but the buyer never came back to the site: finish it here
+        await asyncio.to_thread(_settle, oc)
+    elif kind == "PAYMENT.CAPTURE.COMPLETED" and o["status"] in ("awaiting_approval", "pending"):
+        _announce("paid", shop.update_order(oc, status="paid", paid_at=time.time(), capture_id=res.get("id")))
+    elif kind in ("PAYMENT.CAPTURE.DENIED", "PAYMENT.CAPTURE.REVERSED"):
+        _announce("refunded", shop.update_order(oc, status="payment_failed" if kind.endswith("DENIED") else "reversed"))
+    elif kind == "PAYMENT.CAPTURE.REFUNDED" and o["status"] != "refunded_out_of_stock":
         _announce("refunded", shop.update_order(oc, status="refunded"))
     return {"ok": True}
 
