@@ -120,7 +120,7 @@
       const yr = (x.title.match(/(\d{4})/) || [])[1] || "";
       return `<article class="card" id="${esc(x.id)}">
         <img class="d" src="${esc(x.photo_url)}" alt="" loading="lazy"><img class="l" src="${esc(x.photo_url)}" alt="${esc(x.title)}" loading="lazy">
-        <div class="yr">${esc(yr.slice(2))}</div>
+        <div class="yr">${esc(yr.slice(2))}</div>${x.model_url ? `<button class="v3d" data-model="${esc(x.model_url)}" data-title="${esc(x.title)}">3D · turn it around</button>` : ""}
         <div class="meta"><h3>${esc(x.title.replace(/, \d{4}$/, ""))}</h3>
           <div class="spec"><span class="chip" style="background:${paint[code] || "#888"}"></span>${esc(code)} · ${esc(x.scale)} · ${x.length_mm} mm · ${x.build_hours} h</div>
           <div class="row"><span class="price">$${x.price_usd.toFixed(0)}</span><span class="stock ${x.stock > 0 ? "" : "out"}">${x.stock > 0 ? x.stock + " IN STOCK" : "SOLD OUT · COMMISSION"}</span></div>
@@ -150,6 +150,19 @@
       const j = await r.json();
       if (j.ok) location.href = j.approve_url; else bg.querySelector("#m2").textContent = j.reason || "Couldn't start checkout.";
     });
+  });
+  // 3D: the replica as a glTF model, turned with a finger or the mouse, lit like the bench
+  let mvLoaded = false;
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-model]"); if (!b) return;
+    if (!mvLoaded) { const s = document.createElement("script"); s.type = "module"; s.src = "https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"; document.head.appendChild(s); mvLoaded = true; }
+    const bg = document.createElement("div"); bg.className = "v3d-bg";
+    bg.innerHTML = `<div class="v3d-box"><button class="v3d-x" aria-label="Close">&times;</button>
+      <model-viewer src="${esc(b.dataset.model)}" alt="${esc(b.dataset.title)}, 3D model" camera-controls touch-action="pan-y" auto-rotate auto-rotate-delay="0" rotation-per-second="18deg"
+        interaction-prompt="auto" shadow-intensity="1.1" shadow-softness="0.8" exposure="1.05" tone-mapping="neutral" camera-orbit="35deg 72deg 105%" min-camera-orbit="auto 20deg auto" max-camera-orbit="auto 95deg auto"></model-viewer>
+      <div class="v3d-cap"><b>${esc(b.dataset.title)}</b><span>Drag to turn · pinch or scroll to zoom</span></div></div>`;
+    document.body.appendChild(bg);
+    bg.addEventListener("click", (ev) => { if (ev.target === bg || ev.target.closest(".v3d-x")) bg.remove(); });
   });
   document.getElementById("copy").addEventListener("click", () => navigator.clipboard?.writeText(document.getElementById("mcpurl").textContent));
 })();

@@ -16,6 +16,8 @@ FIELDS = ("id", "title", "price_usd", "stock", "scale", "length_mm", "materials"
 def _public(item: dict) -> dict:
     d = {k: item[k] for k in FIELDS}
     d["photo_url"] = f"{PUBLIC_URL}/media/{item['photo']}"
+    if item.get("model"):
+        d["model_url"] = f"{PUBLIC_URL}/media/{item['model']}"   # a 3D model of the replica (glTF binary)
     d["page_url"] = f"{PUBLIC_URL}/c/{shop.shop()['slug']}#{item['id']}"
     r = shop.shop()["rules"]
     d["availability"] = ("in stock" if item["stock"] > 0 else
