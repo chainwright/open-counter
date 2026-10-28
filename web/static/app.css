@@ -292,3 +292,5 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .cocard .paidok{margin:6px 14px 2px;font-weight:700;color:#1F6B47}
 .cocard a.thx{display:block;margin:0 14px 8px;font-size:13px;color:#003087}
 .cocard a.pp[hidden]{display:none}
+.cocard a.thx.next{font-weight:600;color:#1F6B47}
+.firsthint{margin:8px 14px 0;font-size:13px;color:#e0a458}

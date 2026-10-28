@@ -139,7 +139,7 @@
         onApprove: () => fetch("/api/paypal/approved", { method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ order_id: c.order_id, paypal_order_id: token }) }).then((r) => r.json()).then((j) => {
             if (j.error) { box.innerHTML = `<p class="fine">${esc(j.error)}</p>`; return; }
-            box.innerHTML = `<p class="paidok">✓ Paid in PayPal · ${esc(c.order_id)}</p><a class="thx" href="${esc(j.thanks || "/thanks/" + c.order_id)}" target="_blank" rel="noopener">Your receipt and delivery dates →</a>`;
+            box.innerHTML = `<p class="paidok">✓ Paid in PayPal · ${esc(c.order_id)}</p><a class="thx" href="${esc(j.thanks || "/thanks/" + c.order_id)}" target="_blank" rel="noopener">Your receipt and delivery dates →</a><a class="thx next" href="/maker#orders" target="_blank" rel="noopener">Step 2 · see it land on Lena's side →</a>`;
             const k = items.findIndex((it) => it.html.includes(c.approve_url));
             link.remove();
             if (k >= 0) items[k].html = card.innerHTML;   // a reload shows it paid, not a stale button
@@ -185,6 +185,15 @@
       }
       persist();
     } catch (e) { clearInterval(tick); t.textContent = "Couldn't reach the counter. Try again."; }
+  }
+  // first visit: one line that says what to do, gone after the first message
+  const chips = document.getElementById("chips");
+  if (!items.length && chips) {
+    const hint = document.createElement("p"); hint.className = "firsthint";
+    hint.textContent = "New here? Tap a question below, or type your own. A test buyer for PayPal is under the chat.";
+    chips.before(hint);
+    const off = () => hint.remove();
+    form.addEventListener("submit", off, { once: true }); chips.addEventListener("click", off, { once: true });
   }
   form.addEventListener("submit", (e) => { e.preventDefault(); const v = input.value; input.value = ""; ask(v); });
   document.querySelectorAll("#chips button").forEach((b) => b.addEventListener("click", () => ask(b.textContent)));
