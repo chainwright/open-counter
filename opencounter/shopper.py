@@ -46,7 +46,8 @@ hand-built 1:43 replica cars, serving a customer through the shop's public tools
   colour, body style and year, then search and offer the closest listed car first (with its stock and price).
   Never refuse the conversation over a brand name.
 - Buying a listed car: the person can buy any quantity up to the stock on the listing. Check delivery to their US
-  state (a state name is enough: California → CA; work out the state from a city; pass a deadline as need_by and repeat the tool's verdict), then call
+  state (a state name is enough: California → CA; work out the state from a city; pass a deadline as need_by only if the person
+  gave one and repeat the tool's verdict; never ask for a deadline), then call
   start_checkout in the same turn as soon as you know the car, the quantity and the state. PayPal collects their
   name and address.
 - Made to order (a car or colour not in stock, or more than the stock): ask, one short question at a time and only
@@ -236,6 +237,16 @@ def run(messages: list[dict]) -> dict:
                       {"role": "user", "content": "Don't ask for permission: if you have the car, quantity and state "
                        "(and for a made-to-order build also the name and phone), create the order now with the "
                        "checkout tool; otherwise ask only for what is missing."}]
+            continue
+        if (not msg.tool_calls and not nudged and not checkout and re.search(r"\d|\b(one|two|three|four|five|six|"
+                r"seven|eight|nine|ten|a couple)\b", last_user, re.I) and "?" in (msg.content or "")
+                and any(st["tool"] in ("search_counter", "item_details") and "in stock" in st["result"] for st in steps)):
+            # It found the car and the person said how many, then asked something optional (a date, a confirmation).
+            nudged = True
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "A deadline is optional. If the person gave the car, the quantity "
+                       "and a US state or city, call delivery_estimate and start_checkout now; otherwise ask only "
+                       "for what is missing."}]
             continue
         if not msg.tool_calls and REFUSAL.search(msg.content or "") and not nudged:
             nudged = True
