@@ -46,7 +46,7 @@ anything. Same code path as the return page, so the two can never charge twice.
 **For the shopper (or their agent)**
 - Ask in English or Russian (tested; other languages work as the model allows). The agent finds the car, checks stock and delivery, gives the total and dates, asks once for
   name, phone, email and address, and puts a receipt under its message: one line per car, quantity × price, shipping,
-  total, and a PayPal button. Several different cars go into one PayPal order.
+  total, and PayPal's own button: the buyer approves in PayPal's window without leaving the chat. Several different cars go into one PayPal order.
 - Something not on the shelf? Describe it. The agent asks the year, body and interior colours and the quantity, and
   quotes the build time and volume discount from Lena's rules. It's paid with a **PayPal invoice: 50% deposit now,
   the balance before shipping.**
@@ -117,6 +117,8 @@ flowchart LR
 - MCP (streamable HTTP) at `/mcp/`: `about_counter`, `search_counter`, `item_details`, `delivery_estimate`,
   `start_checkout` (one or several cars), `quote_commission`, `start_commission_checkout`, `leave_contact`, `order_status`.
 - JSON card: `/c/small-garage.json`; every counter: `/c/<slug>.json`; discovery: `/.well-known/open-counter.json`.
+- One search across every counter on the host: `/api/directory?q=green&max_price=60` returns matching items from
+  Lena's shop and every counter opened at `/open`, each with its card and its checkout.
 - The card is a small open format: [JSON Schema](web/static/schema/open-counter-card.v1.json). Any shop can publish one
   at a well-known URL; any agent can read it the same way. The two new ideas, in one line each:
   1. **A shop card any AI agent can read and buy from**, with checkout that only a person can approve in PayPal.
