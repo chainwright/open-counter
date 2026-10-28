@@ -549,6 +549,14 @@ def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | No
         else:
             reply = (f"Заказ готов: всего ${r_['total']:.2f} с доставкой, кнопка PayPal ниже. " if ru else
                      f"Your order is ready: ${r_['total']:.2f} with shipping. The PayPal button is below. ") + reply
+    q = next((m for m in (re.search(r"^(\d+) cars · \$([\d,.]+)( \(\d+% off\))? · ready (\S+)", st["result"])
+                          for st in steps if st["tool"] == "quote_commission") if m), None)
+    if q and not checkout and q.group(2) not in reply:
+        # a made-to-order quote was computed this turn but the reply skipped the money: say it in code
+        ru = bool(re.search(r"[а-яё]", lang_text or last_user, re.I))
+        reply = (f"Под заказ, {q.group(1)} шт.: ${q.group(2)}{q.group(3) or ''} с доставкой, готово к отправке {q.group(4)}. "
+                 if ru else f"Made to order, {q.group(1)} cars: ${q.group(2)}{q.group(3) or ''} with shipping, ready to ship "
+                 f"{q.group(4)}. ") + reply
     if re.search(r"\bwhen\b|когда", last_user, re.I) and not re.search(
             r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\.? \d|"
             r"\d{4}-\d{2}-\d{2}|понед|вторн|сред|четв|пятн|суббот|воскр|ноябр|октябр|декабр", reply, re.I):
@@ -616,6 +624,21 @@ def gather_customer(user_msgs: list[str]) -> dict:
     return c
 
 
+MONTH_DAY = re.compile(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})\b", re.I)
+
+
+def _scrub_dates(reply: str, steps: list[dict], messages: list[dict], typed: str) -> str:
+    """A calendar date in a reply must come from a tool (this turn or earlier) or from the person: a sentence with an
+    invented date ("ships May 20") is dropped."""
+    known = " ".join([st["result"] for st in steps] + [m.get("memo") or "" for m in messages] + [typed])
+    known_days = {(m.group(1)[:3].lower(), int(m.group(2))) for m in MONTH_DAY.finditer(known)}
+    for iso in re.findall(r"\d{4}-(\d{2})-(\d{2})", known):
+        known_days.add((["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"][int(iso[0]) - 1], int(iso[1])))
+    keep = [x for x in re.split(r"(?<=[.!?])\s+", reply)
+            if all((m.group(1)[:3].lower(), int(m.group(2))) in known_days for m in MONTH_DAY.finditer(x))]
+    return " ".join(keep) or reply
+
+
 def _earlier_steps(messages: list[dict]) -> list[dict]:
     """The tool results of the last turn that had any, rebuilt from its memo (for an answer written by code)."""
     labels: dict[str, str] = {}
@@ -655,6 +678,8 @@ def _fallback_reply(steps: list[dict], ru: bool) -> str:
     """Out of time: say what the tools already found, written by code, instead of making the person wait."""
     for st in reversed(steps):
         r = st["result"]
+        if st["tool"] == "start_checkout" and re.search(r"\bZIP\b.*\bnot\b|which (address|is right)", r):
+            return (f"Проверьте адрес: {r}" if ru else f"Please check the address: {r}")
         m = re.search(r"^(.+?); shipping \$([\d.]+); total \$([\d.]+) · (ships [^·]+)·.*?needs: (.+)$", r)
         if st["tool"] == "start_checkout" and m:
             return (f"Итого ${m.group(3)} с доставкой ${m.group(2)} ({m.group(1)}); {m.group(4).strip()}. Чтобы оформить "
@@ -700,10 +725,26 @@ ABBR = dict(zip(["alabama", "alaska", "arizona", "arkansas", "california", "colo
                 "OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split()))
 
 
+CITIES = {"new york": "NY", "nyc": "NY", "brooklyn": "NY", "los angeles": "CA", "san francisco": "CA", "san diego": "CA",
+          "san jose": "CA", "sacramento": "CA", "chicago": "IL", "houston": "TX", "dallas": "TX", "austin": "TX",
+          "san antonio": "TX", "phoenix": "AZ", "philadelphia": "PA", "pittsburgh": "PA", "denver": "CO", "seattle": "WA",
+          "portland": "OR", "boston": "MA", "miami": "FL", "orlando": "FL", "tampa": "FL", "atlanta": "GA",
+          "detroit": "MI", "minneapolis": "MN", "nashville": "TN", "memphis": "TN", "las vegas": "NV", "salt lake city": "UT",
+          "columbus": "OH", "cleveland": "OH", "cincinnati": "OH", "indianapolis": "IN", "charlotte": "NC",
+          "baltimore": "MD", "st. louis": "MO", "st louis": "MO", "kansas city": "MO", "new orleans": "LA",
+          "honolulu": "HI", "anchorage": "AK", "milwaukee": "WI", "albuquerque": "NM", "omaha": "NE",
+          "чикаго": "IL", "нью-йорк": "NY", "лос-анджелес": "CA", "майами": "FL", "денвер": "CO", "остин": "TX"}
+CITY_RE = re.compile(r"\b(" + "|".join(re.escape(c) for c in sorted(CITIES, key=len, reverse=True)) + r")\b", re.I)
+
+
 def _state_said(typed: str) -> str:
-    """A US state the person named in words ("California", "to west virginia"), the latest one."""
+    """A US state the person named in words ("California", "to west virginia") or through a big city ("to Denver"),
+    the latest one."""
     found = [(m.start(), ABBR[m.group(1).lower()]) for m in STATE_NAMES.finditer(typed)]
-    return max(found)[1] if found else ""
+    found += [(m.start(), CITIES[m.group(1).lower()]) for m in CITY_RE.finditer(typed)]
+    # "to Denver" says where it goes; a city inside an address typed later doesn't override it
+    dest = [(i, st) for i, st in found if re.search(r"\b(to|в|во|ship to|deliver to)\s+$", typed[max(0, i - 12):i], re.I)]
+    return max(dest or found)[1] if found else ""
 
 
 def run(messages: list[dict], visitor: str = "") -> dict:
@@ -750,8 +791,8 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         items, st = waiting
         # only when the address is in the state that was priced; otherwise the person is asked which one is right
         if all(cust.get(k) for k in ("full_name", "phone", "email", "address_line_1", "city", "postal_code", "state")) \
-                and cust["state"] == (st or cust["state"]):
-            args = {"items": items, "us_state": st or cust["state"], "customer": cust, "what_the_shopper_asked": asked}
+                and cust["state"] in (st or cust["state"], _state_said(typed)):   # priced state, or the one they named last
+            args = {"items": items, "us_state": cust["state"], "customer": cust, "what_the_shopper_asked": asked}
             t0 = time.time()
             out = _call_tool("start_checkout", args, asked, typed)
             if out.get("ok"):
@@ -767,26 +808,60 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                                   + (f"Отправлю на: {out.get('ship_to', '')}." if ru else f"It ships to {out.get('ship_to', '')}."),
                                   last_user, steps, checkout, lang_text)
     # One colour or one year that fits a single car on the shelf ("a blue one", "the red '65"): that's the car.
-    hint = "" if checkout else _one_car_meant(last_user)
+    # the car can have been named a few messages ago ("I need red car" … "1" … "California")
+    mto = any(parse_made_to_order(u) for u in typed.split(" / ")) or any(
+        "made-to-order build" in (m.get("memo") or "") for m in messages if m["role"] == "assistant")
+    hint = "" if checkout or mto else next((h for h in (_one_car_meant(u) for u in reversed(typed.split(" / ")[-4:])) if h), "")
     if hint:
         # the quantity they gave before switching cars still stands ("3 blue ones", then "the red 65")
         qty = None if re.search(r"\b\d{1,3}\b(?!\d)", re.sub(r"\b(19)?[67]\d\b", "", last_user)) else next(
             (m.group(1) for u in reversed(typed.split(" / ")[:-1])
-             for m in [re.search(r"\b(\d{1,3})\s+(?:[a-zа-яё-]+\s+){0,2}(cars?|ones?|машин\w*|штук\w*)", u, re.I)] if m), None)
+             for m in [re.fullmatch(r"\s*(\d{1,3})\s*", u) or   # a message that is only a number answers "how many?"
+                       re.search(r"\b(\d{1,3})\s+(?:[a-zа-яё-]+\s+){0,2}(cars?|ones?|машин\w*|штук\w*)", u, re.I)] if m), None)
         convo.append({"role": "system", "content": f"The person means {hint}: it is the only car on the shelf that "
                       "fits what they said. Offer it directly with its price and stock; don't ask which model."
                       + (f" They asked for {qty} earlier; keep that quantity." if qty else "")})
         now = re.search(r"\b(\d{1,3})\b", re.sub(r"\b(19)?[67]\d\b|\d{5}", "", last_user))
         q, st = (now.group(1) if now else qty), _state_said(typed)
-        if q and st and not waiting and not checkout:
+        if q and st and not checkout:
             # car, quantity and state are all known: price it in code now, so the answer can't miss the total
             item = re.search(r"item_id (\S+),", hint).group(1)
-            args = {"items": [{"item_id": item, "quantity": int(q)}], "us_state": st, "customer": {}}
-            out = _call_tool("start_checkout", args, asked, typed)
+            cust = gather_customer([m["content"] for m in messages if m["role"] == "user"])
+            args = {"items": [{"item_id": item, "quantity": int(q)}], "us_state": st, "customer": cust}
+            try:
+                out = _call_tool("start_checkout", args, asked, typed)
+            except (ValueError, KeyError, TypeError) as e:   # e.g. the ZIP is in another state: they must say which
+                out = {"ok": False, "reason": str(e)}
             steps.append({"tool": "start_checkout", "label": LABELS["start_checkout"], "args": args,
                           "result": _summary("start_checkout", out), "ms": 0})
-            convo.append({"role": "system", "content": "Already priced for you (don't call it again): "
-                          + json.dumps(out)[:1500] + " Say the total and dates, then ask for what's missing."})
+            if out.get("ok"):
+                for o in shop.orders():   # only the newest stock order from this chat can be paid
+                    if (o["id"] != out["order_id"] and o.get("kind") != "commission" and o["status"] == "awaiting_approval"
+                            and o.get("asked_for", "")[:60] == asked[:60]):
+                        shop.update_order(o["id"], status="replaced", replaced_by=out["order_id"])
+                checkout, by_code = out, True
+                ru = re.search(r"[а-яё]", lang_text, re.I)
+                reply = _must_say(("Отправлю на: " if ru else "It ships to ") + out.get("ship_to", "") + ".",
+                                  last_user, steps, checkout, lang_text)
+            else:
+                convo.append({"role": "system", "content": "Already done for you (don't call it again): "
+                              + json.dumps(out)[:1500] + " Say the total and dates if there are any, then ask for what's "
+                              "missing or which address is right."})
+    # Done in code before the model speaks (each saves a model round inside the 7 s): a number for Lena is passed on,
+    # a fully described made-to-order build is quoted.
+    if not checkout and PHONE.search(last_user) and re.search(r"lena|call|talk|speak|связ|позвон", last_user, re.I) \
+            and not parse_made_to_order(last_user):
+        out = counter.leave_contact(PHONE.search(last_user).group(1), "", last_user[:300], asked, channel="demo-shopper")
+        steps.append({"tool": "leave_contact", "label": LABELS["leave_contact"], "args": {}, "result": _summary("leave_contact", out), "ms": 0})
+        convo.append({"role": "system", "content": "Done in code: " + json.dumps(out) + " Tell them Lena will call them back."})
+    spec = None if checkout else parse_made_to_order(last_user)
+    if spec and not any("made-to-order build" in (m.get("memo") or "") for m in messages if m["role"] == "assistant"):
+        out = counter.quote_commission([spec], "")
+        steps.append({"tool": "quote_commission", "label": LABELS["quote_commission"], "args": {"cars": [spec]},
+                      "result": _summary("quote_commission", out), "ms": 0})
+        convo.append({"role": "system", "content": "Quote from the shop (made to order, computed in code): "
+                      + json.dumps(out)[:2000] + " Give this total, the build time and ready date now, then ask in one "
+                      "message for name, phone, email and full address (street, city, state, ZIP)."})
     for _ in range(0 if by_code else MAX_STEPS):
         left = TURN_SECONDS - (time.time() - t_start)
         if left < 1.5:
@@ -977,7 +1052,14 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                 r"(let me (confirm|check|fetch|retry|get|look|see|pull)|i'?ll (confirm|check|fetch|pull|look) |one moment|please (wait|hold)|"
                 r"секунду|минуту|сейчас (проверю|уточню))",
                 x.strip(), re.I)) or reply
-            reply = _must_say(reply, last_user, steps, checkout, lang_text)
+            if re.search(r"here'?s my (information|info|details|address)|\bmy (full )?name is\b|^\s*full name\s*:|"
+                         r"вот мои (данные|контакты)|меня зовут", reply, re.I | re.M):
+                # the model wrote as if it were the shopper (and made up a person): never send that
+                reply = _fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)))
+            reply = _scrub_dates(reply, steps, messages, typed)
+            if len(reply.strip()) < 25 and not checkout:   # "Sure!" alone answers nothing
+                reply = _fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)))
+            reply = _must_say(reply, last_user, steps or _earlier_steps(messages), checkout, lang_text)
             break
         convo.append({"role": "assistant", "content": msg.content or "",
                       "tool_calls": [tc.model_dump() for tc in msg.tool_calls]})
