@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from . import counter, paypal, shop, shopper
+from . import counter, paypal, shop, shopper, sample
 from .mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,6 +40,7 @@ _listeners: set[asyncio.Queue] = set()
 @contextlib.asynccontextmanager
 async def lifespan(_app):
     shop.seed()
+    sample.ensure()   # two weeks of sample history on a fresh (wiped) disk, so the back office isn't empty
     async with contextlib.AsyncExitStack() as stack:
         lc = getattr(mcp_app.router, "lifespan_context", None)
         if lc:

@@ -29,7 +29,7 @@
         : o.status === "shipped" ? `<div class="m">USPS ${esc(o.tracking?.number)}</div>` : "";
       const mto = o.kind === "commission" ? `<div class="m">MADE TO ORDER · build ${o.quote?.build_weeks} wk · ready ${esc((o.quote?.ready_to_ship_by || "").split(" ").pop())}${o.contact ? ` · ${esc(o.contact.name)} <a href="tel:${esc(o.contact.phone)}">${esc(o.contact.phone)}</a>` : ""}</div>` : "";
       return `<div class="o"><img src="${esc(photos[o.listing_id] || "")}" alt=""><div>${mto}
-        <span class="badge ${esc(o.status)}">${st}</span>
+        <span class="badge ${esc(o.status)}">${st}</span>${o.sample ? ` <span class="badge smpb">SAMPLE</span>` : ""}
         <h3>${esc(o.title)}</h3>
         <div class="m">$${o.total_usd.toFixed(2)} · ${esc(where)} · via ${o.channel === "web" ? "shop page (human)" : o.channel === "mcp" ? "AI agent (MCP)" : o.channel === "demo-shopper" || o.channel === "web-agent" ? "AI agent" : esc(o.channel)}</div>
         <div class="asked">"${esc((o.asked_for || "").slice(0, 140))}"</div>${acts}</div></div>`;
@@ -127,7 +127,7 @@
 
   const who = (c) => c.name ? esc(c.name) : `<span class="guest">Guest, no name</span>`;
   const row = (c) => `<a class="row chat" href="#chats/${esc(c.id)}"><b>${esc(clock(c.updated))}</b>
-    <span><em class="no">#${c.no || "–"}</em> ${who(c)}<small>${esc((c.turns[0]?.user || "").slice(0, 90))}</small></span>
+    <span><em class="no">#${c.no || "–"}</em> ${who(c)}${c.sample ? ` <em class="smp">sample</em>` : ""}<small>${esc((c.turns[0]?.user || "").slice(0, 90))}</small></span>
     <i>${c.turns.length} msg${c.orders.length ? ` · <em>${c.orders.length} order${c.orders.length > 1 ? "s" : ""}</em>` : ""}${!c.name && !c.asked_name ? `<br><u>AI didn't ask the name</u>` : ""}</i></a>`;
 
   function renderChats() {
@@ -191,7 +191,7 @@
 // Insights: what sells (in the cars' colours), when shoppers come, where the AI got stuck (Roma 14532).
 (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  let days = 7;
+  let days = 14;
   async function load() {
     const d = await fetch(`/api/maker/insights?days=${days}`).then((r) => r.json());
     // bucket a long period into weeks so the lines stay readable
