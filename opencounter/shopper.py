@@ -40,7 +40,7 @@ MEMO_TAG = re.compile(r"\n?\[(what the tools returned|tool results)[^\]]*\]", re
 REFUSAL = re.compile(r"^\s*(i.?m sorry,?\s*)?(but\s*)?i (can.?t|cannot) (help|assist) with (that|this)", re.I)
 ITEM_ID = re.compile(r"\s*\(?\bsg[-‑–]\d+\b\)?", re.I)
 PROMISE = re.compile(r"\b(let me|let's|lets|i'll|i will|we'll|we will|i am going to|i'm going to|we need to)\b.{0,40}"
-                     r"\b(search|check|look|find|see|quote|place|send|submit|call|get|calculate|price|prepare|create)\b|\bsearching\b|"
+                     r"\b(search|check|look|find|see|quote|place|send|submit|call|get|calculate|price|prepare|create|confirm|pull|fetch|verify|retry|work out)\b|\bsearching\b|"
                      r"\b(now |i.?m )(creating|placing|setting up|generating|preparing|quoting|checking|calculating|pricing)\b|"
                      r"\bproceeding with\b|\busing (the )?provided details\b", re.I)
 
@@ -629,6 +629,23 @@ def _cart_waiting(messages: list[dict]) -> tuple[list[dict], str] | None:
     return None
 
 
+TURN_SECONDS = 35   # the longest a shopper waits for one answer
+
+
+def _one_car_meant(text: str) -> str:
+    """'blue', 'red 65', "the '68": when a colour or a year fits exactly one listing, name it for the model."""
+    low = text.lower()
+    colours = [w for w in ("green", "blue", "orange", "yellow", "red", "зелён", "зелен", "син", "оранж", "жёлт", "желт", "красн")
+               if w in low]
+    years = re.findall(r"(?<![\d-])(?:19)?(6[0-9]|7[0-9])\b(?!-)", low)
+    if not colours and not years:
+        return ""
+    ru = {"зелён": "green", "зелен": "green", "син": "blue", "оранж": "orange", "жёлт": "yellow", "желт": "yellow", "красн": "red"}
+    fit = [x for x in shop.shop()["listings"]
+           if all(ru.get(c, c) in x["title"].lower() for c in colours) and all(y in x["title"][-2:] for y in years)]
+    return f"{fit[0]['title']} (item_id {fit[0]['id']}, ${fit[0]['price_usd']:.0f}, {fit[0]['stock']} in stock)" if len(fit) == 1 else ""
+
+
 def run(messages: list[dict], visitor: str = "") -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
@@ -687,10 +704,29 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                 reply = _must_say(("Спасибо, всё есть. " if ru else "Thanks, that's everything. ")
                                   + (f"Отправлю на: {out.get('ship_to', '')}." if ru else f"It ships to {out.get('ship_to', '')}."),
                                   last_user, steps, checkout, lang_text)
+    # One colour or one year that fits a single car on the shelf ("a blue one", "the red '65"): that's the car.
+    hint = _one_car_meant(last_user)
+    if hint:
+        convo.append({"role": "system", "content": f"The person means {hint}: it is the only car on the shelf that "
+                      "fits what they said. Offer it directly with its price and stock; don't ask which model."})
     for _ in range(0 if by_code else MAX_STEPS):
-        r = _client_().chat.completions.create(model=MODEL, messages=convo, tools=TOOLS, max_tokens=500,
-                                               temperature=0.2,
-                                               extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+        left = TURN_SECONDS - (time.time() - t_start)
+        if left < 4:
+            # the person has waited long enough: answer with what the tools already found instead of thinking on
+            reply = _must_say(_scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", next(
+                (c["content"] for c in reversed(convo) if c.get("role") == "assistant" and c.get("content")), ""))), typed)
+                or ("Sorry, that took me too long. Could you say it once more?"), last_user, steps, checkout, lang_text)
+            by_code = True
+            break
+        try:
+            r = _client_().with_options(timeout=min(20, left), max_retries=0).chat.completions.create(
+                model=MODEL, messages=convo, tools=TOOLS, max_tokens=500, temperature=0.2,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+        except Exception:   # the model host was slow or failed: one honest line, never an endless wait
+            reply = _must_say("Sorry, I couldn't finish that just now. Could you send it once more?",
+                              last_user, steps, checkout, lang_text)
+            by_code = True
+            break
         u = r.usage
         usd += (u.prompt_tokens * PRICE_IN + u.completion_tokens * PRICE_OUT) / 1e6
         msg = r.choices[0].message
@@ -854,7 +890,8 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             # a final answer never says "one moment" or "let me check" (nothing happens after it), nor labels its parts
             reply = re.sub(r"\b(first|second|third|final) (sentence|answer|reply|part)\s*:\s*", "", reply, flags=re.I)
             reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not re.match(
-                r"(let me (confirm|check|fetch|retry|get|look|see)|one moment|please (wait|hold)|секунду|минуту|сейчас (проверю|уточню))",
+                r"(let me (confirm|check|fetch|retry|get|look|see|pull)|i'?ll (confirm|check|fetch|pull|look) |one moment|please (wait|hold)|"
+                r"секунду|минуту|сейчас (проверю|уточню))",
                 x.strip(), re.I)) or reply
             reply = _must_say(reply, last_user, steps, checkout, lang_text)
             break

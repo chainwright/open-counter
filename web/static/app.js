@@ -159,7 +159,10 @@
     const stages = ["Reading your message", "Checking the shelf", "Working out delivery", "Almost there"];
     let k = 0; const tick = setInterval(() => { k = Math.min(k + 1, stages.length - 1); t.textContent = stages[k]; }, 2200);
     try {
-      const r = await fetch("/api/shopper", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history, conv_id: convId }) });
+      // never an endless "thinking": the server answers within ~35 s; past 50 s the person gets a retry line
+      const ac = new AbortController(), cut = setTimeout(() => ac.abort(), 50000);
+      const r = await fetch("/api/shopper", { method: "POST", signal: ac.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history, conv_id: convId }) });
+      clearTimeout(cut);
       const j = await r.json();
       if (j.conv_id) convId = j.conv_id;
       clearInterval(tick); t.remove();
@@ -184,7 +187,19 @@
         log.scrollTop = log.scrollHeight;
       }
       persist();
-    } catch (e) { clearInterval(tick); t.textContent = "Couldn't reach the counter. Try again."; }
+    } catch (e) {
+      clearInterval(tick); t.remove();
+      history.pop();   // the question wasn't answered: take it back so a retry sends it once
+      const again = add("msg a", "That took too long on my side, sorry. ", false);
+      const b = document.createElement("button"); b.type = "button"; b.className = "retry"; b.textContent = "Send it again";
+      b.addEventListener("click", () => {
+        again.remove();
+        const mine = [...log.querySelectorAll(".msg.u")].pop(); if (mine) mine.remove();   // ask() shows it again
+        const k = items.map((it) => it.cls).lastIndexOf("msg u"); if (k >= 0) items.splice(k, 1);
+        ask(text);
+      }, { once: true });
+      again.appendChild(b); persist();
+    }
   }
   // first visit: one line that says what to do, gone after the first message
   const chips = document.getElementById("chips");

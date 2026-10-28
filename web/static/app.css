@@ -294,3 +294,4 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .cocard a.pp[hidden]{display:none}
 .cocard a.thx.next{font-weight:600;color:#1F6B47}
 .firsthint{margin:8px 14px 0;font-size:13px;color:#e0a458}
+.msg.a .retry{margin-left:6px;padding:4px 10px;border-radius:12px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer}
