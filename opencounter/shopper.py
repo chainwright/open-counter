@@ -227,6 +227,7 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
             # Not ready to create the order yet: hand back the price and dates plus exactly what to ask for, so the
             # reply quotes the order and asks for every missing detail in one go.
             out = {"ok": False, "not_created_yet": True, "ask_the_person_for": need,
+                   "us_state": str(args.get("us_state", "")).upper()[:2],
                    "how": "Say the total and delivery dates below, then ask for all of these in ONE short message. "
                           "Use only what they type; never fill anything in. Don't name tools."}
             try:
@@ -327,6 +328,7 @@ def _summary(name: str, out: dict) -> str:
                  if m else "")
         return (((out.get("order_would_be", "") + " · ") if out.get("order_would_be") else "") + dates
                 + ((out["deadline_verdict"] + " · ") if out.get("deadline_verdict") else "")
+                + (f"to {out['us_state']} · " if out.get("us_state") else "")
                 + "needs: " + ", ".join(out["ask_the_person_for"]))
     if name == "start_checkout":
         return "waiting for your approval in PayPal" if out.get("ok") else out.get("reason", out.get("problem", ""))
@@ -555,6 +557,78 @@ def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | No
     return reply
 
 
+STREET_WORDS = r"(st|street|ave|avenue|rd|road|dr|drive|blvd|ln|lane|way|ct|court|pl|place|pkwy|hwy|ул|улица|пр|просп)"
+STATE_NAMES = re.compile(r"\b(" + "|".join(["alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas",
+    "kentucky", "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota", "mississippi", "missouri",
+    "montana", "nebraska", "nevada", "new hampshire", "new jersey", "new mexico", "new york", "north carolina",
+    "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina", "south dakota",
+    "tennessee", "texas", "utah", "vermont", "virginia", "washington", "west virginia", "wisconsin", "wyoming"]) + r")\b", re.I)
+
+
+def gather_customer(user_msgs: list[str]) -> dict:
+    """The person's details, assembled in code from everything they typed in this chat, in any order and over several
+    messages (Roma 14629: the address came first, then name and phone, then the email, and the agent went in circles).
+    Only text the person typed is used; the latest value of each field wins."""
+    c: dict[str, str] = {}
+    for msg in user_msgs:
+        t = msg.strip()
+        em = re.findall(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", t)
+        if em:
+            c["email"] = em[-1]
+        ph = [p for p in PHONE.findall(t) if 10 <= len(re.sub(r"\D", "", p)) <= 12]
+        if ph:
+            c["phone"] = ph[-1].strip()
+        rest = t
+        for x in em + ph:
+            rest = rest.replace(x, " ")
+        zips = [z for z in re.findall(r"(?<![\d-])\d{5}(?![\d-])", rest) if shop.zip_state(z)]
+        if zips:
+            c["postal_code"] = zips[-1]
+        parts = [x.strip(" .") for x in re.split(r"[,\n;]|\.\s+(?=[A-ZА-Я])", rest) if x.strip(" .")]
+        for x in parts:   # a street: a house number and a few words ("5526 manzanita", "ship to 500 Howard St")
+            sm = re.search(r"(?:^|\bto\s+|\bat\s+)(\d{2,6}[a-z]?\s+[A-Za-zА-Яа-я][\w .'#-]{1,40}?)(?:\s+\d{5})?$", x, re.I)
+            if sm and not (zips and sm.group(1).split()[0] == zips[-1]):   # "95608 Carmichael" is a ZIP and a city
+                c["address_line_1"] = sm.group(1).strip()
+        for x in parts:   # the city sits next to the ZIP or the state
+            if zips and zips[-1] in x or re.search(r"\b[A-Z]{2}\b", x) and not re.match(r"^\d", x) and x != c.get("address_line_1"):
+                y = re.sub(r"\d{5}", " ", x)
+                y = STATE_NAMES.sub(" ", y)
+                y = re.sub(r"\b[A-Z]{2}\b", " ", y)
+                y = " ".join(w for w in y.split() if not re.search(r"\d", w))
+                if 2 <= len(y) <= 40 and not re.search(STREET_WORDS + r"\.?$", y, re.I) and (zips or em or ph):
+                    c["city"] = y.strip()
+        alone = re.fullmatch(r"\s*[A-ZА-ЯЁ][a-zа-яё'’-]+(\s+[A-ZА-ЯЁ][a-zа-яё'’-]+){1,2}\s*", t)   # a message that is just a name
+        if ph or em or zips or c.get("address_line_1") or alone:
+            for x in parts:   # a name: two to four words, letters only, written with capitals
+                x = re.sub(r"^(my name is|i am|i'm|name:?|меня зовут|я)\s+", "", x, flags=re.I).strip()
+                ws = x.split()
+                if (2 <= len(ws) <= 4 and all(re.fullmatch(r"[A-Za-zА-Яа-яЁё'’-]+", w) for w in ws)
+                        and all(w[0].isupper() for w in ws) and x != c.get("city")
+                        and not re.search(r"\b(cars?|red|green|blue|yellow|orange|grey|gray|black|white|coupe|fastback|"
+                                          r"convertible|hi|hello|thanks|yes|no|машин\w*)\b", x, re.I)
+                        and not STATE_NAMES.search(x) and not re.search(STREET_WORDS + r"$", x, re.I)):
+                    c["full_name"] = x
+    if c.get("postal_code"):
+        c["state"] = shop.zip_state(c["postal_code"]) or ""
+    return c
+
+
+def _cart_waiting(messages: list[dict]) -> tuple[list[dict], str] | None:
+    """The cart and state of the last order the agent priced but couldn't create yet (details were missing)."""
+    for m in reversed(messages):
+        if m["role"] != "assistant":
+            continue
+        memo = m.get("memo") or ""
+        if "waiting for your approval" in memo:
+            return None   # an order already exists after it
+        pv = re.search(r"preparing PayPal checkout: (.+?); shipping \$[\d.]+; total .*?\bto ([A-Z]{2}) · needs:", memo)
+        if pv:
+            items = [{"item_id": t.strip(), "quantity": int(q)} for q, t in re.findall(r"(\d+) × (.+?) at \$", pv.group(1))]
+            return (items, pv.group(2)) if items else None
+    return None
+
+
 def run(messages: list[dict], visitor: str = "") -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
@@ -590,7 +664,30 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                       and (re.search(r"[а-яё]{3,}", m["content"], re.I) and not PHONE.search(m["content"])
                            or not PHONE.search(m["content"]))), last_user)
     t_start = time.time()
-    for _ in range(MAX_STEPS):
+    # The agent priced a cart earlier and asked for the person's details; once everything has been typed (in any
+    # order, over several messages), the order is made here in code, not left to the model to put together.
+    by_code = False
+    waiting = _cart_waiting(messages)
+    if waiting:
+        cust = gather_customer([m["content"] for m in messages if m["role"] == "user"])
+        if all(cust.get(k) for k in ("full_name", "phone", "email", "address_line_1", "city", "postal_code", "state")):
+            items, st = waiting
+            args = {"items": items, "us_state": cust["state"] or st, "customer": cust, "what_the_shopper_asked": asked}
+            t0 = time.time()
+            out = _call_tool("start_checkout", args, asked, typed)
+            if out.get("ok"):
+                steps.append({"tool": "start_checkout", "label": LABELS["start_checkout"], "args": args,
+                              "result": _summary("start_checkout", out), "ms": int((time.time() - t0) * 1000)})
+                for o in shop.orders():   # only the newest stock order from this chat can be paid
+                    if (o["id"] != out["order_id"] and o.get("kind") != "commission" and o["status"] == "awaiting_approval"
+                            and o.get("asked_for", "")[:60] == asked[:60]):
+                        shop.update_order(o["id"], status="replaced", replaced_by=out["order_id"])
+                checkout, by_code = out, True
+                ru = re.search(r"[а-яё]", lang_text, re.I)
+                reply = _must_say(("Спасибо, всё есть. " if ru else "Thanks, that's everything. ")
+                                  + (f"Отправлю на: {out.get('ship_to', '')}." if ru else f"It ships to {out.get('ship_to', '')}."),
+                                  last_user, steps, checkout, lang_text)
+    for _ in range(0 if by_code else MAX_STEPS):
         r = _client_().chat.completions.create(model=MODEL, messages=convo, tools=TOOLS, max_tokens=500,
                                                temperature=0.2,
                                                extra_body={"chat_template_kwargs": {"enable_thinking": False}})
@@ -754,6 +851,11 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             reply = _scrub_invented(reply, typed)
             fixed, fusd = _polish(reply, lang_text)
             reply, usd = _scrub_invented(fixed, typed), usd + fusd
+            # a final answer never says "one moment" or "let me check" (nothing happens after it), nor labels its parts
+            reply = re.sub(r"\b(first|second|third|final) (sentence|answer|reply|part)\s*:\s*", "", reply, flags=re.I)
+            reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not re.match(
+                r"(let me (confirm|check|fetch|retry|get|look|see)|one moment|please (wait|hold)|секунду|минуту|сейчас (проверю|уточню))",
+                x.strip(), re.I)) or reply
             reply = _must_say(reply, last_user, steps, checkout, lang_text)
             break
         convo.append({"role": "assistant", "content": msg.content or "",
@@ -777,10 +879,11 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                 checkout = out
             convo.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(out)[:4000]})
     else:
-        # out of steps: keep the last real answer the model wrote rather than a canned apology
-        last = next((c["content"] for c in reversed(convo) if c.get("role") == "assistant" and c.get("content")), "")
-        reply = _scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", last)), typed) or \
-            "I couldn't finish that in a few steps. Could you tell me a bit more?"
+        if not by_code:
+            # out of steps: keep the last real answer the model wrote rather than a canned apology
+            last = next((c["content"] for c in reversed(convo) if c.get("role") == "assistant" and c.get("content")), "")
+            reply = _scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", last)), typed) or \
+                "I couldn't finish that in a few steps. Could you tell me a bit more?"
     add_spend(usd)
     # What the tools returned this turn, so the next turn still knows it (the browser sends it back with the reply).
     memo = "; ".join(f"{st['label']}: {st['result']}" for st in steps)

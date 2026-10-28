@@ -260,3 +260,26 @@ def test_popup_approval_needs_the_matching_paypal_order():
     assert "client_id" in c.get("/api/paypal/config").json()
     r = c.post("/api/paypal/approved", json={"order_id": "OC-NOPE", "paypal_order_id": "X"})
     assert r.status_code == 404
+
+
+def test_details_typed_over_several_messages_are_put_together_in_code():
+    from opencounter import shopper
+    c = shopper.gather_customer(["Hi I need red car", "1", "California", "95608 Carmichael, 5526 manzanita",
+                                 "Jek Polk +12792223456", "jek.polk@example.com"])
+    assert c == {"postal_code": "95608", "address_line_1": "5526 manzanita", "city": "Carmichael", "state": "CA",
+                 "phone": "+12792223456", "full_name": "Jek Polk", "email": "jek.polk@example.com"}
+    k = shopper.gather_customer(["ship to 500 Howard St, San Francisco CA 94105", "Kim Park", "kim@example.com 4155550101"])
+    assert (k["address_line_1"], k["city"], k["full_name"], k["state"]) == ("500 Howard St", "San Francisco", "Kim Park", "CA")
+    assert "full_name" not in shopper.gather_customer(["Red Car", "Hi There"])
+
+
+def test_a_priced_cart_is_found_from_the_last_preview():
+    from opencounter import shopper
+    memo = ("preparing PayPal checkout: 2 × Green American Fastback, 1968 at $59.00 = $118.00 + 1 × Red American "
+            "Convertible, 1965 at $59.00 = $59.00; shipping $6.50; total $183.50 · ships Thursday Oct 29 · to IL · needs: email")
+    items, st = shopper._cart_waiting([{"role": "assistant", "content": "x", "memo": memo}])
+    assert st == "IL" and items == [{"item_id": "Green American Fastback, 1968", "quantity": 2},
+                                    {"item_id": "Red American Convertible, 1965", "quantity": 1}]
+    done = [{"role": "assistant", "content": "x", "memo": memo},
+            {"role": "assistant", "content": "y", "memo": "preparing PayPal checkout: waiting for your approval in PayPal"}]
+    assert shopper._cart_waiting(done) is None
