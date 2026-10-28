@@ -225,3 +225,15 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
   color:var(--lamp);font:600 14px "Geist";cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
 .m3d:hover{background:rgba(255,233,199,.22);border-color:var(--lamp)}
 .m3d .cube{width:14px;height:14px;border:2px solid currentColor;border-radius:3px;transform:rotate(45deg) skew(-8deg,-8deg)}
+
+/* How one is made */
+.made{margin-top:64px}
+.made-h{font:800 34px "Big Shoulders Display",sans-serif;text-transform:uppercase;color:var(--paper);margin:0 0 18px;display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+.made-h span{font:500 13px "Geist Mono",monospace;letter-spacing:.12em;color:var(--lamp);text-transform:uppercase}
+.steps4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.steps4 figure{margin:0;border-radius:16px;overflow:hidden;background:#000;border:1px solid var(--hair)}
+.steps4 video{width:100%;aspect-ratio:16/10;object-fit:cover;display:block}
+.steps4 figcaption{padding:12px 14px 14px;color:var(--mute);font-size:14px;line-height:1.4}.steps4 figcaption b{display:block;color:var(--lamp);font-weight:600;margin-bottom:3px}
+.made-note{margin:14px 0 0;color:var(--mute);font:400 12px "Geist Mono",monospace}
+@media (max-width:900px){.steps4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.steps4{grid-template-columns:1fr}}

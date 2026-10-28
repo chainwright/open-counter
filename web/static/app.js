@@ -166,3 +166,10 @@
   });
   document.getElementById("copy").addEventListener("click", () => navigator.clipboard?.writeText(document.getElementById("mcpurl").textContent));
 })();
+
+// "How one is made": each clip plays only while it's on screen
+(() => {
+  const vids = document.querySelectorAll(".steps4 video"); if (!vids.length || !("IntersectionObserver" in window)) return;
+  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) e.target.play().catch(() => {}); else e.target.pause(); }), { threshold: 0.35 });
+  vids.forEach((v) => io.observe(v));
+})();
