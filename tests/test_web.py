@@ -71,3 +71,13 @@ def test_daily_spend_survives_a_restart(monkeypatch):
     shopper.add_spend(0.5)
     monkeypatch.setattr(shopper, "_spent", {})    # a restart: memory is gone, the disk isn't
     assert abs(shopper.spent_today() - 0.75) < 1e-9
+
+
+def test_one_search_covers_every_counter(c):
+    sample.build()
+    r = c.get("/api/directory?q=green").json()
+    assert r["counters"] >= 2 and r["results"]
+    assert any("small-garage" in x["card"] for x in r["results"])
+    every = c.get("/api/directory").json()["results"]
+    assert len({x["card"] for x in every}) >= 2     # Lena's shop and the counters other makers opened
+    assert all(x["price_usd"] <= 60 for x in c.get("/api/directory?max_price=60").json()["results"])

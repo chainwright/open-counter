@@ -139,7 +139,8 @@ def counter_json(slug: str):
                                                         "colour", "made_by_hand", "short_description", "keywords")},
                               "photo_url": f"{counter.PUBLIC_URL}/c/{slug}/photo.jpg",
                               "paypal_catalog_product": l.get("paypal_catalog_product")}],
-                "checkout": "Not open yet: the maker connects her own PayPal account to start taking orders."}
+                "checkout": {"how": "POST JSON {quantity, us_state}; returns a PayPal approval link a person must open",
+                             "url": f"{counter.PUBLIC_URL}/api/c/{slug}/checkout"}}
     return {"$schema": f"{counter.PUBLIC_URL}/static/schema/open-counter-card.v1.json"} | counter.about_counter() | {
         "listings": counter.search_counter()["results"], "mcp": f"{counter.PUBLIC_URL}/mcp/"}
 
@@ -148,9 +149,39 @@ def counter_json(slug: str):
 def well_known():
     s = shop.shop()
     return {"schema": f"{counter.PUBLIC_URL}/static/schema/open-counter-card.v1.json",
+            "search_all_counters": f"{counter.PUBLIC_URL}/api/directory?q=",
             "counters": [{"name": s["name"], "json": f"{counter.PUBLIC_URL}/c/{s['slug']}.json",
                           "mcp": f"{counter.PUBLIC_URL}/mcp/"}]
             + [{"name": c["name"], "json": f"{counter.PUBLIC_URL}/c/{c['slug']}.json"} for c in onboard.latest(20)]}
+
+
+@app.get("/api/directory")
+def directory(q: str = "", max_price: float | None = None):
+    """One search across every counter on this host: an agent asks once and gets matching items from Lena's shop and
+    from every maker who opened a counter, each with the card to read and the way to check out."""
+    words = [w for w in re.findall(r"[a-z0-9]+", q.lower()) if len(w) > 2]
+    hits = []
+    s = shop.shop()
+    for x in counter.search_counter()["results"]:
+        hits.append({"counter": s["name"], "card": f"{counter.PUBLIC_URL}/c/{s['slug']}.json", "id": x["id"],
+                     "title": x["title"], "price_usd": x["price_usd"], "stock": x["stock"],
+                     "text": " ".join(str(x.get(k, "")) for k in ("title", "paint", "description")).lower(),
+                     "checkout": f"{counter.PUBLIC_URL}/mcp/ (start_checkout)"})
+    for c in onboard.latest(50):
+        l = c["listing"]
+        hits.append({"counter": c["name"], "card": f"{counter.PUBLIC_URL}/c/{c['slug']}.json", "id": l.get("id"),
+                     "title": l.get("title"), "price_usd": l.get("price_usd"), "stock": l.get("stock"),
+                     "text": " ".join(str(l.get(k, "")) for k in ("title", "category", "colour", "materials",
+                                                                    "short_description", "keywords")).lower(),
+                     "checkout": f"{counter.PUBLIC_URL}/api/c/{c['slug']}/checkout"})
+    out = []
+    for h in hits:
+        score = sum(w in h["text"] for w in words)
+        if (words and not score) or (max_price is not None and (h["price_usd"] or 0) > max_price):
+            continue
+        out.append(({k: v for k, v in h.items() if k != "text"}, score))
+    out.sort(key=lambda t: (-t[1], t[0]["price_usd"] or 0))
+    return {"query": q, "counters": 1 + len(onboard.latest(50)), "results": [h for h, _ in out[:30]]}
 
 
 @app.get("/c/{slug}/photo.jpg")
