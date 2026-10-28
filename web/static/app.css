@@ -280,3 +280,11 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .lenaside.paid .ls-dot{background:#3ddc84}@keyframes lsp{50%{opacity:.35}}
 .lenaside div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.lenaside small{font:500 10.5px "Geist Mono";letter-spacing:.14em;color:#A9AEB4}
 .lenaside b{font-size:14px}.lenaside span{font-size:12.5px;color:#C9CDD1}.lenaside a{color:var(--cyan,#38F2E5);font:500 12px "Geist Mono";text-decoration:none;white-space:nowrap}
+
+.tour{max-width:1100px;margin:26px auto 0;padding:0 24px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.tour a{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border:1px solid rgba(255,255,255,.1);border-radius:14px;color:inherit;text-decoration:none;background:rgba(255,255,255,.02)}
+.tour a:hover,.tour a:focus-visible{border-color:var(--cyan,#38F2E5);outline:none}
+.tour b{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--lamp,#FFE9C7);color:#111;font:800 14px "Big Shoulders Display"}
+.tour span{font-size:14px;line-height:1.3;font-weight:600}.tour small{display:block;font-weight:400;font-size:12px;color:#A9AEB4;margin-top:2px}
+@media (max-width:800px){.tour{grid-template-columns:1fr 1fr;padding:0 16px}}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--cyan,#38F2E5);outline-offset:2px}
