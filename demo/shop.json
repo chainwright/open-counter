@@ -65,7 +65,8 @@
     "1967",
     "blue",
     "American"
-   ]
+   ],
+   "model": "blue_fastback.glb"
   },
   {
    "id": "sg-011",
@@ -85,7 +86,8 @@
     "coupe",
     "1970",
     "orange"
-   ]
+   ],
+   "model": "orange_coupe.glb"
   },
   {
    "id": "sg-009",
@@ -107,7 +109,8 @@
     "yellow",
     "German",
     "rear-engine"
-   ]
+   ],
+   "model": "yellow_german.glb"
   },
   {
    "id": "sg-012",
@@ -128,7 +131,8 @@
     "red",
     "American",
     "classic"
-   ]
+   ],
+   "model": "red_convertible.glb"
   }
  ]
 }
