@@ -22,10 +22,11 @@ Built for the PayPal AI Hackathon 2026 by Elite Product LLC.
   same reach with what any PayPal account already has.
 
 ## Does it work? Measured, not claimed
-`evals/run_evals.py` runs 31 scripted conversations against the live model (English and Russian, deadlines, discounts,
+`evals/run_evals.py` runs 32 scripted conversations against the live model (English and Russian, deadlines, discounts,
 a changed cart, details typed over several messages, made to order, a wrong ZIP, brand names, an injected instruction, talking to Lena) on a fresh shop each,
 with checks written in code. Latest results and every transcript: [`evals/RESULTS.md`](evals/RESULTS.md),
-`evals/transcripts.json`.
+`evals/transcripts.json`. Every answer has a 7-second budget: when the model runs out of time, the reply is written by
+code from what the tools already found (price, dates, what's still needed), so a shopper never waits on a spinner.
 
 The closed-tab case, run on the live sandbox on 28 Oct 2026: order `OC-C7DAD2E3` (PayPal order `9NC75431R2481360K`)
 was approved by a person while the return page was told to stay out of it (a `webhook-only-test` visitor). PayPal's
