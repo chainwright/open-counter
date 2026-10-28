@@ -83,3 +83,33 @@
   es.onopen = () => (document.getElementById("live").textContent = "● live");
   load();
 })();
+
+// Made-to-order requests sent by shoppers' agents: what, how many, the quote worked out in code, and who's asking.
+(() => {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const box = document.getElementById("reqs"); if (!box) return;
+  const ST = { awaiting_maker: "NEW · REPLY BY EMAIL", accepted: "ACCEPTED · SEND INVOICE", declined: "DECLINED" };
+  async function load() {
+    const rs = await fetch("/api/maker/requests").then((r) => r.json()).catch(() => []);
+    box.hidden = !rs.length; if (!rs.length) return;
+    box.innerHTML = `<h2 class="rq-h">Commission requests <span>${rs.filter((r) => r.status === "awaiting_maker").length} new</span></h2>` + rs.map((r) => {
+      const q = r.quote, c = r.contact;
+      const cars = q.cars.map((x) => `<li><b>${x.quantity} ×</b> ${esc(x.car)} <i>in ${esc(x.colour)}</i></li>`).join("");
+      const money = `$${q.total_usd.toLocaleString("en-US", { minimumFractionDigits: 2 })}` + (q.volume_discount_percent ? ` · ${q.volume_discount_percent}% off ($${q.discount_usd.toFixed(2)})` : "") + (q.shipping_usd ? ` · shipping $${q.shipping_usd.toFixed(2)}` : " · free shipping");
+      const subj = encodeURIComponent(`Your Small Garage commission ${r.id}`);
+      return `<div class="rq ${esc(r.status)}"><span class="badge rqb">${ST[r.status] || esc(r.status)}</span>
+        <h3>${q.total_cars} cars · ${money}</h3><ul>${cars}</ul>
+        <div class="m">Build ${q.build_weeks} weeks · ready to ship ${esc(q.ready_to_ship_by)} · via ${r.channel === "mcp" ? "AI agent (MCP)" : "AI agent"}</div>
+        <div class="who"><b>${esc(c.name)}</b> · <a href="mailto:${esc(c.email)}?subject=${subj}">${esc(c.email)}</a> · ${esc(c.phone)}<br>${esc(c.address)}</div>
+        ${r.notes ? `<div class="asked">"${esc(r.notes)}"</div>` : ""}
+        ${r.status === "awaiting_maker" ? `<div class="acts"><a class="p btn" href="mailto:${esc(c.email)}?subject=${subj}">Reply by email</a><button data-rq="${esc(r.id)}" data-st="accepted">Accept</button><button data-rq="${esc(r.id)}" data-st="declined">Decline</button></div>` : ""}
+      </div>`;
+    }).join("");
+  }
+  box.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-rq]"); if (!b) return;
+    await fetch(`/api/maker/requests/${b.dataset.rq}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: b.dataset.st }) });
+    load();
+  });
+  load(); setInterval(load, 10000);
+})();

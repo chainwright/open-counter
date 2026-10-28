@@ -277,6 +277,25 @@ async def maker_tracking(oid: str, req: Request):
     return o
 
 
+@app.get("/api/maker/requests")
+def maker_requests():
+    """Made-to-order requests waiting for Lena (newest first)."""
+    return list(reversed(shop.requests_()))
+
+
+@app.post("/api/maker/requests/{rid}")
+async def maker_request_status(rid: str, req: Request):
+    """Lena accepts or declines a request. Accepting doesn't charge anything; she sends the PayPal invoice herself."""
+    b = await req.json()
+    st = b.get("status")
+    if st not in ("accepted", "declined"):
+        raise HTTPException(400, "status must be accepted or declined")
+    try:
+        return shop.update_request(rid, status=st)
+    except StopIteration:
+        raise HTTPException(404)
+
+
 @app.get("/api/maker/feed")
 async def maker_feed():
     q: asyncio.Queue = asyncio.Queue()

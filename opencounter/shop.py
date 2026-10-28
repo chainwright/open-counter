@@ -245,6 +245,15 @@ def new_commission_request(contact: dict, lines: list[dict], state: str, notes: 
     return rq
 
 
+def update_request(rid: str, **fields) -> dict:
+    with _lock:
+        all_ = requests_()
+        r = next(x for x in all_ if x["id"] == rid)
+        r.update(fields)
+        _requests_path().write_text(json.dumps(all_, indent=2, ensure_ascii=False))
+        return r
+
+
 # ---- orders ----
 def orders() -> list[dict]:
     seed()
