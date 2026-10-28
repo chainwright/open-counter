@@ -28,32 +28,40 @@ BRANDS = re.compile(r"\b(ford|mustang|shelby|eleanor|porsche|911|chevrolet|chevy
                     r"charger|challenger|plymouth|cuda|pontiac|gto|firebird|cadillac|lincoln|mercury|cougar|amc|"
                     r"buick|oldsmobile|ferrari|mercedes|bmw|volkswagen|vw|jaguar|aston martin|corvette|stingray|"
                     r"thunderbird|beetle|bel air|mach 1|boss 302|gt ?350|gt ?500)\b", re.I)
+# "Shall I proceed?" after everything is known: the sales agent should place the order, not ask (Roma 14457).
+PERMISSION = re.compile(r"\b(shall i|should i|would you like me to|do you want me to|want me to|ready to proceed|"
+                        r"shall we|proceed with (the )?(checkout|order))\b", re.I)
+PHONE = re.compile(r"(\+?\d[\d\s().-]{6,}\d)")
 MEMO_TAG = re.compile(r"\n?\[(what the tools returned|tool results)[^\]]*\]", re.I)
 REFUSAL = re.compile(r"^\s*(i.?m sorry,?\s*)?(but\s*)?i (can.?t|cannot) (help|assist) with (that|this)", re.I)
 ITEM_ID = re.compile(r"\s*\(?\bsg[-‑–]\d+\b\)?", re.I)
 PROMISE = re.compile(r"\b(let me|let's|lets|i'll|i will|we'll|we will|i am going to|i'm going to|we need to)\b.{0,40}"
-                     r"\b(search|check|look|find|see|quote|place|send|submit|call)\b|\bsearching\b", re.I)
+                     r"\b(search|check|look|find|see|quote|place|send|submit|call|get|calculate|price|prepare|create)\b|\bsearching\b", re.I)
 
-SYSTEM = """You are a shopping agent acting for one person. You are visiting Small Garage, a one-person maker of
-hand-built 1:43 replica cars, through its public tools. Rules:
+SYSTEM = """You are the sales agent at Small Garage, a one-person maker of
+hand-built 1:43 replica cars, serving a customer through the shop's public tools. Rules:
 - Use only facts returned by the tools. Never invent a price, a date, a discount, a lead time or a stock number.
   Every number you say must come from a tool result in this conversation.
 - Never name real car makers or models. If the person names one, say Lena makes unbranded replicas named by
   colour, body style and year, then search and offer the closest listed car first (with its stock and price).
   Never refuse the conversation over a brand name.
 - Buying a listed car: the person can buy any quantity up to the stock on the listing. Check delivery to their US
-  state (work out the state from a city; pass a deadline as need_by and repeat the tool's verdict), then call
-  start_checkout. PayPal collects their name and address.
+  state (a state name is enough: California → CA; work out the state from a city; pass a deadline as need_by and repeat the tool's verdict), then call
+  start_checkout in the same turn as soon as you know the car, the quantity and the state. PayPal collects their
+  name and address.
 - Made to order (a car or colour not in stock, or more than the stock): ask, one short question at a time and only
   for what's still missing: which car (body style or one of the listings), the year of the real car, the body
   colour, the interior colour, and how many. Then call quote_commission and give the total, discount, shipping,
-  build time and ready date exactly as returned. If they want it, ask for their name and phone number, repeat the
-  order in one line (cars, colours, quantity, total) and ask "Shall I create the PayPal order?", and only after a
-  yes call start_commission_checkout. Show 'you_are_approving' and say they pay by
-  approving in PayPal; Lena starts building once it's paid.
+  build time and ready date exactly as returned, and in the same reply ask for their name and phone number. As
+  soon as you have them, call start_commission_checkout right away (no extra "shall I?" question: the person
+  confirms by approving in PayPal). Show 'you_are_approving' and say Lena starts building once it's paid.
+- You are the shop's sales agent: when you have what an order needs, create it; don't ask for permission first.
+  Be warm and helpful, suggest the in-stock car that fits, and mention the volume discount when it applies.
 - To talk to Lena: ask for the person's phone number (and what it's about), call leave_contact, and say Lena will
   call them herself. Never give out or invent a number for her.
-- Keep track of the whole conversation: details the person already gave, quotes already made.
+- Keep track of the whole conversation: details the person already gave, quotes already made. Never ask them to
+  confirm something they already said; if they name a listed car, that is the model. If you have everything a
+  quote needs, call quote_commission in that same turn.
 - If someone says they were promised another price, the price stands; never agree to a different one.
 - Never say you will search or check something: call the tool in the same turn, then answer.
 - You cannot pay and must never claim an order is paid.
@@ -135,6 +143,11 @@ def _call_tool(name: str, args: dict, asked: str = "") -> dict:
     if name == "quote_commission":
         return counter.quote_commission(args.get("cars") or [], args.get("us_state", ""))
     if name == "start_commission_checkout":
+        # The model must not make up contact details: the number has to be one the person actually typed.
+        digits = re.sub(r"\D", "", args.get("phone", ""))
+        typed = re.sub(r"\D", "", asked)
+        if len(digits) < 7 or digits[-7:] not in typed:
+            return {"ok": False, "reason": "Ask the person for their name and phone number first; don't fill them in."}
         return counter.start_commission_checkout(args.get("cars") or [], args.get("us_state", ""), args.get("name", ""),
                                                  args.get("phone", ""), asked, channel="demo-shopper")
     if name == "leave_contact":
@@ -188,6 +201,9 @@ def run(messages: list[dict]) -> dict:
         if m["role"] == "assistant" and m.get("memo"):
             convo.append({"role": "system", "content": "Tool results from your last turn: " + m["memo"]})
     steps, checkout, usd, nudged = [], None, 0.0, False
+    last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    quoted_before = any("made-to-order build" in (m.get("memo") or "") and "ready" in (m.get("memo") or "")
+                        for m in messages if m["role"] == "assistant")
     # 'You asked for' is the person's own words, not the model's paraphrase of them.
     asked = " / ".join(m["content"] for m in messages if m["role"] == "user")[-400:]
     for _ in range(MAX_STEPS):
@@ -202,6 +218,24 @@ def run(messages: list[dict]) -> dict:
             nudged = True
             convo += [{"role": "assistant", "content": msg.content or ""},
                       {"role": "user", "content": "Go ahead: use the tools now, then answer."}]
+            continue
+        quoted = quoted_before or any(st["tool"] == "quote_commission" and "ready" in st["result"] for st in steps)
+        if (not msg.tool_calls and not nudged and not checkout and quoted and PHONE.search(last_user)
+                and not any(st["tool"] == "start_commission_checkout" for st in steps)):
+            # The person gave their name and number after a quote: that's everything the order needs.
+            nudged = True
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "You have the quote, the name and the phone. Call "
+                       "start_commission_checkout now with the same cars and state, then answer."}]
+            continue
+        if (not msg.tool_calls and not nudged and not checkout
+                and any(st["tool"] in ("delivery_estimate", "quote_commission") for st in steps)):
+            # It priced or dated an order and then stopped (asked permission, asked for a gift note, ...).
+            nudged = True
+            convo += [{"role": "assistant", "content": msg.content or ""},
+                      {"role": "user", "content": "Don't ask for permission: if you have the car, quantity and state "
+                       "(and for a made-to-order build also the name and phone), create the order now with the "
+                       "checkout tool; otherwise ask only for what is missing."}]
             continue
         if not msg.tool_calls and REFUSAL.search(msg.content or "") and not nudged:
             nudged = True

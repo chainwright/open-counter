@@ -13,15 +13,9 @@ shop.seed(force=True)
 
 TURNS = [
     "Hi, I like Porsche",
-    "But I see you have small car similar with Porsche",
-    "How many of the yellow ones do you have?",
-    "How I can ask Lena? Give me her phone number",
-    "415-555-0134, I want to ask about a custom paint",
-    "I'd like a custom one: the yellow rear-engine coupe, 25 of them",
-    "1973, interior black",
-    "To California. Yes, go ahead.",
+    "3 of the yellow ones to Austin",
+    "Also a custom one: the yellow rear-engine coupe, 1973, red body, black interior, 12 of them, to California",
     "Sam Rivera, 415-555-0134",
-    "Yes",
 ]
 
 history = []
