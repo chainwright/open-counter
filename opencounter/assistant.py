@@ -48,9 +48,7 @@ def _call(system: str, user: str, max_tokens: int = 900) -> tuple[str, float]:
         extra_body={"chat_template_kwargs": {"enable_thinking": False}})
     u = r.usage
     usd = (u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6
-    with shopper._lock:
-        d = date.today().isoformat()
-        shopper._spent[d] = shopper._spent.get(d, 0.0) + usd
+    shopper.add_spend(usd)
     return r.choices[0].message.content or "", usd
 
 

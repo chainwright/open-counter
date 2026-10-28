@@ -163,7 +163,20 @@ def _client_() -> OpenAI:
 
 
 def spent_today() -> float:
+    if not _spent:   # first call after a restart: the cap survives deploys, it's kept on the data disk
+        _spent.update(shop._json("spend.json", {}))
     return _spent.get(date.today().isoformat(), 0.0)
+
+
+def add_spend(usd: float):
+    """Model spend for the daily cap, written to disk so a restart or a deploy doesn't reset it."""
+    with _lock:
+        spent_today()
+        d = date.today().isoformat()
+        _spent[d] = round(_spent.get(d, 0.0) + usd, 6)
+        for k in [k for k in _spent if k < d][:-30]:   # keep a month of days
+            _spent.pop(k)
+        shop._save_json("spend.json", _spent)
 
 
 def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
@@ -768,9 +781,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         last = next((c["content"] for c in reversed(convo) if c.get("role") == "assistant" and c.get("content")), "")
         reply = _scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", last)), typed) or \
             "I couldn't finish that in a few steps. Could you tell me a bit more?"
-    with _lock:
-        d = date.today().isoformat()
-        _spent[d] = _spent.get(d, 0.0) + usd
+    add_spend(usd)
     # What the tools returned this turn, so the next turn still knows it (the browser sends it back with the reply).
     memo = "; ".join(f"{st['label']}: {st['result']}" for st in steps)
     # after the first order with an email, the shop asks about news once (the model is told not to ask itself)

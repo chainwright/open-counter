@@ -48,9 +48,7 @@ def draft(image_b64: str, note: str) -> dict:
                                                {"type": "image_url", "image_url": {
                                                    "url": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}}]}])
     u = r.usage
-    with shopper._lock:
-        d = time.strftime("%Y-%m-%d")
-        shopper._spent[d] = shopper._spent.get(d, 0.0) + (u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6
+    shopper.add_spend((u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6)
     text = r.choices[0].message.content or ""
     m = re.search(r"\{.*\}", text, re.S)
     try:
