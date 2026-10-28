@@ -45,6 +45,8 @@ QUESTIONS = [  # chats that didn't end in an order
     ("Do you take returns?", "I'm not sure about returns; Lena would need to answer that. Want me to pass your number to her?"),
     ("price for 50 cars?", "For 50 made-to-order cars it's $89 each with 15% off, free shipping. Which car and colours?"),
     ("hi", "Hi! Are you looking for a gift, or something for your own shelf?"),
+    ("Can I pay with a credit card?", "I'm not sure, maybe? You could try."),
+    ("Do you ship to Hawaii?", "Sorry, we only ship to the US."),
 ]
 
 

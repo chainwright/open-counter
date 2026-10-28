@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from . import counter, paypal, shop, shopper, sample
+from . import assistant, counter, paypal, shop, shopper, sample
 from .mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -426,6 +426,28 @@ def maker_insights(days: int = 30):
             "conversion": round(100 * with_order / len(chats)) if chats else 0,
             "stuck": sorted(stuck, key=lambda x: -x["at"])[:30],
             "answered_pct": round(100 * (1 - len(stuck) / turns)) if turns else 100}
+
+
+@app.post("/api/maker/assistant/review")
+async def assistant_review(req: Request):
+    """Lena's assistant reads recent chats and suggests lessons for her shop's AI."""
+    b = await req.json() if (await req.body()) else {}
+    try:
+        return await asyncio.to_thread(assistant.review, int(b.get("days") or 14))
+    except shopper.OverBudget as e:
+        return JSONResponse({"error": str(e)}, 429)
+
+
+@app.post("/api/maker/assistant/ask")
+async def assistant_ask(req: Request):
+    b = await req.json()
+    q = str(b.get("question") or "").strip()
+    if not q:
+        raise HTTPException(400, "Ask something about the shop.")
+    try:
+        return await asyncio.to_thread(assistant.ask, q)
+    except shopper.OverBudget as e:
+        return JSONResponse({"error": str(e)}, 429)
 
 
 @app.get("/api/maker/coach")

@@ -15,7 +15,7 @@
     orders from the shop appear on top as they happen.
     <a href="/">← back to the shop</a></div>
   <nav class="tabs" id="tabs">
-    <a href="#today">Overview</a><a href="#orders">Orders <i id="n-orders"></i></a><a href="#chats">Chats <i id="n-chats"></i></a><a href="#insights">Insights</a><a href="#customers">Customers</a><a href="#stock">Stock</a>
+    <a href="#today">Overview</a><a href="#orders">Orders <i id="n-orders"></i></a><a href="#chats">Chats <i id="n-chats"></i></a><a href="#assistant">Assistant ✦</a><a href="#insights">Insights</a><a href="#customers">Customers</a><a href="#stock">Stock</a>
   </nav>
   <div class="chips period" id="ovp"><button data-d="1">Today</button><button data-d="7">Week</button><button data-d="14" class="on">2 weeks</button><button data-d="30">Month</button><button data-d="90">Quarter</button><button data-d="365">Year</button><span class="pnote" id="pnote"></span></div>
 
@@ -43,6 +43,22 @@
   <section class="tab" id="tab-chats" hidden>
     <div id="chatlist"><p class="empty">Every conversation the shop's AI has, newest first.</p></div>
     <div id="chatview" hidden></div>
+  </section>
+
+  <section class="tab" id="tab-assistant" hidden>
+    <div class="panel asst">
+      <b class="ah">Ask about your shop</b>
+      <p class="fine">Numbers come from the shop's own records; the AI only puts them into words.</p>
+      <div class="qchips" id="qchips"><button>How much did I make this week?</button><button>What sells best this month?</button><button>How many orders do I need to ship?</button><button>How many people want news?</button></div>
+      <form id="askf" class="askf"><input id="askq" placeholder="Ask anything about sales, stock, customers…" autocomplete="off"><button>Ask</button></form>
+      <div id="answers"></div>
+    </div>
+    <div class="panel asst">
+      <b class="ah">Review my AI's chats</b>
+      <p class="fine">Your assistant reads the latest chats, points at answers that went wrong and writes a lesson for each. Accept it and your shop's AI uses it from the next chat.</p>
+      <button class="export" id="review">Review the chats of the selected period</button>
+      <div id="findings" class="rows"></div>
+    </div>
   </section>
 
   <section class="tab" id="tab-insights" hidden>

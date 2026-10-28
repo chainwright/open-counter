@@ -145,3 +145,12 @@ h1{font:900 46px/.9 "Big Shoulders Display";text-transform:uppercase;margin-top:
 .lesson button{background:none;border:1px solid var(--hair);color:var(--paper);border-radius:6px;padding:2px 8px;font:11px "Geist Mono";cursor:pointer;margin-left:6px}
 .lesson a{color:var(--cyan);text-decoration:none;margin-left:6px}
 #teach-list .lesson{background:#0B0C0E}
+
+.asst{display:flex;flex-direction:column;gap:10px}.ah{font:800 22px "Big Shoulders Display";text-transform:uppercase;color:var(--lamp)}
+.qchips{display:flex;flex-wrap:wrap;gap:6px}.qchips button{background:#0B0C0E;border:1px solid var(--hair);color:#C9CDD1;border-radius:999px;padding:7px 11px;font:12.5px "Geist";cursor:pointer}
+.askf{display:flex;gap:6px}.askf input{flex:1;min-width:0;background:#0B0C0E;border:1px solid var(--hair);color:#fff;border-radius:10px;padding:11px;font:14px "Geist"}
+.askf button{background:var(--cyan);color:#041214;border:0;border-radius:10px;padding:0 16px;font:600 14px "Geist";cursor:pointer}
+.qa{border-top:1px solid var(--hair);padding-top:10px;margin-top:4px}.qa .q{font-weight:600;margin:0 0 4px}.qa .a{margin:0;color:#D5D8DB;line-height:1.5;white-space:pre-wrap}.qa .think{color:var(--cyan);font:12.5px "Geist Mono"}
+.finding{background:#0B0C0E;border:1px solid var(--hair);border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:5px}
+.finding a{color:var(--cyan);text-decoration:none;font:500 12px "Geist Mono"}.finding .pr{margin:0;color:#FFB86B;font-size:13.5px}
+.finding .ls{margin:0;font-size:14px;line-height:1.45;border-left:3px solid var(--lamp);padding-left:9px}.finding .done{color:#3ddc84;font:12.5px "Geist Mono"}

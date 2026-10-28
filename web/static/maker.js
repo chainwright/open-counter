@@ -282,3 +282,38 @@ window.OC = (() => {
   document.addEventListener("oc-period", load);
   load(); setInterval(load, 30000);
 })();
+
+// Lena's assistant: questions about the shop, and a review of the AI's chats with ready lessons (Roma 14565 #2).
+(() => {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const answers = document.getElementById("answers");
+  async function ask(q) {
+    if (!q.trim()) return;
+    const box = document.createElement("div"); box.className = "qa"; box.innerHTML = `<p class="q">${esc(q)}</p><p class="a think">Looking at your numbers…</p>`;
+    answers.prepend(box);
+    const r = await fetch("/api/maker/assistant/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: q }) }).then((r) => r.json()).catch(() => ({ error: "Couldn't reach the shop." }));
+    const a = box.querySelector(".a"); a.classList.remove("think"); a.textContent = r.answer || r.error;
+  }
+  document.getElementById("askf").addEventListener("submit", (e) => { e.preventDefault(); const i = document.getElementById("askq"); ask(i.value); i.value = ""; });
+  document.getElementById("qchips").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) ask(b.textContent); });
+  const box = document.getElementById("findings"), btn = document.getElementById("review");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; btn.textContent = "Reading the chats…"; box.innerHTML = "";
+    const r = await fetch("/api/maker/assistant/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ days: OC.days }) }).then((r) => r.json()).catch(() => ({ error: "Couldn't reach the shop." }));
+    btn.disabled = false; btn.textContent = "Review again";
+    if (r.error) { box.innerHTML = `<p class="empty">${esc(r.error)}</p>`; return; }
+    box.innerHTML = r.findings.length ? `<p class="fine">Checked ${r.checked} chats ${esc(OC.label())}. ${r.findings.length} need a lesson:</p>` + r.findings.map((f, i) => `<div class="finding" id="f${i}">
+        <a href="#chats/${esc(f.chat)}">#${esc(f.no)} · “${esc(f.asked)}”</a><p class="pr">${esc(f.problem)}</p>
+        <p class="ls">${esc(f.lesson)}</p><div class="acts"><button class="p" data-accept="${i}">Accept the lesson</button><button data-skip="${i}">Dismiss</button></div></div>`).join("")
+      : `<p class="empty">Checked ${r.checked} chats ${esc(OC.label())}: nothing to fix.</p>`;
+    box.onclick = async (e) => {
+      const a = e.target.closest("[data-accept]"), s = e.target.closest("[data-skip]");
+      if (s) document.getElementById("f" + s.dataset.skip).remove();
+      if (a) {
+        const f = r.findings[+a.dataset.accept];
+        const ok = await fetch("/api/maker/coach", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: f.chat, note: f.lesson }) });
+        a.closest(".acts").innerHTML = ok.ok ? `<span class="done">✓ Your shop's AI follows this from the next chat</span>` : `<span>Couldn't save</span>`;
+      }
+    };
+  });
+})();
