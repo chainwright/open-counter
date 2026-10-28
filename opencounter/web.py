@@ -82,7 +82,8 @@ def _hide_contact(t: str) -> str:
 def _mask_order(o: dict | None) -> dict | None:
     if not o:
         return o
-    return {**o, "customer": _mask(o.get("customer")), "contact": _mask(o.get("contact"))}
+    return {**o, "customer": _mask(o.get("customer")), "contact": _mask(o.get("contact")),
+            "asked_for": _hide_contact(o.get("asked_for") or "")}
 
 
 def _announce(kind: str, o: dict):
