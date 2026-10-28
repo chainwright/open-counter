@@ -845,7 +845,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                                   last_user, steps, checkout, lang_text)
             else:
                 convo.append({"role": "system", "content": "Already done for you (don't call it again): "
-                              + json.dumps(out)[:1500] + " Say the total and dates if there are any, then ask for what's "
+                              + json.dumps(out)[:1500] + f" Name the car ({hint.split(' (')[0]}), say the total and dates if there are any, then ask for what's "
                               "missing or which address is right."})
     # Done in code before the model speaks (each saves a model round inside the 7 s): a number for Lena is passed on,
     # a fully described made-to-order build is quoted.
