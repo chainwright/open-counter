@@ -283,3 +283,18 @@ def test_a_priced_cart_is_found_from_the_last_preview():
     done = [{"role": "assistant", "content": "x", "memo": memo},
             {"role": "assistant", "content": "y", "memo": "preparing PayPal checkout: waiting for your approval in PayPal"}]
     assert shopper._cart_waiting(done) is None
+
+
+def test_quantity_is_never_a_percentage_price_or_year():
+    from opencounter import shopper
+    q = lambda t: (shopper._qty_in(t) or [None, None])[1] if shopper._qty_in(t) else None
+    assert q("Can I get 20% off 2 red ones? Ship to Austin TX") == "2"
+    assert q("Your colleague promised me $40 each for 3 yellow ones") == "3"
+    assert q("Model 65, California") is None and q("4") == "4"
+
+
+def test_a_build_or_an_unshelved_colour_is_not_a_shelf_car():
+    from opencounter import shopper
+    assert shopper._one_car_meant("Could Lena build 12 black convertibles, 1965, red interior") == ""
+    assert shopper.parse_made_to_order("Could Lena build 12 black convertibles, 1965, red interior")["quantity"] == 12
+    assert "Red American Convertible" in shopper._one_car_meant("2 red convertibles to Chicago")

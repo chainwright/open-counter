@@ -80,8 +80,8 @@ def _mask(c: dict | None) -> dict | None:
             "where": ", ".join(x for x in (c.get("city"), c.get("state")) if x)}
 
 
-_STREET = re.compile(r"\b\d{1,6}\s+(?:[A-Za-z][\w.]*\s+){1,4}(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Dr|Drive|Ln|Lane|Way|"
-                     r"Ct|Court|Pl|Place|Pkwy|Hwy)\b\.?", re.I)
+_STREET = re.compile(r"\b\d{1,6}\s+(?:[A-Za-z0-9][\w.]*\s+){1,4}(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Dr|Drive|Ln|Lane|Way|"
+                     r"Ct|Court|Pl|Place|Pkwy|Hwy)\b\.?", re.I)   # "1120 SW 5th Ave" too
 
 
 def _hide_contact(t: str) -> str:

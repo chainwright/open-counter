@@ -428,7 +428,7 @@ SELF_TALK = re.compile(r"\b(let'?s (ask|respond|reply|check|see|tell)|we need (c
                        r"in one message\.)\b|\[tool[^\]]*\]", re.I)
 
 
-def _polish(reply: str, last_user: str) -> tuple[str, float]:
+def _polish(reply: str, last_user: str, budget: float = 20.0) -> tuple[str, float]:
     """Last pass on the words only: a reply must speak to the shopper (no notes to itself) and in their language.
     One cheap rewrite when needed; the facts and numbers are kept exactly."""
     cyr = bool(re.search(r"[а-яё]", last_user, re.I))
@@ -441,11 +441,14 @@ def _polish(reply: str, last_user: str) -> tuple[str, float]:
             "wrote to itself. Keep every fact, number, date and question exactly. "
             + ("Write it in Russian. " if cyr else "Keep its language. ")
             + "Return only the reply.")
-    r = _client_().chat.completions.create(
-        model=MODEL, max_tokens=500, temperature=0,
-        messages=[{"role": "system", "content": task + " Do not quote or repeat the shopper's message."},
-                  {"role": "user", "content": reply}],
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+    try:
+        r = _client_().with_options(timeout=max(1.0, budget), max_retries=0).chat.completions.create(
+            model=MODEL, max_tokens=500, temperature=0,
+            messages=[{"role": "system", "content": task + " Do not quote or repeat the shopper's message."},
+                      {"role": "user", "content": reply}],
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+    except Exception:   # out of time: keep the words, drop the notes-to-self sentences in code
+        return " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not SELF_TALK.search(x)) or reply, 0.0
     u = r.usage
     out = (r.choices[0].message.content or "").rsplit("</think>", 1)[-1].strip() or reply
     # last resort: drop any sentence that still names a tool
@@ -490,7 +493,9 @@ def parse_made_to_order(text: str) -> dict | None:
         body = next((v for k, v in _COLOURS.items() if w.startswith(k)), None)
         if body:
             break
-    qty = re.search(r"\b(\d{1,3})\s*(?:x\b|×|pcs|pieces|cars|of them|штук|шт|машин)", t)
+    qty = (re.search(r"\b(\d{1,3})\s*(?:x\b|×|pcs|pieces|cars|of them|штук|шт|машин)", t)
+           or re.search(r"(?<![\d$%])\b(\d{1,3})\s+(?:[a-zа-яё-]+\s+){0,2}(?:convertibles?|fastbacks?|coupes?|coupés?|"
+                        r"кабриолет\w*|фастбек\w*|купе)\b", t))
     q = int(qty.group(1)) if qty else next((n for k, n in _NUMS.items() if re.search(r"\b" + k + r"\w*\s+(штук|шт|машин|of them|cars)", t)
                                              or re.search(r"(of them|штук)\W+" + k, t)), None)
     if q is None:
@@ -703,6 +708,10 @@ def _fallback_reply(steps: list[dict], ru: bool) -> str:
 def _one_car_meant(text: str) -> str:
     """'blue', 'red 65', "the '68": when a colour or a year fits exactly one listing, name it for the model."""
     low = text.lower()
+    if parse_made_to_order(text) or re.search(r"\b(build|built|custom|commission|made to order|под заказ|сдела)", low) \
+            or re.search(r"\b(black|grey|gray|white|silver|brown|purple|beige|черн|чёрн|сер[аоуый]|бел|коричн)", low):
+        return ""   # a build, or a colour that isn't on the shelf: that's made to order, not a shelf car
+    low = re.sub(r"\b[\wа-яё]+\s+(interior|inside|салон\w*)|(interior|салон\w*)\s+[\wа-яё]+", " ", low)   # inside colour
     colours = [w for w in ("green", "blue", "orange", "yellow", "red", "зелён", "зелен", "син", "оранж", "жёлт", "желт", "красн")
                if w in low]
     years = re.findall(r"(?<![\d-])(?:19)?(6[0-9]|7[0-9])\b(?!-)", low)
@@ -745,6 +754,24 @@ def _state_said(typed: str) -> str:
     # "to Denver" says where it goes; a city inside an address typed later doesn't override it
     dest = [(i, st) for i, st in found if re.search(r"\b(to|в|во|ship to|deliver to)\s+$", typed[max(0, i - 12):i], re.I)]
     return max(dest or found)[1] if found else ""
+
+
+def _where(out: dict) -> str:
+    """'Carmichael, CA 95608' from the order's ship-to line: the full name, street, phone and email stay on the receipt
+    card, not in the chat text that Lena's public back office shows (judge round 4)."""
+    st = out.get("ship_to", "")
+    m = re.search(r"([A-Za-zА-Яа-яЁё .'-]+, [A-Z]{2} \d{5})", st)
+    return m.group(1).strip() if m else "the address on the receipt below"
+
+
+def _qty_in(text: str):
+    """How many cars this message asks for ("2 red ones", "3 of the yellow ones", a bare "4"); never a percentage,
+    a price, a year, a ZIP or a phone number (judge round 4: "20% off 2 red ones" was read as 20 cars)."""
+    clean = re.sub(r"\$\s?\d[\d.,]*|\d+\s?%|\b(19)?[67]\d\b|\d{5}|\+?\d[\d\s().-]{6,}\d", " ", text)
+    now = (re.search(r"\b(\d{1,3})\s+(?:of the\s+)?(?:[a-zа-яё-]+\s+){0,2}?(?:cars?|ones?|red|green|blue|yellow|orange|"
+                     r"convertibles?|fastbacks?|coupes?|машин\w*|штук\w*|красн\w*|зелен\w*|зелён\w*|син\w*|жёлт\w*|желт\w*|оранж\w*)\b",
+                     clean, re.I) or re.fullmatch(r"\s*(\d{1,3})\s*", clean))
+    return now
 
 
 def run(messages: list[dict], visitor: str = "") -> dict:
@@ -805,7 +832,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                 checkout, by_code = out, True
                 ru = re.search(r"[а-яё]", lang_text, re.I)
                 reply = _must_say(("Спасибо, всё есть. " if ru else "Thanks, that's everything. ")
-                                  + (f"Отправлю на: {out.get('ship_to', '')}." if ru else f"It ships to {out.get('ship_to', '')}."),
+                                  + (f"Отправлю в {_where(out)}." if ru else f"It ships to {_where(out)}."),
                                   last_user, steps, checkout, lang_text)
     # One colour or one year that fits a single car on the shelf ("a blue one", "the red '65"): that's the car.
     # the car can have been named a few messages ago ("I need red car" … "1" … "California")
@@ -821,7 +848,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         convo.append({"role": "system", "content": f"The person means {hint}: it is the only car on the shelf that "
                       "fits what they said. Offer it directly with its price and stock; don't ask which model."
                       + (f" They asked for {qty} earlier; keep that quantity." if qty else "")})
-        now = re.search(r"\b(\d{1,3})\b", re.sub(r"\b(19)?[67]\d\b|\d{5}", "", last_user))
+        now = _qty_in(last_user)
         q, st = (now.group(1) if now else qty), _state_said(typed)
         if q and st and not checkout:
             # car, quantity and state are all known: price it in code now, so the answer can't miss the total
@@ -841,7 +868,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                         shop.update_order(o["id"], status="replaced", replaced_by=out["order_id"])
                 checkout, by_code = out, True
                 ru = re.search(r"[а-яё]", lang_text, re.I)
-                reply = _must_say(("Отправлю на: " if ru else "It ships to ") + out.get("ship_to", "") + ".",
+                reply = _must_say(("Отправлю в " if ru else "It ships to ") + _where(out) + ".",
                                   last_user, steps, checkout, lang_text)
             else:
                 convo.append({"role": "system", "content": "Already done for you (don't call it again): "
@@ -1026,7 +1053,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                 reply = BRANDS.sub("that model", reply)
             if BRANDS.search(reply):
                 # Ask once for a rewrite: blanking the name out can turn "no <brand> replicas" into a false sentence.
-                fix = _client_().chat.completions.create(
+                fix = _client_().with_options(timeout=max(1.0, TURN_SECONDS - (time.time() - t_start)), max_retries=0).chat.completions.create(
                     model=MODEL, max_tokens=300, temperature=0,
                     messages=[{"role": "system", "content": "Rewrite the message without naming any real car maker "
                                "or model. Keep every fact and the meaning. Return only the message."},
@@ -1044,7 +1071,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             if late:   # drop notes-to-self sentences instead of a rewrite pass
                 reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not SELF_TALK.search(x)) or reply
             else:
-                fixed, fusd = _polish(reply, lang_text)
+                fixed, fusd = _polish(reply, lang_text, TURN_SECONDS - (time.time() - t_start))
                 reply, usd = _scrub_invented(fixed, typed), usd + fusd
             # a final answer never says "one moment" or "let me check" (nothing happens after it), nor labels its parts
             reply = re.sub(r"\b(first|second|third|final) (sentence|answer|reply|part)\s*:\s*", "", reply, flags=re.I)
