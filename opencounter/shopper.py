@@ -679,8 +679,16 @@ def _cart_waiting(messages: list[dict]) -> tuple[list[dict], str] | None:
 TURN_SECONDS = 7   # the longest a shopper waits for one answer (Roma 14635: "maximum 7")
 
 
-def _fallback_reply(steps: list[dict], ru: bool) -> str:
+def _fallback_reply(steps: list[dict], ru: bool, last_user: str = "") -> str:
     """Out of time: say what the tools already found, written by code, instead of making the person wait."""
+    if not steps and re.search(r"\b(ship|deliver|send)\w*\b.*\b(to|in)\b|доставк|отправ", last_user, re.I):
+        st = _state_said(last_user)
+        if st:
+            return (f"Да, доставляем в {st}, USPS Ground Advantage, $6.50. Какую машинку и сколько?" if ru else
+                    f"Yes, we ship to {st}: USPS Ground Advantage, $6.50. Which car, and how many?")
+        if re.search(r"canada|mexico|uk|europe|germany|australia|abroad|international|канад|европ|за границ", last_user, re.I):
+            return ("Пока доставляем только по США, во все штаты, включая Аляску и Гавайи." if ru else
+                    "We only ship within the US for now, to every state including Alaska and Hawaii.")
     for st in reversed(steps):
         r = st["result"]
         if st["tool"] == "start_checkout" and re.search(r"\bZIP\b.*\bnot\b|which (address|is right)", r):
@@ -893,7 +901,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         left = TURN_SECONDS - (time.time() - t_start)
         if left < 1.5:
             # the person has waited long enough: answer with what the tools already found instead of thinking on
-            reply = _must_say(_fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I))),
+            reply = _must_say(_fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user),
                               last_user, steps, checkout, lang_text)
             by_code = True
             break
@@ -902,7 +910,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                 model=MODEL, messages=convo, tools=TOOLS, max_tokens=500, temperature=0.2,
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}})
         except Exception:   # the model host was slow or failed: say what we have, never an endless wait
-            reply = _must_say(_fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I))),
+            reply = _must_say(_fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user),
                               last_user, steps or _earlier_steps(messages), checkout, lang_text)
             by_code = True
             break
@@ -1082,10 +1090,10 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             if re.search(r"here'?s my (information|info|details|address)|\bmy (full )?name is\b|^\s*full name\s*:|"
                          r"вот мои (данные|контакты)|меня зовут", reply, re.I | re.M):
                 # the model wrote as if it were the shopper (and made up a person): never send that
-                reply = _fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)))
+                reply = _fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user)
             reply = _scrub_dates(reply, steps, messages, typed)
             if len(reply.strip()) < 25 and not checkout:   # "Sure!" alone answers nothing
-                reply = _fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)))
+                reply = _fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user)
             reply = _must_say(reply, last_user, steps or _earlier_steps(messages), checkout, lang_text)
             break
         convo.append({"role": "assistant", "content": msg.content or "",

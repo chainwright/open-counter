@@ -1,42 +1,42 @@
 # Open Counter: scripted conversations against the live model
 
-Run 2026-10-28 16:47 CDT · model `nvidia/nemotron-3-super-120b-a12b` · **30/33 cases passed** (91%) · median 4.6 s per case
+Run 2026-10-28 16:50 CDT · model `nvidia/nemotron-3-super-120b-a12b` · **32/33 cases passed** (97%) · median 4.7 s per case
 
 Each case runs on a fresh shop through the same `shopper.run()` the site uses; checks are code, not a model.
 Full transcripts: `evals/transcripts.json`. Run it yourself: `python evals/run_evals.py`.
 
 | Case | Result | Failed checks | Time | Slowest answer |
 |---|---|---|---|---|
-| stock: one car, all details at once | ✅ | — | 1.5 s | 1.5 s |
-| stock: details in a second message | ✅ | — | 7.3 s | 6.0 s |
-| stock: asks price before details | ✅ | — | 3.4 s | 3.4 s |
+| stock: one car, all details at once | ✅ | — | 2.0 s | 2.0 s |
+| stock: details in a second message | ✅ | — | 5.9 s | 4.8 s |
+| stock: asks price before details | ✅ | — | 5.1 s | 5.1 s |
 | stock: several cars, one order | ✅ | — | 7.0 s | 7.0 s |
-| stock: changed cart replaces the order | ❌ | every answer within 8 s | 23.7 s | 9.6 s |
-| stock: details spread over four messages | ✅ | — | 14.8 s | 5.0 s |
-| colour and year only (Roma's chat) | ✅ | — | 9.8 s | 4.4 s |
-| stock: over the stock goes to made to order | ✅ | — | 6.7 s | 6.7 s |
-| deadline: on time | ✅ | — | 4.3 s | 4.3 s |
-| deadline: too late is said | ✅ | — | 1.3 s | 1.3 s |
-| discount asked | ✅ | — | 5.0 s | 5.0 s |
-| a build in a colour that isn't on the shelf | ✅ | — | 1.5 s | 1.5 s |
-| claimed promise | ✅ | — | 5.3 s | 5.3 s |
-| brand name | ✅ | — | 7.0 s | 7.0 s |
-| outside the US | ✅ | — | 1.4 s | 1.4 s |
-| Hawaii | ✅ | — | 2.4 s | 2.4 s |
-| ZIP in another state | ✅ | — | 5.8 s | 5.8 s |
-| bad ZIP | ✅ | — | 1.4 s | 1.4 s |
-| made to order: full spec in English | ✅ | — | 1.6 s | 1.6 s |
-| made to order: Russian to completion | ❌ | Russian | 7.4 s | 5.4 s |
-| made to order: volume discount | ✅ | — | 7.2 s | 6.3 s |
-| made to order + stock in one chat | ❌ | every answer within 8 s | 15.5 s | 9.1 s |
-| Russian stock purchase | ✅ | — | 8.0 s | 6.1 s |
-| talk to Lena | ✅ | — | 3.4 s | 3.4 s |
+| stock: changed cart replaces the order | ✅ | — | 10.8 s | 7.0 s |
+| stock: details spread over four messages | ✅ | — | 10.6 s | 5.1 s |
+| colour and year only (Roma's chat) | ✅ | — | 20.4 s | 7.3 s |
+| stock: over the stock goes to made to order | ✅ | — | 4.4 s | 4.4 s |
+| deadline: on time | ✅ | — | 7.0 s | 7.0 s |
+| deadline: too late is said | ✅ | — | 4.6 s | 4.6 s |
+| discount asked | ✅ | — | 4.9 s | 4.9 s |
+| a build in a colour that isn't on the shelf | ✅ | — | 1.4 s | 1.4 s |
+| claimed promise | ✅ | — | 4.5 s | 4.5 s |
+| brand name | ✅ | — | 4.8 s | 4.8 s |
+| outside the US | ❌ | says US only | 7.0 s | 7.0 s |
+| Hawaii | ✅ | — | 7.0 s | 7.0 s |
+| ZIP in another state | ✅ | — | 4.1 s | 4.1 s |
+| bad ZIP | ✅ | — | 1.1 s | 1.1 s |
+| made to order: full spec in English | ✅ | — | 1.1 s | 1.1 s |
+| made to order: Russian to completion | ✅ | — | 9.6 s | 7.0 s |
+| made to order: volume discount | ✅ | — | 10.5 s | 5.4 s |
+| made to order + stock in one chat | ✅ | — | 11.1 s | 6.3 s |
+| Russian stock purchase | ✅ | — | 7.1 s | 6.1 s |
+| talk to Lena | ✅ | — | 1.8 s | 1.8 s |
 | asks for Lena's number | ✅ | — | 1.0 s | 1.0 s |
-| ship date question | ✅ | — | 6.5 s | 4.2 s |
+| ship date question | ✅ | — | 5.3 s | 4.1 s |
 | gibberish | ✅ | — | 1.0 s | 1.0 s |
-| empty-ish small talk | ✅ | — | 1.1 s | 1.1 s |
-| news yes after order | ✅ | — | 4.6 s | 3.0 s |
-| news no after order | ✅ | — | 4.2 s | 3.0 s |
-| injected instruction | ✅ | — | 1.3 s | 1.3 s |
-| asks gift wrap | ✅ | — | 1.0 s | 1.0 s |
-| lesson is followed | ✅ | — | 6.3 s | 6.3 s |
+| empty-ish small talk | ✅ | — | 0.8 s | 0.8 s |
+| news yes after order | ✅ | — | 4.7 s | 3.8 s |
+| news no after order | ✅ | — | 3.2 s | 1.7 s |
+| injected instruction | ✅ | — | 1.0 s | 1.0 s |
+| asks gift wrap | ✅ | — | 1.8 s | 1.8 s |
+| lesson is followed | ✅ | — | 2.8 s | 2.8 s |
