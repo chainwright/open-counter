@@ -832,8 +832,9 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             continue
         if (not msg.tool_calls and nudges > 0 and not checkout
                 and re.search(r"e-?mail|address|zip|почт|адрес|телефон", msg.content or "", re.I)
-                and not re.search(r"\$\s?\d|\d\s?\$|долл", msg.content or "", re.I)):
-            # It asks for the person's details but never said the price: price it first, then ask.
+                and not (re.search(r"\$\s?\d|\d\s?\$|долл", msg.content or "", re.I)
+                         and re.search(r"total|итог|shipping|доставк", msg.content or "", re.I))):
+            # It asks for the person's details but never said the total with shipping: price it first, then ask.
             nudges -= 1
             priced = any(st["tool"] in ("start_checkout", "quote_commission") for st in steps)
             convo += [{"role": "assistant", "content": msg.content or ""},
