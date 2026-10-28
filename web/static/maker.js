@@ -19,7 +19,7 @@
     document.getElementById("s-wait").textContent = shown.filter((o) => o.status === "awaiting_approval").length;
     const today = new Date().toDateString();
     const rev = shown.filter((o) => o.paid_at && new Date(o.paid_at * 1000).toDateString() === today).reduce((a, o) => a + o.total_usd, 0);
-    document.getElementById("s-rev").textContent = "$" + rev.toFixed(0);
+    const sr = document.getElementById("s-rev"); if (sr) sr.textContent = "$" + rev.toFixed(0);
     if (!shown.length) return;
     feed.innerHTML = shown.map((o) => {
       const st = { awaiting_approval: "WAITING FOR BUYER", paid: "PAID · SHIP IT", shipped: "SHIPPED", cancelled: "CANCELLED", refunded_out_of_stock: "REFUNDED" }[o.status] || o.status.toUpperCase();
@@ -166,19 +166,42 @@
     const key = prompt("Lena's key"); if (key) location.href = "/api/maker/news-list.csv?key=" + encodeURIComponent(key);
   });
 
+  let ovDays = 1;
+  const PL = { 1: "today", 7: "in the last 7 days", 14: "in the last 2 weeks", 30: "in the last month", 90: "in the last quarter", 365: "in the last year" };
   function renderToday() {
-    const t0 = today() / 1000;
+    const t0 = ovDays === 1 ? today() / 1000 : (today() - (ovDays - 1) * 864e5) / 1000;
+    const live = (o) => !["error", "cancelled", "refunded_out_of_stock"].includes(o.status);
+    document.querySelectorAll("#tab-today .pl").forEach((e) => (e.textContent = PL[ovDays]));
     document.getElementById("t-chats").textContent = chats.filter((c) => c.started >= t0).length;
-    document.getElementById("t-orders").textContent = orders.filter((o) => o.created >= t0 && o.status !== "error").length;
+    document.getElementById("t-orders").textContent = orders.filter((o) => o.created >= t0 && live(o)).length;
+    document.getElementById("t-rev").textContent = "$" + orders.filter((o) => (o.paid_at || 0) >= t0 && ["paid", "shipped"].includes(o.status)).reduce((a, o) => a + o.total_usd, 0).toFixed(0);
     document.getElementById("t-calls").textContent = calls.filter((r) => r.status === "to_call").length;
-    document.getElementById("t-subs").textContent = custs.filter((c) => c.marketing === true).length;
+    document.getElementById("t-subs").textContent = custs.filter((c) => c.marketing === true && (c.consent_at || 0) >= t0).length;
     document.getElementById("n-orders").textContent = orders.filter((o) => o.status === "paid").length || "";
-    const days = [...Array(7)].map((_, i) => today() - (6 - i) * 864e5);
-    const cnt = days.map((d) => ({ d, c: chats.filter((x) => day(x.started) === d).length, o: orders.filter((x) => day(x.created) === d && x.status !== "error").length }));
+    // chart: days (up to 2 weeks), weeks (month, quarter) or months (year)
+    const span = ovDays === 1 ? 7 : ovDays;
+    const unit = span <= 14 ? 1 : span <= 90 ? 7 : 30;
+    const n = Math.ceil(span / unit);
+    const end = today() + 864e5;
+    const buckets = [...Array(n)].map((_, i) => { const a = end - (n - i) * unit * 864e5; return { a, b: a + unit * 864e5 }; });
+    const cnt = buckets.map((x) => ({ ...x, c: chats.filter((c) => c.started * 1000 >= x.a && c.started * 1000 < x.b).length,
+      o: orders.filter((o) => o.created * 1000 >= x.a && o.created * 1000 < x.b && live(o)).length }));
     const max = Math.max(1, ...cnt.map((x) => Math.max(x.c, x.o)));
-    document.getElementById("week").innerHTML = cnt.map((x) => `<div class="wd"><div class="bars"><i class="bc" style="height:${(x.c / max) * 100}%"></i><i class="bo" style="height:${(x.o / max) * 100}%"></i></div>
-      <b>${x.c}/${x.o}</b><span>${esc(new Date(x.d).toLocaleDateString([], { weekday: "short" }))}</span></div>`).join("") + `<p class="legend"><i class="bc"></i>chats <i class="bo"></i>orders</p>`;
+    const lab = (x) => unit === 1 ? new Date(x.a).toLocaleDateString([], n > 7 ? { day: "numeric" } : { weekday: "short" })
+      : unit === 7 ? new Date(x.a).toLocaleDateString([], { month: "short", day: "numeric" }) : new Date(x.a + 15 * 864e5).toLocaleDateString([], { month: "short" });
+    const w = document.getElementById("week");
+    w.style.gridTemplateColumns = `repeat(${n}, minmax(0,1fr))`;
+    w.innerHTML = cnt.map((x) => `<div class="wd"><div class="bars"><i class="bc" style="height:${(x.c / max) * 100}%"></i><i class="bo" style="height:${(x.o / max) * 100}%"></i></div>
+      ${n <= 14 ? `<b>${x.c}/${x.o}</b>` : ""}<span>${esc(lab(x))}</span></div>`).join("") + `<p class="legend"><i class="bc"></i>chats <i class="bo"></i>orders${unit > 1 ? ` · per ${unit === 7 ? "week" : "month"}` : ""}</p>`;
+    document.getElementById("ovchart").textContent = ovDays === 1 ? "LAST 7 DAYS" : "CHATS AND ORDERS " + PL[ovDays].toUpperCase();
+    const recent = chats.filter((c) => c.updated >= t0);
+    document.getElementById("ovlatest").textContent = ovDays === 1 ? "TODAY'S CHATS" : "LATEST CHATS " + PL[ovDays].toUpperCase();
+    document.getElementById("latest").innerHTML = recent.length ? recent.slice(0, 5).map(row).join("") : `<p class="empty">No chats ${PL[ovDays]}.</p>`;
   }
+  document.getElementById("ovp").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-d]"); if (!b) return;
+    ovDays = +b.dataset.d; document.querySelectorAll("#ovp button").forEach((x) => x.classList.toggle("on", x === b)); renderToday();
+  });
 
   async function load() {
     [chats, custs, orders, calls] = await Promise.all(["/api/maker/conversations", "/api/maker/customers", "/api/maker/orders", "/api/maker/requests"]

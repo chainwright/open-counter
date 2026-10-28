@@ -15,21 +15,22 @@
     orders from the shop appear on top as they happen.
     <a href="/">← back to the shop</a></div>
   <nav class="tabs" id="tabs">
-    <a href="#today">Today</a><a href="#orders">Orders <i id="n-orders"></i></a><a href="#chats">Chats <i id="n-chats"></i></a><a href="#insights">Insights</a><a href="#customers">Customers</a><a href="#stock">Stock</a>
+    <a href="#today">Overview</a><a href="#orders">Orders <i id="n-orders"></i></a><a href="#chats">Chats <i id="n-chats"></i></a><a href="#insights">Insights</a><a href="#customers">Customers</a><a href="#stock">Stock</a>
   </nav>
 
   <section class="tab" id="tab-today">
+    <div class="chips" id="ovp"><button data-d="1" class="on">Today</button><button data-d="7">Week</button><button data-d="14">2 weeks</button><button data-d="30">Month</button><button data-d="90">Quarter</button><button data-d="365">Year</button></div>
     <div class="tiles">
-      <div><b id="t-chats">0</b><span>new chats today</span></div>
-      <div><b id="t-orders">0</b><span>orders today</span></div>
-      <div><b id="s-rev">$0</b><span>paid today</span></div>
+      <div><b id="t-chats">0</b><span>new chats <em class="pl">today</em></span></div>
+      <div><b id="t-orders">0</b><span>orders <em class="pl">today</em></span></div>
+      <div><b id="t-rev">$0</b><span>paid <em class="pl">today</em></span></div>
       <div><b id="s-wait">0</b><span>waiting for the buyer's OK</span></div>
       <div><b id="t-calls">0</b><span>people to call back</span></div>
-      <div><b id="t-subs">0</b><span>want news by email</span></div>
+      <div><b id="t-subs">0</b><span>new subscribers <em class="pl">today</em></span></div>
     </div>
-    <div class="k sec">LAST 7 DAYS</div>
+    <div class="k sec" id="ovchart">LAST 7 DAYS</div>
     <div class="week" id="week"></div>
-    <div class="k sec">LATEST CHATS <a class="more" href="#chats">all chats →</a></div>
+    <div class="k sec"><span id="ovlatest">LATEST CHATS</span> <a class="more" href="#chats">all chats →</a></div>
     <div id="latest" class="rows"><p class="empty">No chats yet today.</p></div>
     <p class="sold-ai"><b id="s-sold">0</b> sold to AI agents so far</p>
   </section>
@@ -45,7 +46,7 @@
   </section>
 
   <section class="tab" id="tab-insights" hidden>
-    <div class="chips" id="period"><button data-d="7">Week</button><button data-d="14" class="on">2 weeks</button><button data-d="30">Month</button><button data-d="365">Year</button></div>
+    <div class="chips" id="period"><button data-d="7">Week</button><button data-d="14" class="on">2 weeks</button><button data-d="30">Month</button><button data-d="90">Quarter</button><button data-d="365">Year</button></div>
     <div class="k sec">CARS ORDERED, BY MODEL</div>
     <div class="panel"><svg id="lines" viewBox="0 0 700 220" preserveAspectRatio="none"></svg><div class="keys" id="keys"></div></div>
     <div class="k sec">BEST SELLERS IN THIS PERIOD</div>
