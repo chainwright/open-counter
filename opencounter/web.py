@@ -367,7 +367,10 @@ def _sync_invoice(oc: str) -> dict:
 def paypal_return(oc: str, token: str = ""):
     o = shop.order(oc)
     if not o or (token and token != o.get("paypal_order_id")):
-        raise HTTPException(404)
+        # an old or unknown checkout link: we never capture it, so the approval lapses and nothing is charged
+        return HTMLResponse("<p>This checkout link is no longer active, so nothing was charged. "
+                            "Please go back to the shop and ask the agent for a fresh receipt.</p>"
+                            '<p><a href="/#try">Back to the shop</a></p>', 410)
     try:
         _settle(oc)
     except paypal.PayPalError as e:
