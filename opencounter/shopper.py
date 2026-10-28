@@ -629,7 +629,23 @@ def _cart_waiting(messages: list[dict]) -> tuple[list[dict], str] | None:
     return None
 
 
-TURN_SECONDS = 35   # the longest a shopper waits for one answer
+TURN_SECONDS = 7   # the longest a shopper waits for one answer (Roma 14635: "maximum 7")
+
+
+def _fallback_reply(steps: list[dict], ru: bool) -> str:
+    """Out of time: say what the tools already found, written by code, instead of making the person wait."""
+    for st in reversed(steps):
+        r = st["result"]
+        m = re.search(r"^(.+?); shipping \$([\d.]+); total \$([\d.]+) · (ships [^·]+)·.*?needs: (.+)$", r)
+        if st["tool"] == "start_checkout" and m:
+            return (f"Итого ${m.group(3)} с доставкой ${m.group(2)} ({m.group(1)}); {m.group(4).strip()}. Чтобы оформить "
+                    f"заказ в PayPal, пришлите одним сообщением: имя и фамилию, телефон, email, адрес с ZIP." if ru else
+                    f"That's ${m.group(3)} with ${m.group(2)} shipping ({m.group(1)}); {m.group(4).strip()}. To create the "
+                    f"PayPal order, send in one message: {m.group(5)}.")
+        if st["tool"] in ("search_counter", "item_details") and re.search(r"\$\d+|in stock", r):
+            return ((f"Вот что есть: {r}. Сколько штук и в какой штат отправить?") if ru else
+                    (f"Here's what I found: {r}. How many would you like, and which US state should it go to?"))
+    return ("Простите, не успела. Напишите, пожалуйста, ещё раз." if ru else "Sorry, I didn't catch that in time. Could you send it once more?")
 
 
 def _one_car_meant(text: str) -> str:
@@ -687,9 +703,11 @@ def run(messages: list[dict], visitor: str = "") -> dict:
     waiting = _cart_waiting(messages)
     if waiting:
         cust = gather_customer([m["content"] for m in messages if m["role"] == "user"])
-        if all(cust.get(k) for k in ("full_name", "phone", "email", "address_line_1", "city", "postal_code", "state")):
-            items, st = waiting
-            args = {"items": items, "us_state": cust["state"] or st, "customer": cust, "what_the_shopper_asked": asked}
+        items, st = waiting
+        # only when the address is in the state that was priced; otherwise the person is asked which one is right
+        if all(cust.get(k) for k in ("full_name", "phone", "email", "address_line_1", "city", "postal_code", "state")) \
+                and cust["state"] == st:
+            args = {"items": items, "us_state": st, "customer": cust, "what_the_shopper_asked": asked}
             t0 = time.time()
             out = _call_tool("start_checkout", args, asked, typed)
             if out.get("ok"):
@@ -711,19 +729,18 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                       "fits what they said. Offer it directly with its price and stock; don't ask which model."})
     for _ in range(0 if by_code else MAX_STEPS):
         left = TURN_SECONDS - (time.time() - t_start)
-        if left < 4:
+        if left < 1.5:
             # the person has waited long enough: answer with what the tools already found instead of thinking on
-            reply = _must_say(_scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", next(
-                (c["content"] for c in reversed(convo) if c.get("role") == "assistant" and c.get("content")), ""))), typed)
-                or ("Sorry, that took me too long. Could you say it once more?"), last_user, steps, checkout, lang_text)
+            reply = _must_say(_fallback_reply(steps, bool(re.search(r"[а-яё]", lang_text, re.I))),
+                              last_user, steps, checkout, lang_text)
             by_code = True
             break
         try:
             r = _client_().with_options(timeout=min(20, left), max_retries=0).chat.completions.create(
                 model=MODEL, messages=convo, tools=TOOLS, max_tokens=500, temperature=0.2,
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}})
-        except Exception:   # the model host was slow or failed: one honest line, never an endless wait
-            reply = _must_say("Sorry, I couldn't finish that just now. Could you send it once more?",
+        except Exception:   # the model host was slow or failed: say what we have, never an endless wait
+            reply = _must_say(_fallback_reply(steps, bool(re.search(r"[а-яё]", lang_text, re.I))),
                               last_user, steps, checkout, lang_text)
             by_code = True
             break
@@ -735,7 +752,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             msg.content = msg.content.rsplit("</think>", 1)[-1].strip()
         if msg.content:
             msg.content = re.sub(r"^\s*<think>.*", "", msg.content, flags=re.S) if msg.content.lstrip().startswith("<think>") else msg.content
-        if time.time() - t_start > 20:
+        if time.time() - t_start > TURN_SECONDS - 3:
             nudges = 0   # the person has waited long enough: no more second tries, answer with what we have
         if not msg.tool_calls and nudges > 0 and PROMISE.search(msg.content or ""):
             # It announced a search instead of doing one. Hold it to its word once.
@@ -868,6 +885,9 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             continue
         if not msg.tool_calls:
             reply = MEMO_TAG.sub("", msg.content or "")
+            late = TURN_SECONDS - (time.time() - t_start) < 2.5   # no time for another model pass: fix it in code
+            if BRANDS.search(reply) and late:
+                reply = BRANDS.sub("that model", reply)
             if BRANDS.search(reply):
                 # Ask once for a rewrite: blanking the name out can turn "no <brand> replicas" into a false sentence.
                 fix = _client_().chat.completions.create(
@@ -885,8 +905,11 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                     reply = BRANDS.sub("that model", reply)
             reply = ITEM_ID.sub("", reply)
             reply = _scrub_invented(reply, typed)
-            fixed, fusd = _polish(reply, lang_text)
-            reply, usd = _scrub_invented(fixed, typed), usd + fusd
+            if late:   # drop notes-to-self sentences instead of a rewrite pass
+                reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not SELF_TALK.search(x)) or reply
+            else:
+                fixed, fusd = _polish(reply, lang_text)
+                reply, usd = _scrub_invented(fixed, typed), usd + fusd
             # a final answer never says "one moment" or "let me check" (nothing happens after it), nor labels its parts
             reply = re.sub(r"\b(first|second|third|final) (sentence|answer|reply|part)\s*:\s*", "", reply, flags=re.I)
             reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not re.match(
