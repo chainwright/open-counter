@@ -54,11 +54,14 @@ def quote_commission(cars: list[dict], us_state: str = "") -> dict:
     return counter.quote_commission(cars, us_state)
 
 
-@mcp.tool(description=("Create the made-to-order order after the person agreed to the quote, and get a PayPal "
-                       "approval link. Needs their name and phone; PayPal collects the address."))
+@mcp.tool(description=("Create the made-to-order order after the person agreed to the quote. With customer "
+                       "(full_name, phone, email, address_line_1, city, state, postal_code) it becomes a PayPal invoice "
+                       "sent to their email: 50% deposit now, the balance before shipping. Without it, a one-time "
+                       "PayPal approval link for the full amount."))
 def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone: str,
-                              what_the_shopper_asked: str) -> dict:
-    return counter.start_commission_checkout(cars, us_state, name, phone, what_the_shopper_asked, channel="mcp")
+                              what_the_shopper_asked: str, customer: dict | None = None) -> dict:
+    return counter.start_commission_checkout(cars, us_state, name, phone, what_the_shopper_asked, channel="mcp",
+                                             customer=customer)
 
 
 @mcp.tool(description="Pass the person's phone number and question to the maker; she calls them back.")
