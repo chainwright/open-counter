@@ -121,6 +121,7 @@ section:not(.hero){padding:120px 6vw;border-top:1px solid var(--hair)}
 .ask{display:flex;gap:8px}.ask input{flex:1;background:#08090A;border:1px solid var(--hair);border-radius:12px;color:#fff;padding:13px 14px;font-size:15px}
 .ask button{background:var(--cyan);color:#041214;border:0;border-radius:12px;padding:0 18px;font-weight:600;cursor:pointer}
 .sandbox{margin-top:12px;font-size:12px;color:var(--mute)}.sandbox code{color:#C9CDD1}
+.chat-log>*{flex-shrink:0}
 .cocard{align-self:flex-start;width:min(420px,100%);background:#fff;color:#111;border-radius:14px;overflow:hidden}
 .cocard .ap-pair{font-size:12px}.cocard a.pp{text-decoration:none}
 /* bench cards */

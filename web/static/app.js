@@ -80,7 +80,7 @@
 // ---------- live shopper chat, catalog, agent endpoints ----------
 (() => {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(https:\/\/www\.sandbox\.paypal\.com\S+)/g, "");
+  const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\[([^\]]*)\]\(\s*https:\/\/www\.sandbox\.paypal\.com[^)]*\)?/g, "$1 ↓").replace(/(https:\/\/www\.sandbox\.paypal\.com\S+)/g, "↓");
   const log = document.getElementById("log"), form = document.getElementById("askform"), input = document.getElementById("askin");
   const history = [];
   const add = (cls, html) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; };
@@ -105,6 +105,7 @@
         add("cocard", `<div class="ap-pair"><div><small>You asked for</small>${esc(c.you_asked_for)}</div><div><small>You're approving</small>${esc(c.you_are_approving)}</div></div>
           <a class="pp" href="${esc(c.approve_url)}" target="_blank" rel="noopener"><span class="pp-a">Pay</span><span class="pp-b">Pal</span></a>
           <p class="fine">${esc(c.delivery)}. Nothing is charged until you approve in PayPal.</p>`);
+        log.scrollTop = log.scrollHeight;
       }
     } catch (e) { clearInterval(tick); t.textContent = "Couldn't reach the counter. Try again."; }
   }
