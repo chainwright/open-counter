@@ -191,3 +191,20 @@ def test_chats_and_customers_are_kept_and_consent_is_explicit(monkeypatch):
     from opencounter import web
     m = web._mask(shop.customers()[0])
     assert m["name"] == "Sam R." and "Lavaca" not in str(m) and "415" not in str(m) and m["email"].startswith("S•••")
+
+
+def test_made_to_order_goes_to_a_deposit_invoice(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(paypal, "configured", lambda: True)
+    def fake_invoice(**kw):
+        sent.update(kw)
+        return {"id": "INV2-X", "payer_url": "https://paypal.test/invoice/p/#INV2-X", "deposit_usd": round(kw["total_usd"] / 2, 2)}
+    monkeypatch.setattr(paypal, "create_deposit_invoice", fake_invoice)
+    cust = {"full_name": "Sam Rivera", "phone": "415-555-0134", "email": "sam@example.com",
+            "address_line_1": "1200 Lavaca St", "city": "Austin", "state": "TX", "postal_code": "78701"}
+    out = counter.start_commission_checkout([{"model": "green fastback", "year": "1968", "body_colour": "grey",
+                                              "interior_colour": "brown", "quantity": 12}], "TX", "Sam Rivera",
+                                            "415-555-0134", "12 grey", customer=cust)
+    assert out["ok"] and out["payment"] == "invoice" and out["deposit_usd"] == 480.6
+    assert sent["rows"][0]["qty"] == 12 and sent["discount_usd"] == 106.8 and out["receipt"]["deposit"] == 480.6
+    assert shop.order(out["order_id"])["invoice_id"] == "INV2-X"

@@ -211,6 +211,24 @@ def _settle(oc: str) -> dict:
         return o
 
 
+def _sync_invoice(oc: str) -> dict:
+    """Read a made-to-order invoice back from PayPal: deposit paid → Lena builds; fully paid → ready to ship."""
+    o = shop.order(oc)
+    inv = paypal.get_invoice(o["invoice_id"])
+    paid = float(((inv.get("payments") or {}).get("paid_amount") or {}).get("value") or 0)
+    st = {"PAID": "paid", "MARKED_AS_PAID": "paid", "PARTIALLY_PAID": "deposit_paid",
+          "CANCELLED": "cancelled"}.get(inv.get("status"), o["status"])
+    fields = {"paid_usd": paid, "invoice_status": inv.get("status"), "invoice_checked": time.time()}
+    if st != o["status"]:
+        fields["status"] = st
+        if st in ("paid", "deposit_paid") and not o.get("paid_at"):
+            fields["paid_at"] = time.time()
+    o2 = shop.update_order(oc, **fields)
+    if st != o["status"] and st in ("paid", "deposit_paid"):
+        _announce("paid", o2)
+    return o2
+
+
 @app.get("/paypal/return")
 def paypal_return(oc: str, token: str = ""):
     o = shop.order(oc)
@@ -318,6 +336,12 @@ async def webhook(req: Request):
         return JSONResponse({"ok": False}, 400)
     res = event.get("resource", {})
     kind = event.get("event_type", "")
+    if kind.startswith("INVOICING."):
+        inv = res.get("invoice") or res
+        oc = (inv.get("detail") or {}).get("invoice_number")
+        if oc and shop.order(oc) and shop.order(oc).get("invoice_id"):
+            await asyncio.to_thread(_sync_invoice, oc)
+        return {"ok": True}
     oc = res.get("custom_id") or (res.get("purchase_units") or [{}])[0].get("custom_id")
     o = shop.order(oc) if oc else None
     if not o:
@@ -338,6 +362,14 @@ async def webhook(req: Request):
 # ---- maker side ----
 @app.get("/api/maker/orders")
 def maker_orders():
+    # made-to-order invoices: if a webhook was missed, look again (at most once a minute per order)
+    for o in shop.orders():
+        if (o.get("invoice_id") and not o.get("sample") and o["status"] in ("awaiting_approval", "deposit_paid")
+                and time.time() - o.get("invoice_checked", 0) > 60):
+            try:
+                _sync_invoice(o["id"])
+            except paypal.PayPalError:
+                shop.update_order(o["id"], invoice_checked=time.time())
     return [_mask_order(o) for o in sorted(shop.orders(), key=lambda o: -o["created"])]
 
 
@@ -476,6 +508,16 @@ async def coach_set(lid: str, req: Request):
 def maker_customers():
     """Buyers from orders; marketing is true only after their own yes in chat."""
     return [_mask(c) for c in shop.customers()]
+
+
+@app.post("/api/maker/orders/{oid}/balance")
+def request_balance(oid: str):
+    """Lena: the cars are ready, ask the buyer for the rest (PayPal sends the reminder)."""
+    o = shop.order(oid)
+    if not o or not o.get("invoice_id"):
+        raise HTTPException(404)
+    paypal.remind_invoice(o["invoice_id"], "Your hand-built cars are finished. Pay the balance and they ship the next day.")
+    return _mask_order(shop.update_order(oid, balance_requested=time.time()))
 
 
 @app.get("/api/maker/requests")

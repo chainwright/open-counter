@@ -152,3 +152,49 @@ def refund(capture_id: str, order_id: str, amount_usd: float | None = None, note
     if amount_usd is not None:
         body["amount"] = {"currency_code": "USD", "value": money(amount_usd)}
     return _call("POST", f"/v2/payments/captures/{capture_id}/refund", body, request_id=f"refund-{order_id}")
+
+
+# ---- Invoicing (made-to-order builds: 50% deposit now, the balance before it ships) ----
+
+def create_deposit_invoice(*, order_id: str, shop: dict, rows: list[dict], discount_usd: float, shipping_usd: float,
+                           customer: dict, total_usd: float, deposit_share: float = 0.5) -> dict:
+    """A PayPal invoice for a made-to-order build: one line per car spec, the volume discount, shipping, and a
+    minimum first payment (the deposit). Sent to the buyer; returns {id, payer_url, deposit_usd}."""
+    first, _, last = customer["full_name"].partition(" ")
+    deposit = Decimal(money(total_usd * deposit_share))
+    who = {"name": {"given_name": first, "surname": last or first}}
+    addr = {"address_line_1": customer["address_line_1"], "admin_area_2": customer["city"],
+            "admin_area_1": customer["state"], "postal_code": customer["postal_code"], "country_code": "US"}
+    body = {
+        "detail": {"invoice_number": order_id, "currency_code": "USD", "payment_term": {"term_type": "NET_10"},
+                   "note": f"Hand-built to order by {shop['maker']}. Pay at least {money(deposit)} USD now; "
+                           "the balance is due before your cars ship.",
+                   "reference": order_id},
+        "invoicer": {"name": {"given_name": shop["maker"].split()[0], "surname": shop["maker"].split()[-1]},
+                     "business_name": shop["name"]},
+        "primary_recipients": [{"billing_info": {**who, "email_address": customer["email"]},
+                                "shipping_info": {**who, "address": addr}}],
+        "items": [{"name": r["name"][:200], "quantity": str(r["qty"]), "unit_of_measure": "QUANTITY",
+                   "unit_amount": {"currency_code": "USD", "value": money(r["unit"])}} for r in rows],
+        "configuration": {"allow_tip": False, "partial_payment": {
+            "allow_partial_payment": True, "minimum_amount_due": {"currency_code": "USD", "value": money(deposit)}}},
+        "amount": {"breakdown": {"shipping": {"amount": {"currency_code": "USD", "value": money(shipping_usd)}},
+                                 **({"discount": {"invoice_discount": {"amount": {"currency_code": "USD",
+                                                                                  "value": money(discount_usd)}}}}
+                                    if discount_usd else {})}},
+    }
+    inv = _call("POST", "/v2/invoicing/invoices", body, request_id=f"invoice-{order_id}")
+    iid = inv.get("id") or inv["href"].rsplit("/", 1)[-1]
+    sent = _call("POST", f"/v2/invoicing/invoices/{iid}/send", {"send_to_invoicer": False, "send_to_recipient": True},
+                 request_id=f"invoice-send-{order_id}")
+    return {"id": iid, "payer_url": sent.get("href") or f"https://www.sandbox.paypal.com/invoice/p/#{iid}",
+            "deposit_usd": float(deposit)}
+
+
+def get_invoice(iid: str) -> dict:
+    return _call("GET", f"/v2/invoicing/invoices/{iid}")
+
+
+def remind_invoice(iid: str, note: str) -> dict:
+    return _call("POST", f"/v2/invoicing/invoices/{iid}/remind",
+                 {"subject": "Your cars are ready", "note": note[:400], "send_to_invoicer": False})

@@ -36,7 +36,10 @@ def receipt(o: dict) -> dict:
                 for ln in (o.get("lines") or [{"title": o["title"], "qty": o["qty"], "unit_usd": o["unit_usd"]}])]
         extra = []
     extra.append({"name": "Shipping" if o["shipping_usd"] else "Shipping (free)", "sum": o["shipping_usd"]})
-    return {"rows": rows, "extra": extra, "total": o["total_usd"]}
+    out = {"rows": rows, "extra": extra, "total": o["total_usd"]}
+    if o.get("deposit_usd"):
+        out["deposit"] = o["deposit_usd"]
+    return out
 
 
 def _ship_to(o: dict) -> str:
@@ -103,6 +106,30 @@ def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone:
     lines = [({"id": f"MTO-{i + 1}", "price_usd": q["unit_usd"],
                "title": f"Made to order: {c['model']} ({c['year']}), {c['body_colour']}/{c['interior_colour']}"}, c["quantity"])
              for i, c in enumerate(q["cars"])]
+    deposit = None
+    if o.get("customer"):
+        # Lena's way of working: half up front, the rest before it ships. A PayPal invoice takes the deposit now and
+        # the balance later, with the buyer's details already on it.
+        try:
+            inv = paypal.create_deposit_invoice(order_id=o["id"], shop=s, rows=receipt(o)["rows"],
+                                                discount_usd=q["discount_usd"], shipping_usd=o["shipping_usd"],
+                                                customer=o["customer"], total_usd=o["total_usd"])
+            deposit = inv["deposit_usd"]
+            shop.update_order(o["id"], invoice_id=inv["id"], approve_url=inv["payer_url"], deposit_usd=deposit,
+                              paid_usd=0.0, payment="invoice")
+            link = inv["payer_url"]
+        except paypal.PayPalError:
+            deposit = None   # fall back to a one-time PayPal checkout for the full amount
+    if deposit is not None:
+        return {"ok": True, "order_id": o["id"], "approve_url": link, "you_asked_for": what_the_shopper_asked,
+                "you_are_approving": f"{o['title']} = ${o['total_usd']:.2f}; deposit now ${deposit:.2f}, "
+                                     f"the balance before it ships",
+                "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}, arrives "
+                            f"{q['delivery']['arrives_earliest']} to {q['delivery']['arrives_latest']} (estimate)",
+                "ship_to": _ship_to(o), "receipt": receipt(shop.order(o["id"])),
+                "deposit_usd": deposit, "payment": "invoice",
+                "next_step": f"A PayPal invoice was sent to the buyer's email. They pay the ${deposit:.2f} deposit now "
+                             "(or the full amount) on PayPal; Lena starts building once the deposit is in."}
     try:
         pp = paypal.create_order(order_id=o["id"], shop=s, listing=lines[0][0], qty=lines[0][1], lines=lines,
                                  shipping_usd=o["shipping_usd"], discount_usd=q["discount_usd"],

@@ -35,12 +35,13 @@ window.OC = (() => {
     const sr = document.getElementById("s-rev"); if (sr) sr.textContent = "$" + rev.toFixed(0);
     if (!shown.length) return;
     feed.innerHTML = shown.map((o) => {
-      const st = { awaiting_approval: "WAITING FOR BUYER", paid: "PAID · SHIP IT", shipped: "SHIPPED", cancelled: "CANCELLED", refunded_out_of_stock: "REFUNDED" }[o.status] || o.status.toUpperCase();
+      const st = { awaiting_approval: "WAITING FOR BUYER", deposit_paid: "DEPOSIT IN · BUILD IT", paid: "PAID · SHIP IT", shipped: "SHIPPED", cancelled: "CANCELLED", refunded_out_of_stock: "REFUNDED" }[o.status] || o.status.toUpperCase();
       const where = (o.customer?.name ? o.customer.name + " · " : "") + (o.ship_to?.city ? `${o.ship_to.city}, ${o.ship_to.state}` : (o.customer?.where || o.ship_state));
       const acts = o.status === "paid"
         ? `<div class="acts"><button class="p" data-note="${esc(o.id)}">Packing note</button><input placeholder="Tracking number" data-trk="${esc(o.id)}"><button data-ship="${esc(o.id)}">Shipped</button></div><div class="note" id="n-${esc(o.id)}" hidden></div>`
         : o.status === "shipped" ? `<div class="m">USPS ${esc(o.tracking?.number)}</div>` : "";
-      const mto = o.kind === "commission" ? `<div class="m">MADE TO ORDER · build ${o.quote?.build_weeks} wk · ready ${esc((o.quote?.ready_to_ship_by || "").split(" ").pop())}${o.contact ? ` · ${esc(o.contact.name)} <a href="tel:${esc(o.contact.phone)}">${esc(o.contact.phone)}</a>` : ""}</div>` : "";
+      const inv = o.invoice_id ? `<div class="m">PayPal invoice · paid $${(o.paid_usd || 0).toFixed(2)} of $${o.total_usd.toFixed(2)}${o.status === "deposit_paid" ? ` · <button class="mini" data-balance="${esc(o.id)}">${o.balance_requested ? "Remind again" : "Cars ready: request the balance"}</button>` : ""}</div>` : "";
+      const mto = o.kind === "commission" ? inv + `<div class="m">MADE TO ORDER · build ${o.quote?.build_weeks} wk · ready ${esc((o.quote?.ready_to_ship_by || "").split(" ").pop())}${o.contact ? ` · ${esc(o.contact.name)} <a href="tel:${esc(o.contact.phone)}">${esc(o.contact.phone)}</a>` : ""}</div>` : "";
       return `<div class="o"><img src="${esc(photos[o.listing_id] || "")}" alt=""><div>${mto}
         <span class="badge ${esc(o.status)}">${st}</span>${o.sample ? ` <span class="badge smpb">SAMPLE</span>` : ""}
         <h3>${esc(o.title)}</h3>
@@ -71,6 +72,8 @@ window.OC = (() => {
   }
 
   document.addEventListener("click", async (e) => {
+    const bal = e.target.dataset.balance;
+    if (bal) { e.target.disabled = true; const r = await fetch(`/api/maker/orders/${bal}/balance`, { method: "POST" }); e.target.textContent = r.ok ? "Reminder sent via PayPal" : "Couldn't send"; return; }
     const n = e.target.dataset.note, s = e.target.dataset.ship;
     if (n) {
       const o = orders.find((x) => x.id === n), box = document.getElementById("n-" + n);
@@ -197,7 +200,7 @@ window.OC = (() => {
     document.querySelectorAll("#tab-today .pl").forEach((e) => (e.textContent = PL[ovDays]));
     document.getElementById("t-chats").textContent = chats.filter((c) => c.started >= t0).length;
     document.getElementById("t-orders").textContent = orders.filter((o) => o.created >= t0 && live(o)).length;
-    document.getElementById("t-rev").textContent = "$" + orders.filter((o) => (o.paid_at || 0) >= t0 && ["paid", "shipped"].includes(o.status)).reduce((a, o) => a + o.total_usd, 0).toFixed(0);
+    document.getElementById("t-rev").textContent = "$" + orders.filter((o) => (o.paid_at || 0) >= t0 && ["paid", "shipped", "deposit_paid"].includes(o.status)).reduce((a, o) => a + (o.invoice_id ? (o.paid_usd || 0) : o.total_usd), 0).toFixed(0);
     document.getElementById("t-calls").textContent = calls.filter((r) => r.status === "to_call").length;
     document.getElementById("t-subs").textContent = custs.filter((c) => c.marketing === true && (c.consent_at || 0) >= t0).length;
     document.getElementById("n-orders").textContent = orders.filter((o) => o.status === "paid").length || "";

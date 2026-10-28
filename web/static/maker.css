@@ -154,3 +154,6 @@ h1{font:900 46px/.9 "Big Shoulders Display";text-transform:uppercase;margin-top:
 .finding{background:#0B0C0E;border:1px solid var(--hair);border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:5px}
 .finding a{color:var(--cyan);text-decoration:none;font:500 12px "Geist Mono"}.finding .pr{margin:0;color:#FFB86B;font-size:13.5px}
 .finding .ls{margin:0;font-size:14px;line-height:1.45;border-left:3px solid var(--lamp);padding-left:9px}.finding .done{color:#3ddc84;font:12.5px "Geist Mono"}
+
+.mini{background:none;border:1px solid var(--lamp);color:var(--lamp);border-radius:6px;padding:2px 8px;font:11.5px "Geist Mono";cursor:pointer;margin-left:4px}
+.badge.deposit_paid{color:var(--lamp);border-color:var(--lamp)}

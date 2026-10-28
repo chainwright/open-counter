@@ -129,7 +129,7 @@
         const c = j.checkout;
         const r = c.receipt, $ = (v) => (v < 0 ? "−$" : "$") + Math.abs(v).toFixed(2);
         const rec = r ? `<div class="rcpt"><small>Your order</small><ol>${r.rows.map((x) => `<li><span>${esc(x.name)}</span><b>${x.qty} × ${$(x.unit)} = ${$(x.sum)}</b></li>`).join("")}</ol>
-          ${r.extra.map((x) => `<p class="rx"><span>${esc(x.name)}</span><b>${$(x.sum)}</b></p>`).join("")}<p class="rt"><span>Total</span><b>${$(r.total)}</b></p></div>`
+          ${r.extra.map((x) => `<p class="rx"><span>${esc(x.name)}</span><b>${$(x.sum)}</b></p>`).join("")}<p class="rt"><span>Total</span><b>${$(r.total)}</b></p>${r.deposit ? `<p class="rd"><span>Pay now (deposit)</span><b>${$(r.deposit)}</b></p><p class="rn">The rest before your cars ship. PayPal also emailed you the invoice.</p>` : ""}</div>`
           : `<div class="ap-pair"><div><small>You're approving</small>${esc(c.you_are_approving)}</div></div>`;
         add("cocard", `${rec}<details class="asked"><summary>What you asked for</summary>${esc(c.you_asked_for)}</details>
           <a class="pp" href="${esc(c.approve_url)}" target="_blank" rel="noopener"><span class="pp-a">Pay</span><span class="pp-b">Pal</span></a>
