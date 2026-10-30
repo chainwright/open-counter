@@ -100,7 +100,7 @@ flowchart LR
 | Invoicing v2: create, send, partial payment, remind | made-to-order: 50% deposit now, balance before shipping | `paypal.create_deposit_invoice`, `remind_invoice` |
 | Orders v2: shipment tracking | Lena adds a USPS number, PayPal tells the buyer | `paypal.add_tracking` |
 | Payments v2: refund | automatic full refund if the last one sold during approval | `paypal.refund` |
-| Catalog Products v1 | products of makers who open a counter at `/open` | `onboard.publish` |
+| Catalog Products v1 | Lena's five listings and the sample counters, registered on start under fixed ids (`OC-SG-014`…, looked up, never duplicated) and shown on every card; products of makers who open a counter at `/open` | `catalog.sync`, `onboard.publish` |
 | Webhooks + signature verification | `CHECKOUT.ORDER.APPROVED` (captured even if the buyer never returns), capture completed/denied/reversed/refunded, invoice paid/updated | `web.webhook` |
 | `PayPal-Request-Id` | a retried create, capture, invoice or refund never doubles money | `paypal._call` |
 

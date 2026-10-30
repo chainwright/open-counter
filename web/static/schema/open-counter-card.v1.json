@@ -32,7 +32,8 @@
           "scale": {"type": "string"},
           "photo_url": {"type": "string", "format": "uri"},
           "model_url": {"type": "string", "format": "uri", "description": "3D model (glTF binary)"},
-          "page_url": {"type": "string", "format": "uri"}
+          "page_url": {"type": "string", "format": "uri"},
+          "paypal_catalog_product": {"type": ["string", "null"], "description": "The item's id in the maker's PayPal Catalog Products (null until registered)"}
         }
       }
     }

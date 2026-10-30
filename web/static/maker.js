@@ -61,7 +61,7 @@ window.OC = (() => {
   }
 
   function renderStock(c) {
-    document.getElementById("stock").innerHTML = c.listings.map((l) => `<a class="s" href="/#${esc(l.id)}"><img src="${esc(l.photo_url)}" alt=""><div><b>${esc(l.title.replace(/, \d{4}$/, ""))}</b><span>${l.stock > 0 ? l.stock + " left" : "sold out"} · $${l.price_usd.toFixed(0)}</span></div></a>`).join("");
+    document.getElementById("stock").innerHTML = c.listings.map((l) => `<a class="s" href="/#${esc(l.id)}"><img src="${esc(l.photo_url)}" alt=""><div><b>${esc(l.title.replace(/, \d{4}$/, ""))}</b><span>${l.stock > 0 ? l.stock + " left" : "sold out"} · $${l.price_usd.toFixed(0)}${l.paypal_catalog_product ? " · PayPal catalog " + esc(l.paypal_catalog_product) : ""}</span></div></a>`).join("");
     document.getElementById("rules").textContent = `Rules agents must follow: ships to ${c.ships_to} only · any quantity up to the stock shown · $${c.shipping_usd.toFixed(2)} shipping · made to order: ${c.made_to_order} · every order approved by the buyer in PayPal.`;
   }
 

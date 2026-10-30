@@ -56,6 +56,7 @@ def _public(item: dict) -> dict:
     d["photo_url"] = _media_url(item["photo"])
     if item.get("model"):
         d["model_url"] = _media_url(item["model"])   # a 3D model of the replica (glTF binary)
+    d["paypal_catalog_product"] = item.get("paypal_catalog_product")   # the same item in PayPal Catalog Products
     d["page_url"] = f"{PUBLIC_URL}/c/{shop.shop()['slug']}#{item['id']}"
     r = shop.shop()["rules"]
     d["availability"] = (f"{item['stock']} in stock" if item["stock"] > 0 else "sold out") + (

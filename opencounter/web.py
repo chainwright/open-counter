@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from . import assistant, counter, onboard, paypal, shop, shopper, sample
+from . import assistant, catalog, counter, onboard, paypal, shop, shopper, sample
 from .mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +42,9 @@ _listeners: set[asyncio.Queue] = set()
 async def lifespan(_app):
     shop.seed()
     sample.ensure()   # two weeks of sample history on a fresh (wiped) disk, so the back office isn't empty
+    # Lena's listings and the sample counters in PayPal Catalog Products, in the background (a slow PayPal never
+    # holds up the start); already registered products are looked up, never created twice
+    threading.Thread(target=catalog.sync, daemon=True).start()
     async with contextlib.AsyncExitStack() as stack:
         lc = getattr(mcp_app.router, "lifespan_context", None)
         if lc:
@@ -165,6 +168,7 @@ def directory(q: str = "", max_price: float | None = None):
         hits.append({"counter": s["name"], "card": f"{counter.PUBLIC_URL}/c/{s['slug']}.json", "id": x["id"],
                      "title": x["title"], "price_usd": x["price_usd"], "stock": x["stock"],
                      "text": " ".join(str(x.get(k, "")) for k in ("title", "paint", "description")).lower(),
+                     "paypal_catalog_product": x.get("paypal_catalog_product"),
                      "checkout": f"{counter.PUBLIC_URL}/mcp/ (start_checkout)"})
     for c in onboard.latest(50):
         l = c["listing"]
@@ -172,6 +176,7 @@ def directory(q: str = "", max_price: float | None = None):
                      "title": l.get("title"), "price_usd": l.get("price_usd"), "stock": l.get("stock"),
                      "text": " ".join(str(l.get(k, "")) for k in ("title", "category", "colour", "materials",
                                                                     "short_description", "keywords")).lower(),
+                     "paypal_catalog_product": l.get("paypal_catalog_product"),
                      "checkout": f"{counter.PUBLIC_URL}/api/c/{c['slug']}/checkout"})
     out = []
     for h in hits:
@@ -235,7 +240,8 @@ async def counter_checkout(slug: str, req: Request):
 @app.get("/api/open/latest")
 def open_latest(req: Request):
     return [{"slug": c["slug"], "name": c["name"], "title": c["listing"]["title"], "price_usd": c["listing"]["price_usd"],
-             "sample": bool(c.get("sample"))} for c in onboard.latest(8, _who(req)[0])]
+             "sample": bool(c.get("sample")), "paypal_catalog_product": c["listing"].get("paypal_catalog_product")}
+            for c in onboard.latest(8, _who(req)[0])]
 
 
 @app.get("/open")

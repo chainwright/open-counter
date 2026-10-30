@@ -60,7 +60,7 @@
   });
   async function recent() {
     const rs = await fetch("/api/open/latest").then((r) => r.json()).catch(() => []);
-    $("recent").innerHTML = rs.length ? rs.map((c) => `<a href="/c/${esc(c.slug)}"><b>${esc(c.name)}</b> ${esc(c.title)}<span>$${c.price_usd.toFixed(2)}</span></a>`).join("")
+    $("recent").innerHTML = rs.length ? rs.map((c) => `<a href="/c/${esc(c.slug)}"><b>${esc(c.name)}</b> ${esc(c.title)}<span>$${c.price_usd.toFixed(2)}${c.paypal_catalog_product ? " · PayPal catalog " + esc(c.paypal_catalog_product) : ""}</span></a>`).join("")
       : `<p class="fine">None yet. Be the first.</p>`;
   }
   recent(); ready();

@@ -241,6 +241,7 @@
         <div class="yr">${esc(yr.slice(2))}</div>
         <div class="meta"><h3>${esc(x.title.replace(/, \d{4}$/, ""))}</h3>
           <div class="spec"><span class="chip" style="background:${paint[code] || "#888"}"></span>${esc(code)} · ${esc(x.scale)} · ${x.length_mm} mm · ${x.build_hours} h</div>
+          ${x.paypal_catalog_product ? `<div class="spec cat">PayPal catalog · ${esc(x.paypal_catalog_product)}</div>` : ""}
           <div class="row"><span class="price">$${x.price_usd.toFixed(0)}</span><span class="stock ${x.stock > 0 ? "" : "out"}" data-stock="${esc(x.id)}">${x.stock > 0 ? x.stock + " AVAILABLE" : "SOLD OUT · MADE TO ORDER"}</span></div>
           <div class="acts2"><button class="buy" data-buy="${esc(x.id)}" data-title="${esc(x.title)}" data-price="${x.price_usd}" data-max="${x.stock}" ${x.stock > 0 ? "" : "disabled"}>${x.stock > 0 ? "Buy · $" + x.price_usd.toFixed(0) : "Sold out"}</button>${x.model_url ? `<button class="m3d" data-model="${esc(x.model_url)}" data-title="${esc(x.title)}"><span class="cube" aria-hidden="true"></span>View in 3D</button>` : ""}</div></div></article>`;
     }).join("");

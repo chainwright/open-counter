@@ -128,11 +128,17 @@ def add_tracking(pp_id: str, capture_id: str, tracking_number: str, carrier: str
                   "notify_payer": True})
 
 
-def create_product(listing: dict, shop: dict) -> dict:
-    """Mirror a listing into PayPal's catalog, so the same item exists in the merchant's PayPal account."""
-    body = {"id": listing["id"].upper().replace("-", ""), "name": listing["title"][:127], "type": "PHYSICAL",
-            "category": "HOBBIES_AND_CRAFTS", "description": f"{listing['scale']} hand-built replica by {shop['maker']}"}
-    return _call("POST", "/v1/catalogs/products", body, request_id=f"product-{listing['id']}")
+def get_product(product_id: str) -> dict:
+    return _call("GET", f"/v1/catalogs/products/{product_id}")
+
+
+def create_product(product_id: str, name: str, description: str = "", category: str | None = None) -> dict:
+    """A product in the merchant's PayPal catalog, under an id we choose (6-50 characters), so creating it again
+    after a restart finds the same product instead of making a second one."""
+    body = {"id": product_id, "name": name[:127], "type": "PHYSICAL", "description": (description or name)[:256]}
+    if category:
+        body["category"] = category
+    return _call("POST", "/v1/catalogs/products", body, request_id=f"product-{product_id}")
 
 
 def verify_webhook(headers: dict, event: dict) -> bool:
