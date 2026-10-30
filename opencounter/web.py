@@ -312,7 +312,8 @@ def counter_page(slug: str):
 <form class="buy" id="buy"><label>How many<input type="number" id="q" min="1" max="{l['stock']}" value="1"></label>
 <label>Ship to (US state)<input id="st" maxlength="2" placeholder="TX" required></label><button>Buy with PayPal</button><span id="m"></span></form>
 <p class="fine">PayPal sandbox, no real money. You approve in PayPal; nothing is charged before that. {
- f"The payment goes straight to {e(c['maker'])}'s own PayPal account; Open Counter never holds it." if onboard.payee(c) else
+ f"The order names {e(c['maker'])}'s own PayPal account as the payee, so the payment goes to her; Open Counter never holds it." if onboard.payee(c) else
+ f"{e(c['maker'])} gave an email that isn't a PayPal sandbox account, so in this demo the payment goes to the Open Counter test merchant. On live PayPal it would go to her own account." if onboard.screened(c) else
  "This maker hasn't connected a PayPal account, so in this demo the payment goes to the Open Counter test merchant."}</p>
 <script>
 document.getElementById("buy").addEventListener("submit", async (ev) => {{ ev.preventDefault(); const m = document.getElementById("m"); m.textContent = "Opening PayPal…";
@@ -519,7 +520,10 @@ def paypal_return(oc: str, token: str = ""):
         _settle(oc)
     except paypal.PayPalError as e:
         shop.update_order(oc, status="error", error=str(e))
-        return HTMLResponse("<p>PayPal could not complete the payment. Nothing was charged.</p>", 502)
+        if paypal.payee_refused(e):
+            return _note("PayPal couldn't pay this maker", "PayPal refused the maker's account, so the payment "
+                         "wasn't taken. Nothing was charged.", 502)
+        return _note("PayPal couldn't finish the payment", "Nothing was charged. Go back and try again in a minute.", 502)
     return RedirectResponse(f"/thanks/{oc}")
 
 

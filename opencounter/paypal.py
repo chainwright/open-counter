@@ -121,6 +121,13 @@ def sandbox() -> bool:
     return "sandbox" in BASE
 
 
+def can_pay(email: str) -> bool:
+    """Whether this account can be an order's payee here. The sandbox only pays its own test accounts, which use
+    example.com addresses (sb-…@business.example.com). It accepts any other email when the order is created and
+    fails only later, at the buyer's approval or at capture, so a made-up or real email is screened out up front."""
+    return bool(email) and (not sandbox() or email.lower().rsplit("@", 1)[-1].endswith("example.com"))
+
+
 def approve_link(pp_order: dict) -> str | None:
     for link in pp_order.get("links", []):
         if link.get("rel") in ("payer-action", "approve"):

@@ -75,9 +75,12 @@ anything. Same code path as the return page, so the two can never charge twice.
 - **Customers and consent:** buyers are asked once, after their first order, whether Lena may email them about new
   models. Only a yes in their own words puts them on the list.
 - **Open your counter (`/open`):** one photo and one sentence. Shoppers can buy from a new counter at `/c/<slug>` the
-  same way (PayPal approval by a person, stock taken at capture). The maker gives her PayPal email and the money goes
-  straight to her: each order names her account as PayPal's `payee`, so Open Counter never holds it. Without an email,
-  the demo pays the Open Counter test merchant, and the page and card say so. NVIDIA Nemotron VL writes the listing
+  same way (PayPal approval by a person, stock taken at capture). The maker gives her PayPal email and each order names
+  her account as PayPal's `payee`, so Open Counter never holds the money. The sandbox can only pay its own test
+  accounts (`…@business.example.com`) and accepts any other email at create, failing later at approval or capture,
+  so in the sandbox any other email (or none) pays the Open Counter test merchant, and the page and card say so. If
+  a counter sells out while a buyer is in PayPal, the platform can't refund from her account: the order becomes
+  `refund_due` and her back office says to refund from her PayPal. In this demo nothing reaches her outside that page. NVIDIA Nemotron VL writes the listing
   words; the maker sets price and stock; the product is registered in PayPal Catalog Products and gets its own
   agent-readable card.
 

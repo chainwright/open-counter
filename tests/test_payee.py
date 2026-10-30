@@ -107,7 +107,7 @@ def test_the_page_card_and_publish_say_where_the_money_goes_without_showing_the_
     card = tc.get(f"/c/{slug}.json").json()
     assert card["checkout"]["payment_goes_to"] == "Rosa Diaz's own PayPal account" and "rosa@" not in str(card)
     page = tc.get(f"/c/{slug}").text
-    assert "straight to Rosa Diaz's own PayPal account" in page and "rosa@" not in page
+    assert "names Rosa Diaz's own PayPal account as the payee" in page and "rosa@" not in page
 
 
 def test_a_sold_out_maker_order_asks_her_to_refund_when_the_platform_cannot(monkeypatch, sent):
@@ -124,3 +124,38 @@ def test_a_sold_out_maker_order_asks_her_to_refund_when_the_platform_cannot(monk
     o = web._settle(out["order_id"])
     assert o["status"] == "refund_due" and "refund this buyer" in o["note"]
     assert web._settle(out["order_id"])["status"] == "refund_due"    # settled once, not again
+
+
+def test_an_email_the_sandbox_cannot_pay_is_screened_before_paypal(monkeypatch, sent):
+    """The sandbox accepts any payee when the order is created and fails later, at approval or capture (checked live
+    30.10: a made-up payee got PAYER_ACTION_REQUIRED). So a non-sandbox email pays the demo merchant from the start."""
+    c = opened(email="rosa.diaz@gmail.com")
+    out = onboard.checkout(c["slug"], 1, "OH")
+    assert "payee" not in unit(sent[-1]) and unit(sent[-1])["soft_descriptor"] == "SMALLGARAGE"
+    assert "isn't a PayPal sandbox account" in out["paid_to"]
+    page = TestClient(web.app).get(f"/c/{c['slug']}").text
+    assert "isn't a PayPal sandbox account" in page and "On live PayPal" in page and "gmail" not in page
+    monkeypatch.setattr(paypal, "BASE", "https://api-m.paypal.com")    # live PayPal pays any real account
+    out = onboard.checkout(c["slug"], 1, "OH")
+    assert unit(sent[-1])["payee"] == {"email_address": "rosa.diaz@gmail.com"}
+    assert out["paid_to"] == "Rosa Diaz's own PayPal account"
+
+
+def test_publish_says_when_the_email_is_not_a_sandbox_account(sent):
+    r = TestClient(web.app).post("/api/open/publish", json={
+        "listing": {"title": "Stoneware Mug"}, "price_usd": 32, "stock": 6, "ships_from": "TX", "maker": "Rosa Diaz",
+        "shop_name": "Clay & Kiln", "image": photo(), "paypal_email": "rosa@realshop.com"})
+    assert r.status_code == 200 and "isn't a PayPal sandbox account" in r.json()["payment_goes_to"]
+
+
+def test_a_payee_refused_at_capture_shows_a_clear_page_and_charges_nothing(monkeypatch, sent):
+    c = opened()
+    out = onboard.checkout(c["slug"], 1, "OH")
+    pp = shop.order(out["order_id"])["paypal_order_id"]
+
+    def refuse(pp_id, oc):
+        raise paypal.PayPalError(422, {"name": "UNPROCESSABLE_ENTITY", "details": [{"issue": "PAYEE_ACCOUNT_RESTRICTED"}]})
+    monkeypatch.setattr(paypal, "capture", refuse)
+    r = TestClient(web.app).get(f"/paypal/return?oc={out['order_id']}&token={pp}")
+    assert r.status_code == 502 and "couldn't pay this maker" in r.text and "Nothing was charged" in r.text
+    assert shop.order(out["order_id"])["status"] == "error"

@@ -112,11 +112,21 @@ def publish(listing: dict, price_usd: float, stock: int, ships_from: str, maker:
 def payee(c: dict) -> str:
     """Whose PayPal account a counter's payments go to: the email the maker gave when she opened it; for the sample
     counters, the second sandbox merchant set in OPEN_COUNTER_SAMPLE_PAYEE; otherwise '' (the platform's merchant)."""
-    return c.get("payee_email") or (os.environ.get(SAMPLE_PAYEE_ENV, "").strip() if c.get("sample") else "")
+    from . import paypal
+    to = c.get("payee_email") or (os.environ.get(SAMPLE_PAYEE_ENV, "").strip() if c.get("sample") else "")
+    return to if paypal.can_pay(to) else ""
+
+
+def screened(c: dict) -> bool:
+    """She gave an email, but it isn't a PayPal sandbox account, so the demo pays the test merchant instead."""
+    return bool(c.get("payee_email")) and not payee(c)
 
 
 def paid_to(c: dict) -> str:
-    return f"{c['maker']}'s own PayPal account" if payee(c) else "the Open Counter demo merchant (sandbox)"
+    if payee(c):
+        return f"{c['maker']}'s own PayPal account"
+    return ("the Open Counter demo merchant (sandbox: the email given isn't a PayPal sandbox account)" if screened(c)
+            else "the Open Counter demo merchant (sandbox)")
 
 
 def counter(slug: str) -> dict | None:
@@ -182,7 +192,8 @@ def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
         pp, to = paypal.create_order(**args), ""
         note = "PayPal didn't accept the maker's PayPal email, so this sandbox payment goes to the Open Counter demo merchant."
     link = paypal.approve_link(pp)
-    paid_to_ = f"{c['maker']}'s own PayPal account" if to else "the Open Counter demo merchant (sandbox)"
+    paid_to_ = (f"{c['maker']}'s own PayPal account" if to else
+                "the Open Counter demo merchant (sandbox)" if note else paid_to(c))
     shop.update_order(o["id"], paypal_order_id=pp["id"], approve_url=link, payee_email=to, paid_to=paid_to_,
                       **({"payee_note": note} if note else {}))
     return {"order_id": o["id"], "approve_url": link, "total_usd": o["total_usd"], "paid_to": paid_to_,

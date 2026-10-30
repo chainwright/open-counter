@@ -55,7 +55,7 @@
     $("dname").textContent = $("shopname").value || "Your counter";
     $("dpage").href = $("dpage").textContent = r.page; $("djson").href = $("djson").textContent = r.json;
     $("dprod").textContent = r.paypal_catalog_product || "(PayPal not reachable right now)";
-    $("dpaid").textContent = `Buyers' payments go to ${r.payment_goes_to || "your PayPal account"}.` + (/demo merchant/.test(r.payment_goes_to || "") ? " Add your PayPal email to be paid directly." : "");
+    $("dpaid").textContent = `Buyers' payments go to ${r.payment_goes_to || "your PayPal account"}.` + (/isn't a PayPal sandbox account/.test(r.payment_goes_to || "") ? " This demo runs on the PayPal sandbox, which can only pay sandbox business accounts (…@business.example.com). On live PayPal your own email works." : /demo merchant/.test(r.payment_goes_to || "") ? " Add your PayPal email to be paid directly." : "");
     $("dcard").textContent = JSON.stringify(await fetch(r.json).then((x) => x.json()), null, 2);
     $("s4").hidden = false; $("s4").scrollIntoView({ behavior: "smooth", block: "start" }); recent();
   });
