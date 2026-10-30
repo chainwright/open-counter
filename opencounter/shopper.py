@@ -18,8 +18,18 @@ from . import counter, shop
 MODEL = os.environ.get("SHOPPER_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 PRICE_IN, PRICE_OUT = 0.30, 0.90  # USD per 1M tokens, Token Factory catalog
 DAILY_CAP_USD = float(os.environ.get("SHOPPER_DAILY_CAP_USD", "1.00"))
+# Under the shop's daily cap, each browser and each network gets its own share, so one burst (or one bot) can't use
+# up the day for every other visitor (judge 29.10, N9). The cap itself is the owner's money and isn't raised here.
+VISITOR_CAP_USD = float(os.environ.get("SHOPPER_VISITOR_CAP_USD", "0.15"))
+IP_CAP_USD = float(os.environ.get("SHOPPER_IP_CAP_USD", "0.30"))
+BUSY_ALL = ("Today's AI demo budget is used up, so the AI parts of the demo rest until midnight in Ohio. Everything "
+            "else still works: the shelf with its Buy buttons and 3D cars, PayPal checkout, and Lena's back office.")
+BUSY_YOU = ("You've used this browser's share of today's AI demo budget, so the AI parts rest for you until midnight "
+            "in Ohio. Everything else still works: the shelf with its Buy buttons and 3D cars, PayPal checkout, and "
+            "Lena's back office.")
 MAX_STEPS = 8
 _spent: dict[str, float] = {}
+_spent_by: dict[str, dict[str, float]] = {}
 _lock = threading.Lock()
 _client: OpenAI | None = None
 
@@ -154,7 +164,9 @@ LABELS = {"about_counter": "reading the counter", "search_counter": "searching t
 
 
 class OverBudget(RuntimeError):
-    pass
+    def __init__(self, message: str = BUSY_ALL, mine: bool = False):
+        super().__init__(message)
+        self.mine = mine   # this visitor's share, not the whole day
 
 
 def _client_() -> OpenAI:
@@ -171,8 +183,27 @@ def spent_today() -> float:
     return _spent.get(shop.today().isoformat(), 0.0)   # the shop's day (Ohio), not the server's UTC
 
 
-def add_spend(usd: float):
-    """Model spend for the daily cap, written to disk so a restart or a deploy doesn't reset it."""
+def spent_by(key: str) -> float:
+    """Today's model spend of one visitor ("v:<browser id>") or one network ("ip:<address>")."""
+    d = shop.today().isoformat()
+    if d not in _spent_by:
+        _spent_by.clear()
+        _spent_by.update({k: v for k, v in shop._json("spend_by.json", {}).items() if k == d})
+    return _spent_by.get(d, {}).get(key, 0.0)
+
+
+def check_budget(who=()):
+    """Raises OverBudget before any model call: the shop's day is spent, or this visitor's (or network's) share is."""
+    if spent_today() >= DAILY_CAP_USD:
+        raise OverBudget(BUSY_ALL)
+    for k in who:
+        if spent_by(k) >= (IP_CAP_USD if k.startswith("ip:") else VISITOR_CAP_USD):
+            raise OverBudget(BUSY_YOU, mine=True)
+
+
+def add_spend(usd: float, who=()):
+    """Model spend for the daily cap (and each visitor's share), written to disk so a restart or a deploy doesn't
+    reset it."""
     with _lock:
         spent_today()
         d = shop.today().isoformat()
@@ -180,6 +211,12 @@ def add_spend(usd: float):
         for k in [k for k in _spent if k < d][:-30]:   # keep a month of days
             _spent.pop(k)
         shop._save_json("spend.json", _spent)
+        if who:
+            spent_by(who[0])   # loads today's shares (and drops yesterday's)
+            day = _spent_by.setdefault(d, {})
+            for k in who:
+                day[k] = round(day.get(k, 0.0) + usd, 6)
+            shop._save_json("spend_by.json", _spent_by)
 
 
 def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
@@ -877,7 +914,7 @@ def _qty_in(text: str):
     return now
 
 
-def run(messages: list[dict], visitor: str = "") -> dict:
+def run(messages: list[dict], visitor: str = "", who=()) -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
     answered = _news_answer(messages) or _notify_answer(messages)
@@ -894,8 +931,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         return _code_answer("Пока нет: Лена отправляет только по США, во все штаты, включая Аляску и Гавайи." if ru else
                             "Not yet: Lena ships inside the US only for now, to every state including Alaska and Hawaii.",
                             [step], taught_now, ru)
-    if spent_today() >= DAILY_CAP_USD:
-        raise OverBudget("today's demo budget is spent")
+    check_budget(who)   # the day's cap, and this visitor's share of it
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
     shelf = "; ".join(f"{x['id']} = {x['title']}, ${x['price_usd']:.0f}, {x['stock']} in stock"
                       for x in shop.shop()["listings"])
@@ -1230,7 +1266,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             last = next((c["content"] for c in reversed(convo) if c.get("role") == "assistant" and c.get("content")), "")
             reply = _scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", last)), typed) or \
                 "I couldn't finish that in a few steps. Could you tell me a bit more?"
-    add_spend(usd)
+    add_spend(usd, who)
     if taught_now:   # her lesson holds whatever path wrote the reply: model, code or out-of-time
         reply = _apply_lessons(reply, taught_now, bool(re.search(r"[а-яё]", lang_text, re.I)))
         steps += _lesson_steps(taught_now)

@@ -70,6 +70,17 @@ def _initials(name: str | None) -> str:
     return " ".join(w[0].upper() + "." for w in re.findall(r"[^\W\d_][\w'’-]*", name or ""))
 
 
+def _budget_keys(req: Request) -> list[str]:
+    """Whose share of the day's AI budget a request uses: this browser's and this network's."""
+    v = _who(req)[0]
+    ip = req.client.host if req.client else ""
+    return ([f"v:{v}"] if v else []) + ([f"ip:{ip}"] if ip else [])
+
+
+def _busy(e: Exception) -> JSONResponse:
+    return JSONResponse({"error": str(e), "budget": "visitor" if getattr(e, "mine", False) else "day"}, 429)
+
+
 def _mask(c: dict | None) -> dict | None:
     """The maker screen is a public demo page, so personal details are shown masked there:
     initials, city/state, email and phone partly hidden. The full record stays on the server (and with Lena's key)."""
@@ -231,9 +242,9 @@ async def open_draft(req: Request):
     if len(img) < 100 or len(img) > 8_000_000:
         raise HTTPException(400, "Add a photo (up to about 6 MB).")
     try:
-        return await asyncio.to_thread(onboard.draft, img, str(b.get("note") or ""))
+        return await asyncio.to_thread(onboard.draft, img, str(b.get("note") or ""), _budget_keys(req))
     except shopper.OverBudget as e:
-        return JSONResponse({"error": str(e)}, 429)
+        return _busy(e)
 
 
 @app.post("/api/open/publish")
@@ -346,9 +357,9 @@ async def api_shopper(req: Request):
             k += 1
     try:
         visitor, _ = _who(req)
-        out = await asyncio.to_thread(shopper.run, msgs, visitor)
+        out = await asyncio.to_thread(shopper.run, msgs, visitor, _budget_keys(req))
     except shopper.OverBudget as e:
-        return JSONResponse({"error": f"{e}; the rest of the demo still works."}, 429)
+        return _busy(e)
     if out.get("checkout"):
         _announce("awaiting_approval", shop.order(out["checkout"]["order_id"]))
     # Lena can read every chat later (and see which order came out of it)
@@ -772,9 +783,9 @@ async def assistant_review(req: Request):
     """Lena's assistant reads recent chats and suggests lessons for her shop's AI."""
     b = await req.json() if (await req.body()) else {}
     try:
-        out = await asyncio.to_thread(assistant.review, int(b.get("days") or 14))
+        out = await asyncio.to_thread(assistant.review, int(b.get("days") or 14), 20, _budget_keys(req))
     except shopper.OverBudget as e:
-        return JSONResponse({"error": str(e)}, 429)
+        return _busy(e)
     if not _who(req)[1]:   # the demo page is public: the chats it quotes show no name, phone or address
         chats = {c["id"]: c for c in shop.conversations()}
         orders = {o["id"]: o for o in shop.orders()}
@@ -791,9 +802,9 @@ async def assistant_ask(req: Request):
     if not q:
         raise HTTPException(400, "Ask something about the shop.")
     try:
-        return await asyncio.to_thread(assistant.ask, q)
+        return await asyncio.to_thread(assistant.ask, q, _budget_keys(req))
     except shopper.OverBudget as e:
-        return JSONResponse({"error": str(e)}, 429)
+        return _busy(e)
 
 
 @app.get("/api/maker/coach")

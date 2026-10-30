@@ -106,7 +106,9 @@ flowchart LR
 
 ## What uses AI, and where
 - **Sales agent** (`opencounter/shopper.py`): NVIDIA Nemotron 3 Super on Nebius, native tool calls, answers in the
-  shopper's language, daily spend cap. It reads Lena's lessons in every chat.
+  shopper's language, a daily spend cap shared by the whole demo, and inside it a share per browser and per network
+  (`SHOPPER_VISITOR_CAP_USD`, `SHOPPER_IP_CAP_USD`), so one burst can't use up the day for everyone. It reads Lena's
+  lessons in every chat.
 - **What the model is not trusted with:** prices, totals, discounts, stock, delivery dates and build times are computed
   in `opencounter/shop.py`. The code refuses an order unless the phone, email and ZIP were typed by the person; lines
   with contact details the person never typed are removed from replies; a promised link without a real order is caught.

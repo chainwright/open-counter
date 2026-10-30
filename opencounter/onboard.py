@@ -31,15 +31,14 @@ def _counters() -> dict:
     return shop._json("counters.json", {})
 
 
-def draft(image_b64: str, note: str) -> dict:
+def draft(image_b64: str, note: str, who=()) -> dict:
     """Listing words from a photo. Returns the fields for the maker to check, plus how long it took."""
     raw = base64.b64decode(image_b64.split(",", 1)[-1])
     im = Image.open(io.BytesIO(raw)).convert("RGB")
     im.thumbnail((1024, 1024))
     buf = io.BytesIO()
     im.save(buf, "JPEG", quality=85)
-    if shopper.spent_today() >= shopper.DAILY_CAP_USD:
-        raise shopper.OverBudget("today's AI budget is spent")
+    shopper.check_budget(who)
     t0 = time.time()
     r = shopper._client_().chat.completions.create(
         model=VISION, max_tokens=700, temperature=0.2, extra_body={"chat_template_kwargs": {"enable_thinking": False}},
@@ -48,7 +47,7 @@ def draft(image_b64: str, note: str) -> dict:
                                                {"type": "image_url", "image_url": {
                                                    "url": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}}]}])
     u = r.usage
-    shopper.add_spend((u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6)
+    shopper.add_spend((u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6, who)
     text = r.choices[0].message.content or ""
     m = re.search(r"\{.*\}", text, re.S)
     try:

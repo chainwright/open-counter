@@ -39,20 +39,19 @@ def _chat_text(c: dict) -> str:
     return "\n".join(lines)
 
 
-def _call(system: str, user: str, max_tokens: int = 900) -> tuple[str, float]:
-    if shopper.spent_today() >= shopper.DAILY_CAP_USD:
-        raise shopper.OverBudget("today's AI budget is spent")
+def _call(system: str, user: str, max_tokens: int = 900, who=()) -> tuple[str, float]:
+    shopper.check_budget(who)
     r = shopper._client_().chat.completions.create(
         model=shopper.MODEL, max_tokens=max_tokens, temperature=0.1,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         extra_body={"chat_template_kwargs": {"enable_thinking": False}})
     u = r.usage
     usd = (u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6
-    shopper.add_spend(usd)
+    shopper.add_spend(usd, who)
     return r.choices[0].message.content or "", usd
 
 
-def review(days: int = 14, limit: int = 20) -> dict:
+def review(days: int = 14, limit: int = 20, who=()) -> dict:
     """Problems in recent chats, each with a ready lesson. Chats with an accepted lesson are skipped."""
     t0 = time.time() - days * 86400
     taught = {n.get("chat") for n in shop.coaching()}
@@ -64,7 +63,7 @@ def review(days: int = 14, limit: int = 20) -> dict:
     # the shop's real facts, so a lesson says what is true (e.g. how people pay), not a guess
     about = json.dumps(counter.about_counter())
     text, usd = _call(REVIEW_SYSTEM + "\nThe shop's facts (lessons must agree with them): " + about,
-                      "\n\n".join(_chat_text(c) for c in chats))
+                      "\n\n".join(_chat_text(c) for c in chats), who=who)
     m = re.search(r"\[.*\]", text, re.S)
     try:
         found = json.loads(m.group(0)) if m else []
@@ -113,7 +112,7 @@ def facts(today: float | None = None) -> dict:
     return out
 
 
-def ask(question: str) -> dict:
+def ask(question: str, who=()) -> dict:
     f = facts()
-    text, usd = _call(ASK_SYSTEM + "\n\nFACTS (JSON):\n" + json.dumps(f), question.strip()[:400], max_tokens=300)
+    text, usd = _call(ASK_SYSTEM + "\n\nFACTS (JSON):\n" + json.dumps(f), question.strip()[:400], max_tokens=300, who=who)
     return {"answer": text.strip(), "usd": round(usd, 5)}
