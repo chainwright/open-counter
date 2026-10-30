@@ -26,14 +26,17 @@ Built for the PayPal AI Hackathon 2026 by Elite Product LLC.
 a changed cart, details typed over several messages, made to order, a wrong ZIP, brand names, an injected instruction, talking to Lena) on a fresh shop each,
 with checks written in code. Latest results and every transcript: [`evals/RESULTS.md`](evals/RESULTS.md),
 `evals/transcripts.json`. Every answer has a 7-second budget: when the model runs out of time, the reply is written by
-code from what the tools already found (price, dates, what's still needed), so a shopper never waits on a spinner. Every case also checks that each answer arrived within 8 s (budget plus network).
+code from what the tools already found (price, dates, what's still needed), and if they found nothing yet, from the
+shelf itself (what's in stock, shipping, how to order). A shopper never waits on a spinner and is never asked to send
+the message again. Every case also checks that each answer arrived within 8 s (budget plus network).
 
 Honest numbers: the last live run (28 Oct) passed 32 of 33 under that day's checks. The checks are stricter now: no
 reply may ask the person to resend, "on time" must really say it, and the ship date must be the one the shop's tool
 returned (not a fixed calendar day). Re-checked offline on the saved transcripts with no model call
 (`python evals/run_evals.py --rescore`), **27 of the 32 unchanged cases pass**: [`evals/RESCORE.md`](evals/RESCORE.md).
-The five that fail are out-of-time non-answers; the outside-the-US one is now answered in code, and Lena's lessons now
-shape the out-of-time reply too (`tests/test_lessons.py`). A fresh live run is the next step.
+The five that fail are out-of-time non-answers saved before the fixes: the outside-the-US one is now answered in code,
+Lena's lessons shape the out-of-time reply, and the last-resort "send it again" line is gone, replaced by the shelf
+answer above (`tests/test_lessons.py`). A fresh live run is the next step.
 
 The closed-tab case, run on the live sandbox on 28 Oct 2026: order `OC-C7DAD2E3` (PayPal order `9NC75431R2481360K`)
 was approved by a person while the return page was told to stay out of it (a `webhook-only-test` visitor). PayPal's
@@ -72,9 +75,11 @@ anything. Same code path as the return page, so the two can never charge twice.
 - **Customers and consent:** buyers are asked once, after their first order, whether Lena may email them about new
   models. Only a yes in their own words puts them on the list.
 - **Open your counter (`/open`):** one photo and one sentence. Shoppers can buy from a new counter at `/c/<slug>` the
-  same way (PayPal approval by a person, stock taken at capture); in the demo the sandbox payment goes to the Open Counter
-  test merchant, and a live counter connects the maker's own PayPal account. NVIDIA Nemotron VL writes the listing words; the maker
-  sets price and stock; the product is registered in PayPal Catalog Products and gets its own agent-readable card.
+  same way (PayPal approval by a person, stock taken at capture). The maker gives her PayPal email and the money goes
+  straight to her: each order names her account as PayPal's `payee`, so Open Counter never holds it. Without an email,
+  the demo pays the Open Counter test merchant, and the page and card say so. NVIDIA Nemotron VL writes the listing
+  words; the maker sets price and stock; the product is registered in PayPal Catalog Products and gets its own
+  agent-readable card.
 
 ## How it works
 ```mermaid
@@ -102,7 +107,7 @@ flowchart LR
 | PayPal API | What for | Code |
 |---|---|---|
 | OAuth 2.0 client credentials | server-side token, cached and refreshed on 401 | `opencounter/paypal.py` |
-| Orders v2: create (CAPTURE) | stock orders: one item per car, shipping, the buyer's address (`SET_PROVIDED_ADDRESS`) | `paypal.create_order` |
+| Orders v2: create (CAPTURE) | stock orders: one item per car, shipping, the buyer's address (`SET_PROVIDED_ADDRESS`); for a counter opened at `/open`, `payee` is the maker's own PayPal account | `paypal.create_order`, `onboard.checkout` |
 | Orders v2: approval link → capture | the human's yes; stock re-checked at capture | `web._settle` |
 | Invoicing v2: create, send, partial payment, remind | made-to-order: 50% deposit now, balance before shipping | `paypal.create_deposit_invoice`, `remind_invoice` |
 | Orders v2: shipment tracking | Lena adds a USPS number, PayPal tells the buyer | `paypal.add_tracking` |
@@ -119,6 +124,13 @@ flowchart LR
 - **What the model is not trusted with:** prices, totals, discounts, stock, delivery dates and build times are computed
   in `opencounter/shop.py`. The code refuses an order unless the phone, email and ZIP were typed by the person; lines
   with contact details the person never typed are removed from replies; a promised link without a real order is caught.
+- **Why so many guards in `shopper.py`, and how they're measured.** The shop's chat is a small open model on a
+  7-second budget, so the answers a shopper must never miss (the deadline verdict, the total with shipping, "we ship
+  inside the US only", the discount rule, Lena's lessons) are checked in code after the model replies and added if
+  it left them out. Each guard is a narrow pattern, so it can misfire on phrasing nobody tried; that's the trade for
+  never inventing a price or a date. Two things keep it honest: every guard has an offline test with the model faked
+  (`tests/`), and `evals/run_evals.py` replays 33 real conversations with checks in code, including a global ban on
+  non-answers. Moving the guards into their own module is on the list.
 - **Lena's assistant** (`opencounter/assistant.py`): reviews chats against the shop's facts and proposes lessons;
   answers questions from a facts object computed in code.
 - **Listing writer** (`opencounter/onboard.py`): NVIDIA Nemotron VL turns a photo and a sentence into listing words.
@@ -145,7 +157,8 @@ export OPENCOUNTER_PUBLIC_URL=http://127.0.0.1:8800
 .venv/bin/python -m pytest -q tests
 ```
 Optional: `PAYPAL_WEBHOOK_ID` (webhook verification), `OPENCOUNTER_DATA` (data folder; on Render it points at a
-mounted persistent disk, `/var/data`, so data survives deploys), `MAKER_KEY` (Lena's key: global lessons, news-list export).
+mounted persistent disk, `/var/data`, so data survives deploys), `MAKER_KEY` (Lena's key: global lessons, news-list export, marking call-backs done), `OPEN_COUNTER_SAMPLE_PAYEE`
+(a second sandbox business account that the sample counters pay, so the demo shows money reaching a maker).
 
 On the public demo every browser gets its own visitor id: lessons it writes, orders it can ship and counters it opens
 stay with that browser. Sample history (marked SAMPLE) is read-only. Test runs against the live demo use visitor and
