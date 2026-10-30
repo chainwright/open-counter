@@ -288,6 +288,12 @@ def open_page():
     return _stamped("open.html")
 
 
+# the same web fonts every other page loads (open.css names Geist; without this the counter page fell back to a system font)
+FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family='
+         'Big+Shoulders+Display:wght@700;800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" '
+         'rel="stylesheet">')
+
+
 @app.get("/c/{slug}")
 def counter_page(slug: str):
     if slug == shop.shop()["slug"]:
@@ -297,7 +303,7 @@ def counter_page(slug: str):
         raise HTTPException(404)
     e, l = html.escape, c["listing"]
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{e(c['name'])} · Open Counter</title><link rel="stylesheet" href="/static/open.css"></head><body><main class="cp">
+<title>{e(c['name'])} · Open Counter</title>{FONTS}<link rel="stylesheet" href="/static/open.css"></head><body><main class="cp">
 <span class="k">OPEN COUNTER · A MAKER'S SHOP, READABLE BY ANY AI</span><h1>{e(c['name'])}</h1><p class="by">by {e(c['maker'])} · ships from {e(c['ships_from'])}</p>
 <article class="item"><img src="/c/{e(slug)}/photo.jpg" alt=""><div><h2>{e(l['title'])}</h2><p>{e(l.get('short_description') or '')}</p>
 <p class="meta">${l['price_usd']:.2f} · {l['stock']} available{(' · ' + e(', '.join(l.get('materials') or []))) if l.get('materials') else ''}</p></div></article>

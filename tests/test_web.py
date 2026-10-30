@@ -107,3 +107,17 @@ def test_only_lenas_key_marks_a_call_back_done(c, monkeypatch):
     assert next(r for r in shop.requests_() if r["id"] == rq["id"])["status"] == "to_call"
     r = c.post(url, json={"status": "called"}, headers={"x-maker-key": "lena-secret"})
     assert r.status_code == 200 and r.json()["status"] == "called"
+
+
+def test_a_makers_counter_page_loads_the_fonts_its_stylesheet_names(c):
+    sample.build()
+    from opencounter import onboard
+    slug = next(iter(onboard._counters()))
+    page = c.get(f"/c/{slug}").text
+    assert "fonts.googleapis.com/css2?family=Big+Shoulders+Display" in page and "family=Geist:" in page
+    assert page.index("fonts.googleapis.com/css2") < page.index("/static/open.css")
+
+
+def test_the_home_page_says_the_payments_are_sandbox(c):
+    page = c.get("/").text
+    assert "real PayPal sandbox payments" in page and "the payments are real." not in page
