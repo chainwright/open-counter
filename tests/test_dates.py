@@ -41,3 +41,11 @@ def test_the_daily_ai_budget_and_lenas_numbers_use_her_day(monkeypatch):
     o = shop.new_order("sg-014", 1, "OH", "x", "t")
     shop.update_order(o["id"], created=EVENING.timestamp() - 60)       # 8:29 pm on Thursday, Lena's time
     assert assistant.facts(EVENING.timestamp())["today"]["orders"] == 1
+
+
+def test_a_weekday_the_shopper_typed_in_lowercase_is_written_properly():
+    steps = [{"tool": "delivery_estimate", "result": "ships Mon · by next friday: on time"}]
+    assert "in time for next Friday." in shopper._must_say("Sure.", "Will it arrive by next friday?", steps)
+    late = [{"tool": "delivery_estimate", "result": "ships Mon · by this saturday: too late"}]
+    assert "won't arrive by this Saturday." in shopper._must_say("Sure.", "by this saturday?", late)
+    assert shopper._day_name("oct 30") == "oct 30" and shopper._day_name(" next sunday ") == "next Sunday"

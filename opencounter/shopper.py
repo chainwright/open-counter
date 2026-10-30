@@ -553,6 +553,15 @@ US_STATE_NAMES = {n.lower() for n in (
     "south carolina", "south dakota", "west virginia", "puerto rico"} - {"puerto rico"}
 
 
+_DAY_WORDS = re.compile(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|"
+                        r"june|july|august|september|october|november|december)\b", re.I)
+
+
+def _day_name(text: str) -> str:
+    """'next friday' -> 'next Friday', 'oct 30' stays: weekday and month names written the way people write them."""
+    return _DAY_WORDS.sub(lambda m: m.group(1).capitalize(), text.strip())
+
+
 def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | None = None, lang_text: str = "") -> str:
     """Two answers a shopper must never miss, added in code if the model left them out: the deadline verdict, and
     the answer to 'can I get a discount?'."""
@@ -560,13 +569,13 @@ def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | No
     ok = next((m for m in (re.search(r"by ([\w ]+): on time", st["result"]) for st in steps) if m), None)
     if ok and not re.search(r"on time|in time|arrive[sd]? (by|before)|успе", reply, re.I):
         reply = (f"Хорошая новость: успеет к сроку ({ok.group(1).strip()}). " if ru else
-                 f"Good news: it arrives in time for {ok.group(1).strip()}. ") + reply
+                 f"Good news: it arrives in time for {_day_name(ok.group(1))}. ") + reply
     v = next((m for m in (re.search(r"by ([\w ]+): (too late|possible, not certain)", st["result"]) for st in steps) if m), None)
     if v and not re.search(r"too late|\blate\b|won.?t (arrive|make|reach|get)|not (arrive|make|reach)|past your|miss(es)? (your|the)|"
                            r"may not|not certain|не успе|опозда", reply, re.I):
         day = v.group(1).strip()
         day = {"mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thursday", "fri": "Friday", "sat": "Saturday",
-               "sun": "Sunday"}.get(day.lower()[:3], day) if len(day) <= 4 else day
+               "sun": "Sunday"}.get(day.lower()[:3], day) if len(day) <= 4 else _day_name(day)
         reply = (("По расчёту доставки к этому сроку не успеем. " if v.group(2) == "too late" else "К этому сроку успеть можно, но без гарантии. ")
                  if ru else (f"Heads-up: it won't arrive by {day}. " if v.group(2) == "too late"
                              else f"It may arrive by {day}, but that isn't certain. ")) + reply
