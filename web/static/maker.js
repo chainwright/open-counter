@@ -4,7 +4,10 @@
   let vid = "";
   try { vid = localStorage.getItem("oc_visitor") || ""; if (!vid) { vid = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)).replace(/-/g, "").slice(0, 24); localStorage.setItem("oc_visitor", vid); } } catch (e) {}
   const f = window.fetch.bind(window);
-  window.fetch = (u, o = {}) => (typeof u === "string" && u.startsWith("/api") && vid ? f(u, { ...o, headers: { ...(o.headers || {}), "x-visitor": vid } }) : f(u, o));
+  // Lena's own key (entered once, kept in her browser) shows her buyers' full names; everyone else sees initials
+  const key = () => { try { return localStorage.getItem("oc_maker_key") || ""; } catch (e) { return ""; } };
+  window.fetch = (u, o = {}) => (typeof u === "string" && u.startsWith("/api") && vid
+    ? f(u, { ...o, headers: { ...(o.headers || {}), "x-visitor": vid, ...(key() ? { "x-maker-key": key() } : {}) } }) : f(u, o));
 })();
 
 // One period for every tab (Roma 14547): today, week, 2 weeks, month, quarter, year.
@@ -203,7 +206,9 @@ window.OC = (() => {
     filter = b.dataset.f; document.querySelectorAll("#cfilter button").forEach((x) => x.classList.toggle("on", x === b)); renderCustomers();
   });
   document.getElementById("export").addEventListener("click", () => {
-    const key = prompt("Lena's key"); if (key) location.href = "/api/maker/news-list.csv?key=" + encodeURIComponent(key);
+    const key = prompt("Lena's key"); if (!key) return;
+    try { localStorage.setItem("oc_maker_key", key); } catch (e) {}   // her screen shows full names from now on
+    location.href = "/api/maker/news-list.csv?key=" + encodeURIComponent(key);
   });
 
 

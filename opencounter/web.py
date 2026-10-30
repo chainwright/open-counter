@@ -65,17 +65,21 @@ def _who(req: Request) -> tuple[str, bool]:
     return v, bool(key) and req.headers.get("x-maker-key", "") == key
 
 
+def _initials(name: str | None) -> str:
+    """'Ana Diaz' -> 'A. D.': what a public page shows of a buyer's name (judge 29.10, N8)."""
+    return " ".join(w[0].upper() + "." for w in re.findall(r"[^\W\d_][\w'’-]*", name or ""))
+
+
 def _mask(c: dict | None) -> dict | None:
     """The maker screen is a public demo page, so personal details are shown masked there:
-    first name + last initial, city/state, email and phone partly hidden. The full record stays on the server."""
+    initials, city/state, email and phone partly hidden. The full record stays on the server (and with Lena's key)."""
     if not c:
         return c
-    name = (c.get("full_name") or c.get("name") or "").split()
     em = c.get("email") or ""
     ph = re.sub(r"\D", "", c.get("phone") or "")
     return {**{k: v for k, v in c.items() if k not in ("full_name", "name", "email", "phone", "address_line_1",
                                                       "address_line_2", "postal_code", "consent_said")},
-            "name": (name[0] + (" " + name[-1][0] + "." if len(name) > 1 else "")) if name else "",
+            "name": _initials(c.get("full_name") or c.get("name")),
             "email": (em[0] + "•••" + em[em.find("@"):]) if "@" in em else "",
             "phone": ("•••-" + ph[-4:]) if ph else "",
             "where": ", ".join(x for x in (c.get("city"), c.get("state")) if x)}
@@ -85,25 +89,49 @@ _STREET = re.compile(r"\b\d{1,6}\s+(?:[A-Za-z0-9][\w.]*\s+){1,4}(?:St|Street|Ave
                      r"Ct|Court|Pl|Place|Pkwy|Hwy)\b\.?", re.I)   # "1120 SW 5th Ave" too
 
 
-def _hide_contact(t: str) -> str:
-    """Chats on the public maker page: street, email, phone and ZIP replaced with dots."""
+def _names_in(texts: list[str], known: tuple = ()) -> list[str]:
+    """Buyers' names to hide in free text: the ones on the order or chat, plus a name typed with contact details
+    ("Sam Rivera, 415-555-0134, ..."), found the same way the agent reads it."""
+    found = [n for n in known if n]
+    # only lines that carry contact details: a bare "Thank You" must not be taken for a name
+    lines = [x for t in texts for x in (t or "").split(" / ") if shopper.PHONE.search(x) or "@" in x or re.search(r"\b\d{5}\b", x)]
+    typed = shopper.gather_customer(lines).get("full_name")
+    return found + ([typed] if typed else [])
+
+
+def _hide_contact(t: str, names: list[str] | tuple = ()) -> str:
+    """Text on public pages: street, email, phone and ZIP replaced with dots, buyers' names with initials."""
     t = _STREET.sub("••• (street)", t)
     t = re.sub(r"[\w.+-]+@[\w-]+\.[\w.]+", "•••@•••", t)
     t = re.sub(r"(?<![\d-])\+?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]\d{4}\b", "•••", t)
     t = re.sub(r"(?<![\w-])\+?1?\d{10}\b", "•••", t)   # a phone typed as one run of digits (+12796657833)
-    return re.sub(r"(?<![\d-])\b\d{5}(?:-\d{4})?\b(?!-)", "•••••", t)
+    t = re.sub(r"(?<![\d-])\b\d{5}(?:-\d{4})?\b(?!-)", "•••••", t)
+    for name in sorted({n.strip() for n in names if n and n.strip()}, key=len, reverse=True):
+        t = re.sub(r"(?<!\w)" + re.escape(name) + r"(?!\w)", _initials(name), t, flags=re.I)
+        for w in name.split():   # "Thanks, Sam" or a surname on its own
+            if len(w) >= 3:
+                t = re.sub(r"(?<!\w)" + re.escape(w) + r"(?!\w)", w[0].upper() + ".", t, flags=re.I)
+    return t
+
+
+def _order_names(o: dict) -> list[str]:
+    return _names_in([o.get("asked_for") or ""], ((o.get("customer") or {}).get("full_name"),
+                                                  (o.get("contact") or {}).get("name"), (o.get("ship_to") or {}).get("name")))
 
 
 _PRIVATE = ("approve_url", "paypal_order_id", "invoice_id", "capture_id", "visitor", "payer", "error")
 
 
-def _mask_order(o: dict | None, visitor: str = "") -> dict | None:
+def _mask_order(o: dict | None, visitor: str = "", full: bool = False) -> dict | None:
+    """An order for a public page; with Lena's key (full) her own records as they are, minus PayPal secrets."""
     if not o:
         return o
+    if full:
+        return {**{k: v for k, v in o.items() if k not in _PRIVATE}, "has_invoice": bool(o.get("invoice_id")), "mine": True}
     st = o.get("ship_to") or {}
     return {**{k: v for k, v in o.items() if k not in _PRIVATE}, "customer": _mask(o.get("customer")),
-            "contact": _mask(o.get("contact")), "asked_for": _hide_contact(o.get("asked_for") or ""),
-            "ship_to": {**st, "name": (_mask({"full_name": st.get("name")}) or {}).get("name", "")} if st else st,
+            "contact": _mask(o.get("contact")), "asked_for": _hide_contact(o.get("asked_for") or "", _order_names(o)),
+            "ship_to": {**st, "name": _initials(st.get("name"))} if st else st,
             "has_invoice": bool(o.get("invoice_id")),
             "mine": bool(visitor) and o.get("visitor") == visitor and not o.get("sample")}
 
@@ -535,7 +563,7 @@ def thanks(oc: str):
         photo = f"/c/{e(o.get('counter', ''))}/photo.jpg"
         brand = cc.get("name", "Open Counter")
     rows = "".join(f'<li><b>{t}</b><span>{d}</span></li>' for t, d in steps)
-    asked = e(_hide_contact(o.get("asked_for", "")))   # the thanks page URL is shareable: no address or phone on it
+    asked = e(_hide_contact(o.get("asked_for", ""), _order_names(o)))   # shareable URL: no name, address or phone
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(head)} · {e(brand)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -623,7 +651,7 @@ def maker_orders(req: Request):
             except paypal.PayPalError:
                 shop.update_order(o["id"], invoice_checked=time.time())
     visitor, lena = _who(req)
-    return [_mask_order(o, visitor) | ({"mine": True} if lena else {}) for o in sorted(shop.orders(), key=lambda o: -o["created"])]
+    return [_mask_order(o, visitor, full=lena) for o in sorted(shop.orders(), key=lambda o: -o["created"])]
 
 
 @app.post("/api/maker/orders/{oid}/tracking")
@@ -649,15 +677,28 @@ async def maker_tracking(oid: str, req: Request):
     return o
 
 
+def _chat_names(c: dict, orders: dict) -> list[str]:
+    """Every buyer name a chat may contain: the chat's name, the people on its orders, a name typed in it."""
+    known = [c.get("name")] + [n for oid in c.get("orders", []) for n in _order_names(orders.get(oid) or {})]
+    return _names_in([t["user"] for t in c.get("turns", [])], tuple(known))
+
+
 @app.get("/api/maker/conversations")
-def maker_conversations():
-    """Every shopper chat, newest first, with the orders it produced."""
+def maker_conversations(req: Request):
+    """Every shopper chat, newest first, with the orders it produced. Names as initials on the public demo."""
+    lena = _who(req)[1]
+    orders = {o["id"]: o for o in shop.orders()}
     out = []
     for c in shop.conversations()[:200]:
-        name = (_mask({"full_name": c.get("name")}) or {}).get("name") if c.get("name") else ""
         asked = any(re.search(r"\bname\b", t["reply"], re.I) for t in c["turns"])
-        out.append({**c, "name": name, "asked_name": asked,
-                    "turns": [{**t, "user": _hide_contact(t["user"]), "reply": _hide_contact(t["reply"])} for t in c["turns"]]})
+        if lena:
+            out.append({**c, "asked_name": asked})
+            continue
+        names = _chat_names(c, orders)
+        out.append({**c, "name": _initials(c.get("name")), "asked_name": asked,
+                    "turns": [{**t, "user": _hide_contact(t["user"], names), "reply": _hide_contact(t["reply"], names),
+                               "steps": [_hide_contact(s, names) for s in t.get("steps", [])],
+                               "memo": _hide_contact(t.get("memo") or "", names)} for t in c["turns"]]})
     return out
 
 
@@ -704,7 +745,9 @@ def maker_insights(days: int = 30):
     chats = [c for c in shop.conversations() if c.get("updated", 0) >= t0]
     heat = [[0] * 24 for _ in range(7)]   # weekday (Mon=0) x hour, messages from shoppers
     stuck = []
+    by_id = {o["id"]: o for o in shop.orders()}
     for c in chats:
+        names = _chat_names(c, by_id)
         for t in c["turns"]:
             if t["at"] < t0:
                 continue
@@ -714,7 +757,7 @@ def maker_insights(days: int = 30):
                    next(("a tool said: " + s.split(" · ", 1)[-1][:80] for s in t["steps"]
                          if _TOOL_TROUBLE.search(s.split(" · ", 1)[-1])), None))
             if why:
-                stuck.append({"chat": c["id"], "at": t["at"], "asked": _hide_contact(t["user"])[:160], "why": why})
+                stuck.append({"chat": c["id"], "at": t["at"], "asked": _hide_contact(t["user"], names)[:160], "why": why})
     turns = sum(len(c["turns"]) for c in chats)
     with_order = sum(1 for c in chats if c.get("orders"))
     return {"days": days, "labels": labels, "series": [s | {"id": k} for k, s in series.items()],
@@ -729,9 +772,16 @@ async def assistant_review(req: Request):
     """Lena's assistant reads recent chats and suggests lessons for her shop's AI."""
     b = await req.json() if (await req.body()) else {}
     try:
-        return await asyncio.to_thread(assistant.review, int(b.get("days") or 14))
+        out = await asyncio.to_thread(assistant.review, int(b.get("days") or 14))
     except shopper.OverBudget as e:
         return JSONResponse({"error": str(e)}, 429)
+    if not _who(req)[1]:   # the demo page is public: the chats it quotes show no name, phone or address
+        chats = {c["id"]: c for c in shop.conversations()}
+        orders = {o["id"]: o for o in shop.orders()}
+        for f in out.get("findings", []):
+            names = _chat_names(chats.get(f["chat"], {}), orders)
+            f["asked"], f["problem"] = _hide_contact(f.get("asked", ""), names), _hide_contact(f.get("problem", ""), names)
+    return out
 
 
 @app.post("/api/maker/assistant/ask")
@@ -775,9 +825,11 @@ async def coach_set(lid: str, req: Request):
 
 
 @app.get("/api/maker/customers")
-def maker_customers():
-    """Buyers from orders; marketing is true only after their own yes in chat."""
-    return [_mask(c) for c in shop.customers()]
+def maker_customers(req: Request):
+    """Buyers from orders; marketing is true only after their own yes in chat. Full details with Lena's key."""
+    lena = _who(req)[1]
+    return [({**c, "name": c.get("full_name", ""), "where": ", ".join(x for x in (c.get("city"), c.get("state")) if x)}
+             if lena else _mask(c)) for c in shop.customers()]
 
 
 @app.post("/api/maker/orders/{oid}/balance")
@@ -796,11 +848,16 @@ def request_balance(oid: str, req: Request):
 
 
 @app.get("/api/maker/requests")
-def maker_requests():
-    """Call-back requests for Lena (newest first; masked on the public demo screen)."""
-    return [{**r, "contact": _mask(r.get("contact")), "message": _hide_contact(r.get("message") or ""),
-             "about": _hide_contact(r.get("about") or ""), "asked_for": _hide_contact(r.get("asked_for") or "")}
-            for r in reversed(shop.requests_())]
+def maker_requests(req: Request):
+    """Call-back requests for Lena (newest first; masked on the public demo screen, full with her key)."""
+    if _who(req)[1]:
+        return list(reversed(shop.requests_()))
+    out = []
+    for r in reversed(shop.requests_()):
+        names = _names_in([r.get("asked_for") or "", r.get("message") or ""], ((r.get("contact") or {}).get("name"),))
+        out.append({**r, "contact": _mask(r.get("contact")), "message": _hide_contact(r.get("message") or "", names),
+                    "about": _hide_contact(r.get("about") or "", names), "asked_for": _hide_contact(r.get("asked_for") or "", names)})
+    return out
 
 
 @app.get("/api/maker/news-list.csv")
