@@ -64,11 +64,25 @@ def _path(name: str) -> Path:
     return DATA / name
 
 
+_seed_checked: set[str] = set()
+
+
 def seed(force: bool = False):
     with _lock:
         p = _path("shop.json")
         if force or not p.exists():
             p.write_text(SEED.read_text())
+        elif str(DATA) not in _seed_checked:
+            _seed_checked.add(str(DATA))
+            # The seed changed (e.g. the shelf went from 30 of each to Lena's real 1-3): the shop file on the data disk
+            # follows it, without touching orders, chats or customers. Catalog ids already registered are kept.
+            new, old = json.loads(SEED.read_text()), json.loads(p.read_text())
+            if old.get("version") != new.get("version"):
+                ids = {x["id"]: x.get("paypal_catalog_product") for x in old.get("listings", [])}
+                for x in new["listings"]:
+                    if ids.get(x["id"]):
+                        x["paypal_catalog_product"] = ids[x["id"]]
+                p.write_text(json.dumps(new, indent=2, ensure_ascii=False))
         o = _path("orders.json")
         if force or not o.exists():
             o.write_text("[]")
