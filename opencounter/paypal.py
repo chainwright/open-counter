@@ -69,9 +69,11 @@ def money(x) -> str:
 
 def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping_usd: float,
                  return_url: str, cancel_url: str, lines: list[tuple[dict, int]] | None = None,
-                 customer: dict | None = None, discount_usd: float = 0.0) -> dict:
+                 customer: dict | None = None, discount_usd: float = 0.0, payee_email: str | None = None) -> dict:
     """One purchase unit with the exact item, quantity and shipping. Amounts are recomputed here from the
-    listing, never taken from the agent's words. The buyer's address comes from their PayPal account."""
+    listing, never taken from the agent's words. The buyer's address comes from their PayPal account.
+    payee_email: the PayPal account the money goes to (a maker who opened a counter at /open); without it, the
+    platform's own merchant account (Lena's shop) is paid."""
     lines = lines or [(listing, qty)]
     item_total = sum(Decimal(money(li["price_usd"])) * q for li, q in lines)
     total = item_total - Decimal(money(discount_usd)) + Decimal(money(shipping_usd))
@@ -83,7 +85,6 @@ def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping
             "invoice_id": order_id,
             "description": f"{shop['name']}: " + " + ".join(f"{q} × {li['title']}" if len(lines) > 1 else li["title"]
                                                             for li, q in lines)[:100],
-            "soft_descriptor": "SMALLGARAGE",
             "amount": {"currency_code": "USD", "value": money(total), "breakdown": {
                 "item_total": {"currency_code": "USD", "value": money(item_total)},
                 "shipping": {"currency_code": "USD", "value": money(shipping_usd)},
@@ -95,6 +96,10 @@ def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping
             "brand_name": shop["name"], "shipping_preference": "GET_FROM_FILE", "user_action": "PAY_NOW",
             "return_url": return_url, "cancel_url": cancel_url}}},
     }
+    if payee_email:   # the maker is paid directly; the descriptor on the buyer's statement is then hers, not ours
+        body["purchase_units"][0]["payee"] = {"email_address": payee_email}
+    else:
+        body["purchase_units"][0]["soft_descriptor"] = "SMALLGARAGE"
     if customer:   # the address the buyer gave the agent: PayPal shows it and ships there
         body["purchase_units"][0]["shipping"] = {
             "name": {"full_name": customer["full_name"]},
@@ -104,7 +109,16 @@ def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping
         if not body["purchase_units"][0]["shipping"]["address"]["address_line_2"]:
             del body["purchase_units"][0]["shipping"]["address"]["address_line_2"]
         body["payment_source"]["paypal"]["experience_context"]["shipping_preference"] = "SET_PROVIDED_ADDRESS"
-    return _call("POST", "/v2/checkout/orders", body, request_id=f"create-{order_id}")
+    return _call("POST", "/v2/checkout/orders", body, request_id=f"create-{order_id}" + ("-payee" if payee_email else ""))
+
+
+def payee_refused(e: PayPalError) -> bool:
+    """PayPal won't pay this payee (no such account, closed, restricted, or it can't receive this payment)."""
+    return "PAYEE" in str(e).upper()
+
+
+def sandbox() -> bool:
+    return "sandbox" in BASE
 
 
 def approve_link(pp_order: dict) -> str | None:

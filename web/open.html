@@ -34,6 +34,8 @@
       <label>How many you have<input id="stock" type="number" min="1" placeholder="6"></label>
       <label>Ships from (state)<input id="from" maxlength="2" placeholder="TX"></label>
       <label class="wide">One sentence about it<input id="note" placeholder="Wheel-thrown, glazed by hand, holds 12 oz"></label>
+      <label class="wide">Your PayPal email, where buyers pay you<input id="ppemail" type="email" autocomplete="email" placeholder="you@business.example.com">
+        <span class="fine">Sandbox: a PayPal sandbox business account. Leave it empty and demo payments go to the Open Counter test merchant.</span></label>
     </div>
     <button class="go" id="draft" disabled>Write my listing with AI</button><span class="hint" id="dhint"></span>
   </div></section>
@@ -56,7 +58,7 @@
     <ul><li>Shop page: <a id="dpage" target="_blank"></a></li><li>Agent card (JSON): <a id="djson" target="_blank"></a></li>
       <li>PayPal Catalog product: <code id="dprod"></code></li></ul>
     <pre id="dcard"></pre>
-    <p class="fine">Next step for a real shop: connect your own PayPal account, and orders start the way they do at Lena's.</p>
+    <p class="fine" id="dpaid">Payments from buyers go to your own PayPal account, and orders start the way they do at Lena's.</p>
   </section>
 
   <section class="recent"><span class="k">COUNTERS OPENED RECENTLY</span><div id="recent"></div></section>

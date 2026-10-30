@@ -47,7 +47,7 @@
       materials: $("t_mat").value.split(",").map((s) => s.trim()).filter(Boolean), keywords: $("t_kw").value.split(",").map((s) => s.trim()).filter(Boolean) };
     $("publish").disabled = true; $("phint").textContent = "Opening your counter and registering it with PayPal…";
     const r = await fetch("/api/open/publish", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ listing: l, price_usd: $("price").value, stock: $("stock").value, ships_from: $("from").value, maker: $("maker").value, shop_name: $("shopname").value, image }) })
+      body: JSON.stringify({ listing: l, price_usd: $("price").value, stock: $("stock").value, ships_from: $("from").value, maker: $("maker").value, shop_name: $("shopname").value, paypal_email: $("ppemail").value.trim(), image }) })
       .then(async (r) => ({ ok: r.ok, ...(await r.json()) })).catch(() => ({ ok: false, detail: "Couldn't reach the server." }));
     $("publish").disabled = false;
     if (!r.ok) { $("phint").textContent = r.detail || "Something's missing."; return; }
@@ -55,6 +55,7 @@
     $("dname").textContent = $("shopname").value || "Your counter";
     $("dpage").href = $("dpage").textContent = r.page; $("djson").href = $("djson").textContent = r.json;
     $("dprod").textContent = r.paypal_catalog_product || "(PayPal not reachable right now)";
+    $("dpaid").textContent = `Buyers' payments go to ${r.payment_goes_to || "your PayPal account"}.` + (/demo merchant/.test(r.payment_goes_to || "") ? " Add your PayPal email to be paid directly." : "");
     $("dcard").textContent = JSON.stringify(await fetch(r.json).then((x) => x.json()), null, 2);
     $("s4").hidden = false; $("s4").scrollIntoView({ behavior: "smooth", block: "start" }); recent();
   });

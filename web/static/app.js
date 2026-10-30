@@ -313,7 +313,8 @@
     deposit_paid: ["Deposit in: Lena starts building", "The rest is due before it ships."],
     shipped: ["Shipped", "The tracking number went to PayPal; the buyer is told."],
     replaced: ["Replaced by your newer order", "Only the newest order can be paid."],
-    refunded_out_of_stock: ["Refunded", "The last one sold a moment earlier; PayPal refunded you in full."] };
+    refunded_out_of_stock: ["Refunded", "The last one sold a moment earlier; PayPal refunded you in full."],
+    refund_due: ["Sold out", "The last one sold a moment earlier; the maker refunds you in full from her PayPal."] };
   const show = (o) => { const w = says[o.status] || [o.status, ""]; box.hidden = false; box.classList.toggle("paid", ["paid", "deposit_paid", "shipped"].includes(o.status));
     t.textContent = `${w[0]} · ${o.id}`; sub.textContent = `${o.title} · $${(o.total_usd || 0).toFixed(2)}. ${w[1]}`; };
   window.addEventListener("oc-checkout", (e) => { mine.add(e.detail.order_id); fetch(`/api/orders/${e.detail.order_id}`).then((r) => r.json()).then((o) => o.id && show(o)).catch(() => {}); });

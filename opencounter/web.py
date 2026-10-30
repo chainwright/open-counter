@@ -130,7 +130,7 @@ def _order_names(o: dict) -> list[str]:
                                                   (o.get("contact") or {}).get("name"), (o.get("ship_to") or {}).get("name")))
 
 
-_PRIVATE = ("approve_url", "paypal_order_id", "invoice_id", "capture_id", "visitor", "payer", "error")
+_PRIVATE = ("approve_url", "paypal_order_id", "invoice_id", "capture_id", "visitor", "payer", "error", "payee_email")
 
 
 def _mask_order(o: dict | None, visitor: str = "", full: bool = False) -> dict | None:
@@ -181,7 +181,8 @@ def counter_json(slug: str):
                               "photo_url": f"{counter.PUBLIC_URL}/c/{slug}/photo.jpg",
                               "paypal_catalog_product": l.get("paypal_catalog_product")}],
                 "checkout": {"how": "POST JSON {quantity, us_state}; returns a PayPal approval link a person must open",
-                             "url": f"{counter.PUBLIC_URL}/api/c/{slug}/checkout"}}
+                             "url": f"{counter.PUBLIC_URL}/api/c/{slug}/checkout",
+                             "payment_goes_to": onboard.paid_to(c)}}
     return {"$schema": f"{counter.PUBLIC_URL}/static/schema/open-counter-card.v1.json"} | counter.about_counter() | {
         "listings": counter.search_counter()["results"], "mcp": f"{counter.PUBLIC_URL}/mcp/"}
 
@@ -253,11 +254,12 @@ async def open_publish(req: Request):
     try:
         c = await asyncio.to_thread(onboard.publish, b.get("listing") or {}, float(b.get("price_usd") or 0),
                                     int(b.get("stock") or 0), str(b.get("ships_from") or ""), str(b.get("maker") or ""),
-                                    str(b.get("shop_name") or ""), str(b.get("image") or ""), _who(req)[0])
+                                    str(b.get("shop_name") or ""), str(b.get("image") or ""), _who(req)[0],
+                                    str(b.get("paypal_email") or ""))
     except (ValueError, TypeError) as e:
         raise HTTPException(400, str(e))
     return {"slug": c["slug"], "page": f"{counter.PUBLIC_URL}/c/{c['slug']}", "json": f"{counter.PUBLIC_URL}/c/{c['slug']}.json",
-            "paypal_catalog_product": c["listing"].get("paypal_catalog_product")}
+            "paypal_catalog_product": c["listing"].get("paypal_catalog_product"), "payment_goes_to": onboard.paid_to(c)}
 
 
 @app.post("/api/c/{slug}/checkout")
@@ -309,8 +311,9 @@ def counter_page(slug: str):
 <p class="meta">${l['price_usd']:.2f} · {l['stock']} available{(' · ' + e(', '.join(l.get('materials') or []))) if l.get('materials') else ''}</p></div></article>
 <form class="buy" id="buy"><label>How many<input type="number" id="q" min="1" max="{l['stock']}" value="1"></label>
 <label>Ship to (US state)<input id="st" maxlength="2" placeholder="TX" required></label><button>Buy with PayPal</button><span id="m"></span></form>
-<p class="fine">PayPal sandbox, no real money. You approve in PayPal; nothing is charged before that. In this demo the payment goes to
-the Open Counter test merchant; a live counter connects the maker's own PayPal account.</p>
+<p class="fine">PayPal sandbox, no real money. You approve in PayPal; nothing is charged before that. {
+ f"The payment goes straight to {e(c['maker'])}'s own PayPal account; Open Counter never holds it." if onboard.payee(c) else
+ "This maker hasn't connected a PayPal account, so in this demo the payment goes to the Open Counter test merchant."}</p>
 <script>
 document.getElementById("buy").addEventListener("submit", async (ev) => {{ ev.preventDefault(); const m = document.getElementById("m"); m.textContent = "Opening PayPal…";
   const r = await fetch("/api/c/{e(slug)}/checkout", {{ method: "POST", headers: {{ "content-type": "application/json" }}, body: JSON.stringify({{ quantity: document.getElementById("q").value, us_state: document.getElementById("st").value }}) }});
@@ -406,7 +409,7 @@ def _settle(oc: str) -> dict:
     One at a time, and the capture carries a PayPal-Request-Id, so the two paths can never charge twice."""
     with _settling:
         o = shop.order(oc)
-        if o["status"] in ("paid", "shipped", "refunded_out_of_stock", "refunded", "replaced", "cancelled"):
+        if o["status"] in ("paid", "shipped", "refunded_out_of_stock", "refund_due", "refunded", "replaced", "cancelled"):
             return o   # already settled, or replaced by a newer order from the same chat: never captured
         cap = paypal.capture(o["paypal_order_id"], oc)
         unit = cap["purchase_units"][0]
@@ -418,7 +421,16 @@ def _settle(oc: str) -> dict:
         took = (onboard.take(o["counter"], o["qty"]) if o.get("kind") == "counter"
                 else True if o.get("kind") == "commission" else shop.take_stock_lines(lines))
         if not took:
-            paypal.refund(c["id"], oc, note="Sorry, the last one sold a moment before your payment. Full refund.")
+            try:
+                paypal.refund(c["id"], oc, note="Sorry, the last one sold a moment before your payment. Full refund.")
+            except paypal.PayPalError:
+                if not o.get("payee_email"):
+                    raise
+                # the money sits in the maker's own PayPal account, which only she can refund from: tell her, loudly
+                o = shop.update_order(oc, status="refund_due", capture_id=c["id"],
+                                      note="Sold out before payment: refund this buyer in full from your PayPal account.")
+                _announce("refund_due", o)
+                return o
             o = shop.update_order(oc, status="refunded_out_of_stock", capture_id=c["id"])
             _announce("refunded", o)
             return o
@@ -550,6 +562,8 @@ def thanks(oc: str):
         "refunded_out_of_stock": ("Sorry, it sold a moment before you paid.", "You've been refunded in full through PayPal.",
                                   [("Nothing to do", "The refund is already on its way back to your PayPal account."),
                                    ("Want one anyway?", "Lena takes commissions. Ask your agent for the same car in your colour.")]),
+        "refund_due": ("Sorry, it sold a moment before you paid.", "The maker refunds you in full from her own PayPal account.",
+                       [("Nothing to do", "She has been told; the refund comes back to your PayPal account.")]),
         "pending": ("Payment is processing.", "PayPal is still confirming it. Nothing else to do.",
                     [("What happens next", "As soon as PayPal confirms, Lena sees the order and ships it.")]),
         "replaced": ("This order was replaced.", "You changed the order in the chat, so this one can't be paid.",

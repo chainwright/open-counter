@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import re
 import time
 import uuid
@@ -25,6 +26,8 @@ colour, made_by_hand (true/false/null), short_description (two plain sentences a
 Describe only what you can see or were told. Use null for anything else. Never name a brand, a company or a car maker.
 Never mention a price, stock or delivery time."""
 MAX_COUNTERS = 60
+EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[a-z]{2,}$", re.I)
+SAMPLE_PAYEE_ENV = "OPEN_COUNTER_SAMPLE_PAYEE"   # a second sandbox business account that the sample counters pay
 
 
 def _counters() -> dict:
@@ -60,13 +63,17 @@ def draft(image_b64: str, note: str, who=()) -> dict:
 
 
 def publish(listing: dict, price_usd: float, stock: int, ships_from: str, maker: str, shop_name: str,
-            image_b64: str, visitor: str = "") -> dict:
-    """Open the counter: save it, register the product with PayPal, and return the agent-readable URLs."""
+            image_b64: str, visitor: str = "", paypal_email: str = "") -> dict:
+    """Open the counter: save it, register the product with PayPal, and return the agent-readable URLs.
+    paypal_email (optional): the maker's own PayPal account; buyers' payments go there (PayPal's 'payee')."""
     title = str(listing.get("title") or "").strip()[:80]
     if not title:
         raise ValueError("The listing needs a title.")
     if not (0 < float(price_usd) <= 10000) or not (0 < int(stock) <= 1000):
         raise ValueError("Set a price and how many you have.")
+    payee = (paypal_email or "").strip()[:120]
+    if payee and not EMAIL.match(payee):
+        raise ValueError("Your PayPal email doesn't look like an email address.")
     st = (ships_from or "").strip().upper()[:2]
     if st not in shop.US_STATES:
         raise ValueError("Ships from: a US state code, like OH.")
@@ -87,7 +94,7 @@ def publish(listing: dict, price_usd: float, stock: int, ships_from: str, maker:
         except paypal.PayPalError:
             product_id = None
     c = {"slug": slug, "created": time.time(), "visitor": visitor, "maker": (maker or "").strip()[:60] or "A maker",
-         "name": (shop_name or "").strip()[:60] or "My counter", "ships_from": st,
+         "name": (shop_name or "").strip()[:60] or "My counter", "ships_from": st, "payee_email": payee,
          "listing": {**{k: listing.get(k) for k in ("title", "category", "materials", "size", "colour",
                                                      "made_by_hand", "short_description", "keywords")},
                      "id": slug + "-1", "title": title, "price_usd": round(float(price_usd), 2), "stock": int(stock),
@@ -100,6 +107,16 @@ def publish(listing: dict, price_usd: float, stock: int, ships_from: str, maker:
                 del all_[k]
         shop._save_json("counters.json", all_)
     return c
+
+
+def payee(c: dict) -> str:
+    """Whose PayPal account a counter's payments go to: the email the maker gave when she opened it; for the sample
+    counters, the second sandbox merchant set in OPEN_COUNTER_SAMPLE_PAYEE; otherwise '' (the platform's merchant)."""
+    return c.get("payee_email") or (os.environ.get(SAMPLE_PAYEE_ENV, "").strip() if c.get("sample") else "")
+
+
+def paid_to(c: dict) -> str:
+    return f"{c['maker']}'s own PayPal account" if payee(c) else "the Open Counter demo merchant (sandbox)"
 
 
 def counter(slug: str) -> dict | None:
@@ -126,8 +143,9 @@ def take(slug: str, qty: int) -> bool:
 
 def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
     """A buyer orders from a maker's counter: same rules as Lena's (stock, US state, PayPal approval by a person).
-    In this demo the sandbox payment goes to the Open Counter test merchant; a real counter connects the maker's
-    own PayPal account first."""
+    The money goes to the maker's own PayPal account (the order's payee) when she gave one. If PayPal refuses that
+    account in the sandbox (a made-up email on the public demo), the order is paid to the Open Counter demo merchant
+    instead and says so; outside the sandbox it is refused, never redirected."""
     from . import paypal
     c = counter(slug)
     if not c:
@@ -151,13 +169,24 @@ def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
         all_.append(o)
         shop._save_orders(all_)
     s = {"name": c["name"]}
-    pp = paypal.create_order(order_id=o["id"], shop=s, listing={"id": l["id"], "title": l["title"], "price_usd": l["price_usd"]},
-                             qty=qty, shipping_usd=ship,
-                             return_url=f"{_public_url()}/paypal/return?oc={o['id']}",
-                             cancel_url=f"{_public_url()}/paypal/cancel?oc={o['id']}")
+    to = payee(c)
+    args = dict(order_id=o["id"], shop=s, listing={"id": l["id"], "title": l["title"], "price_usd": l["price_usd"]},
+                qty=qty, shipping_usd=ship, return_url=f"{_public_url()}/paypal/return?oc={o['id']}",
+                cancel_url=f"{_public_url()}/paypal/cancel?oc={o['id']}")
+    note = ""
+    try:
+        pp = paypal.create_order(**args, payee_email=to or None)
+    except paypal.PayPalError as e:
+        if not (to and paypal.payee_refused(e) and paypal.sandbox()):
+            raise
+        pp, to = paypal.create_order(**args), ""
+        note = "PayPal didn't accept the maker's PayPal email, so this sandbox payment goes to the Open Counter demo merchant."
     link = paypal.approve_link(pp)
-    shop.update_order(o["id"], paypal_order_id=pp["id"], approve_url=link)
-    return {"order_id": o["id"], "approve_url": link, "total_usd": o["total_usd"]}
+    paid_to_ = f"{c['maker']}'s own PayPal account" if to else "the Open Counter demo merchant (sandbox)"
+    shop.update_order(o["id"], paypal_order_id=pp["id"], approve_url=link, payee_email=to, paid_to=paid_to_,
+                      **({"payee_note": note} if note else {}))
+    return {"order_id": o["id"], "approve_url": link, "total_usd": o["total_usd"], "paid_to": paid_to_,
+            **({"note": note} if note else {})}
 
 
 def _public_url() -> str:
