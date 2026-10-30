@@ -7,7 +7,9 @@ about 40 chats, 5 of them today. Names, emails and phones are invented (example.
 """
 from __future__ import annotations
 
+import json
 import random
+import re
 import time
 
 from . import shop
@@ -193,22 +195,85 @@ def build(now: float | None = None):
         return len(orders), len(convs)
 
 
-DATA_VERSION = "6"   # bump to wipe the demo data (test chats and orders) and lay the sample history down again
+DATA_VERSION = "6"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
+
+# QA and judge runs on the public demo use visitor ids and chat ids starting with "qa" (qa-e0147409, qa5-canada-7409);
+# a real browser's ids are random hex ("anon-…", 24 hex digits) and never do. Orders from the judge rounds that were
+# placed before the convention are listed by id. They're removed on every start (purge_test_data); real orders,
+# chats and customers stay, and the sample history is never touched.
+TEST_ID = re.compile(r"^(qa|test|judge)", re.I)
+KNOWN_TEST_ORDERS = {"OC-24754B6E",                                                       # judge round 5
+                     "OC-D3BC6995", "OC-F64CAFF8", "OC-C4CAB985", "OC-80212819", "OC-FA099F18",   # round 4
+                     "OC-A4F2CD96", "OC-C88BA7F6", "OC-831EE13B", "OC-FF085841"}               # round 1
+
+
+def purge_test_data() -> dict:
+    """Take test traffic out of Lena's back office: test chats, the orders they made, those buyers, lessons and
+    counters test browsers wrote, and call-backs left from test chats. Returns what was removed, by kind."""
+    gone: dict[str, list[str]] = {}
+    with shop._lock:
+        convs = shop._json("conversations.json", {})
+        test_chats = {k for k, c in convs.items()
+                      if not c.get("sample") and (TEST_ID.match(k) or TEST_ID.match(c.get("visitor") or ""))}
+        test_orders = set(KNOWN_TEST_ORDERS) | {oid for k in test_chats for oid in convs[k].get("orders", [])}
+        orders = shop.orders()
+        test_orders |= {o["id"] for o in orders if TEST_ID.match(o.get("visitor") or "")}
+        test_orders -= {o["id"] for o in orders if o.get("sample")}
+        # call-backs carry the chat's own words; only a distinctive opening (not "hi") is used to find them
+        said = [t["user"][:60] for k in test_chats for t in convs[k].get("turns", [])[:1] if len(t.get("user", "")) >= 12]
+        if test_chats:
+            gone["chats"] = sorted(test_chats)
+            shop._save_json("conversations.json", {k: c for k, c in convs.items() if k not in test_chats})
+        if any(o["id"] in test_orders for o in orders):
+            gone["orders"] = sorted(o["id"] for o in orders if o["id"] in test_orders)
+            shop._save_orders([o for o in orders if o["id"] not in test_orders])
+        custs = shop._json("customers.json", {})
+        changed = False
+        for key, c in list(custs.items()):
+            mine = [x for x in c.get("orders", []) if x in test_orders]
+            if mine:
+                c["orders"] = [x for x in c["orders"] if x not in test_orders]
+                changed = True
+                if not c["orders"]:   # this buyer exists only because of test orders
+                    gone.setdefault("customers", []).append(key)
+                    del custs[key]
+        if changed:
+            shop._save_json("customers.json", custs)
+        lessons = shop.coaching()
+        keep = [n for n in lessons if n.get("sample") or not (TEST_ID.match(n.get("visitor") or "") or n.get("chat") in test_chats)]
+        if len(keep) != len(lessons):
+            gone["lessons"] = [n["id"] for n in lessons if n not in keep]
+            shop._save_json("coaching.json", keep)
+        counters = shop._json("counters.json", {})
+        test_counters = [k for k, c in counters.items() if not c.get("sample") and TEST_ID.match(c.get("visitor") or "")]
+        if test_counters:
+            gone["counters"] = test_counters
+            for k in test_counters:
+                del counters[k]
+                (shop._path("counters") / f"{k}.jpg").unlink(missing_ok=True)
+            shop._save_json("counters.json", counters)
+        reqs = shop.requests_()
+        keep_r = [r for r in reqs if not any(s and s in (r.get("asked_for") or "") for s in said)]
+        if len(keep_r) != len(reqs):
+            gone["requests"] = [r["id"] for r in reqs if r not in keep_r]
+            shop._requests_path().write_text(json.dumps(keep_r, indent=2, ensure_ascii=False))
+    return gone
 
 
 def ensure():
-    """On an empty data folder, or when DATA_VERSION changes, lay down the sample history (test data is wiped)."""
+    """On an empty data folder, or when DATA_VERSION changes, lay down the sample history; on every start, take
+    test traffic out (real records stay)."""
     if not shop.DEMO:
         return
     vf = shop._path("data_version")
-    if vf.exists() and vf.read_text().strip() == DATA_VERSION:
-        return
-    import shutil
-    for f in ("orders.json", "conversations.json", "customers.json", "coaching.json", "counters.json", "requests.json"):
-        p = shop._path(f)
-        if p.exists():
-            p.unlink()
-    shutil.rmtree(shop._path("counters"), ignore_errors=True)
-    shop.seed(force=True)
-    build()
-    vf.write_text(DATA_VERSION)
+    if not (vf.exists() and vf.read_text().strip() == DATA_VERSION):
+        import shutil
+        for f in ("orders.json", "conversations.json", "customers.json", "coaching.json", "counters.json", "requests.json"):
+            p = shop._path(f)
+            if p.exists():
+                p.unlink()
+        shutil.rmtree(shop._path("counters"), ignore_errors=True)
+        shop.seed(force=True)
+        build()
+        vf.write_text(DATA_VERSION)
+    purge_test_data()

@@ -139,7 +139,9 @@ Optional: `PAYPAL_WEBHOOK_ID` (webhook verification), `OPENCOUNTER_DATA` (data f
 mounted persistent disk, `/var/data`, so data survives deploys), `MAKER_KEY` (Lena's key: global lessons, news-list export).
 
 On the public demo every browser gets its own visitor id: lessons it writes, orders it can ship and counters it opens
-stay with that browser. Sample history (marked SAMPLE) is read-only.
+stay with that browser. Sample history (marked SAMPLE) is read-only. Test runs against the live demo use visitor and
+chat ids starting with `qa`; every start of the app removes them and what they created (`sample.purge_test_data`),
+while real orders, chats and buyers stay.
 
 ## Tools used while building
 Claude Code wrote code and tests with us, using PayPal's developer docs. Product photos, the 3D models and the bench
