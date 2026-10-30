@@ -96,3 +96,14 @@ def test_full_ship_to_only_for_the_browser_that_ordered(c, monkeypatch):
     assert "+13125550177" in c.get(f"/api/orders/{o['id']}/ship-to", headers={"x-visitor": "v-buyer"}).json()["ship_to"]
     assert c.get(f"/api/orders/{o['id']}/ship-to", headers={"x-visitor": "someone-else"}).status_code == 404
     assert c.get(f"/api/orders/{o['id']}/ship-to").status_code == 404
+
+
+def test_only_lenas_key_marks_a_call_back_done(c, monkeypatch):
+    monkeypatch.setenv("MAKER_KEY", "lena-secret")
+    rq = shop.new_callback("614-555-0188", "Sam", "Call me about a build", "a build", "demo-shopper")
+    url = f"/api/maker/requests/{rq['id']}"
+    assert c.post(url, json={"status": "called"}).status_code == 403
+    assert c.post(url, json={"status": "called"}, headers={"x-visitor": "v1", "x-maker-key": "wrong"}).status_code == 403
+    assert next(r for r in shop.requests_() if r["id"] == rq["id"])["status"] == "to_call"
+    r = c.post(url, json={"status": "called"}, headers={"x-maker-key": "lena-secret"})
+    assert r.status_code == 200 and r.json()["status"] == "called"

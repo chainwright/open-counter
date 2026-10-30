@@ -137,7 +137,8 @@ window.OC = (() => {
   }
   box.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-rq]"); if (!b) return;
-    await fetch(`/api/maker/requests/${b.dataset.rq}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: b.dataset.st }) });
+    const r = await fetch(`/api/maker/requests/${b.dataset.rq}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: b.dataset.st }) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); b.replaceWith(Object.assign(document.createElement("span"), { className: "m", textContent: j.detail || "Couldn't save that." })); return; }
     load();
   });
   load(); setInterval(load, 10000);

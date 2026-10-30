@@ -892,7 +892,9 @@ def news_list(key: str = ""):
 
 @app.post("/api/maker/requests/{rid}")
 async def maker_request_status(rid: str, req: Request):
-    """Lena marks a call-back as done."""
+    """Lena marks a call-back as done. Her key only: on the public demo nobody else can tick off her call list."""
+    if not _who(req)[1]:
+        raise HTTPException(403, "Only Lena can mark a call-back as done (her key is needed).")
     b = await req.json()
     st = b.get("status")
     if st not in ("called",):
