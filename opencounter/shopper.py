@@ -851,7 +851,25 @@ def _fallback_reply(steps: list[dict], ru: bool, last_user: str = "", lessons: l
         said = _apply_lessons("", lessons, ru)
         if said:
             return said
-    return ("Простите, не успела. Напишите, пожалуйста, ещё раз." if ru else "Sorry, I didn't catch that in time. Could you send it once more?")
+    return _shelf_answer(ru)
+
+
+def _shelf_answer(ru: bool) -> str:
+    """The last resort when nothing above fits: what's on the shelf right now, what it costs to ship, and how to
+    order, from the shop's own records. A real answer the person can act on, never 'send it again'."""
+    s = shop.shop()
+    r = s["rules"]
+    have = [x for x in s["listings"] if x["stock"] > 0]
+    cars = ", ".join(f"{x['title']} (${x['price_usd']:.0f}, {x['stock']} left)" for x in have[:6])
+    build = (f" Любую другую машинку Лена соберёт под заказ, ${r['commission_usd']:.0f} за штуку." if ru else
+             f" Lena also builds any other car to order, ${r['commission_usd']:.0f} each.") if r.get("commissions") else ""
+    if not have:
+        return (("Сейчас на полке пусто." + build + " Напишите, какую машинку и в какой штат США отправить.") if ru else
+                ("The shelf is empty right now." + build + " Tell me which car and which US state it goes to."))
+    return (f"Сейчас в наличии: {cars}. Доставка по США ${r['shipping_usd']:.2f}, в любой штат.{build} "
+            "Напишите, какую машинку, сколько и в какой штат, и я подготовлю оплату через PayPal." if ru else
+            f"On the shelf right now: {cars}. Shipping is ${r['shipping_usd']:.2f} anywhere in the US.{build} "
+            "Tell me which car, how many and which state, and I'll get the PayPal checkout ready.")
 
 
 def _one_car_meant(text: str) -> str:

@@ -116,3 +116,21 @@ def test_a_visitors_own_lesson_applies_to_that_visitor_only_and_old_lessons_stil
     monkeypatch.setattr(shopper, "_client_", lambda: FakeModel("Yes, it ships on a black wood plinth."))
     r = ask("Does it come with a dust cover?", visitor="aaa")
     assert "Every car comes with a fitted acrylic dust cover." in r["reply"]
+
+
+def test_when_the_model_host_fails_the_answer_is_the_shelf_never_send_it_again(monkeypatch):
+    from evals import run_evals as ev
+    monkeypatch.setattr(shopper, "_client_", lambda: FakeModel(TimeoutError("slow host")))
+    r = ask("hmm, what would you recommend for my dad?")
+    have = [x for x in shop.shop()["listings"] if x["stock"] > 0]
+    assert have and have[0]["title"] in r["reply"] and "$6.50" in r["reply"] and "which state" in r["reply"]
+    assert not ev.NON_ANSWER.search(r["reply"])
+    ru = shopper._fallback_reply([], True, "хм, что посоветуете?")
+    assert "в наличии" in ru and not ev.NON_ANSWER.search(ru)
+
+
+def test_the_last_resort_says_so_when_the_shelf_is_empty():
+    for x in shop.shop()["listings"]:
+        shop.take_stock(x["id"], x["stock"])
+    said = shopper._fallback_reply([], False, "anything nice?")
+    assert said.startswith("The shelf is empty right now.") and "to order" in said and "send it" not in said
