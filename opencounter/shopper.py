@@ -149,7 +149,8 @@ LABELS = {"about_counter": "reading the counter", "search_counter": "searching t
           "item_details": "reading the listing", "delivery_estimate": "checking delivery",
           "start_checkout": "preparing PayPal checkout", "quote_commission": "pricing a made-to-order build",
           "start_commission_checkout": "preparing PayPal checkout", "leave_contact": "passing your number to Lena",
-          "marketing_consent": "noting your email preference"}
+          "marketing_consent": "noting your email preference", "notify": "passing your email to Lena",
+          "lesson": "following Lena's lesson"}
 
 
 class OverBudget(RuntimeError):
@@ -679,7 +680,97 @@ def _cart_waiting(messages: list[dict]) -> tuple[list[dict], str] | None:
 TURN_SECONDS = 7   # the longest a shopper waits for one answer (Roma 14635: "maximum 7")
 
 
-def _fallback_reply(steps: list[dict], ru: bool, last_user: str = "") -> str:
+EMAIL_OFFER = "If you'd like, leave your email here and Lena will write to you when that changes."
+EMAIL_OFFER_RU = "Если хотите, оставьте здесь свою почту, и Лена напишет, когда это изменится."
+PHONE_OFFER = "If you leave your phone number, Lena will call you back herself."
+PHONE_OFFER_RU = "Оставьте номер телефона, и Лена сама вам перезвонит."
+SHIP_Q = re.compile(r"\b(ship|deliver|send|mail)\w*|доставк|доставл|отправ|пришл|шл[её]те", re.I)
+
+
+def _covers(reply: str, clause: str) -> bool:
+    """The reply already says it: at least half of the clause's meaningful words are in it."""
+    want = shop.content_words(clause)
+    have = shop.content_words(reply)
+    return not want or len(want & have) * 2 >= len(want)
+
+
+def _as_said(clause: str) -> str:
+    """'Lena will answer it personally' / 'they can ...' as a sentence to the shopper."""
+    c = re.sub(r"\b(answer|handle|explain) it\b", r"\1 that", clause.strip(" ,;"), flags=re.I)
+    c = re.sub(r"\bthey\b", "you", c, flags=re.I)
+    c = re.sub(r"\btheir\b", "your", c, flags=re.I)
+    c = re.sub(r"\bthem\b", "you", c, flags=re.I)
+    return (c[:1].upper() + c[1:]).rstrip(".") + "." if c else ""
+
+
+def _apply_lessons(reply: str, lessons: list[dict], ru: bool) -> str:
+    """Lena's lessons that this question calls for, checked in code against the reply: what she said to say leads
+    the answer if the reply skipped it, and an offer she asked for (her call back, an email when something
+    changes) is added if missing. A lesson's own words are English, so in Russian only the offers are added."""
+    lead, tail = [], []
+    for n in lessons:
+        _, do = shop.split_lesson(n["note"])
+        say = re.search(r"\b(?:say|tell (?:them|the person|people|the shopper)|answer|reply)\s+(?:that\s+)?(.+?)"
+                        r"(?=,?\s+(?:and|then)\s+(?:offer|ask|take|invite|suggest|give|send|let)\b|[.;!]|$)", do, re.I)
+        if say and not ru:
+            s = _as_said(say.group(1))
+            if s and not _covers(reply + " " + " ".join(lead), s):
+                lead.append(s)
+        offers = re.search(r"\b(offer|take|ask (?:for|them for)|collect|get|invite|предлож|возьми|попроси)", do, re.I)
+        said = reply + " " + " ".join(tail)
+        if offers and re.search(r"e-?mail|почт", do, re.I) and not re.search(r"e-?mail|почт", said, re.I):
+            tail.append(EMAIL_OFFER_RU if ru else EMAIL_OFFER)
+        if (offers and re.search(r"phone|call ?back|number|телефон|перезвон", do, re.I)
+                and not re.search(r"phone|number|call|телефон|номер|позвон|перезвон", said, re.I)):
+            tail.append(PHONE_OFFER_RU if ru else PHONE_OFFER)
+    return " ".join(x for x in (" ".join(lead), reply.strip(), " ".join(tail)) if x).strip()
+
+
+def _lesson_steps(lessons: list[dict]) -> list[dict]:
+    return [{"tool": "lesson", "label": LABELS["lesson"], "args": {"id": n["id"]}, "result": n["note"][:160], "ms": 0}
+            for n in lessons]
+
+
+def _outside_us(text: str) -> bool:
+    """'Do you ship to Canada?': a shipping question about a place outside the US, with no US place in it."""
+    return bool(SHIP_Q.search(text or "") and "outside_us" in shop.topics(text)
+                and not _state_said(text) and not re.search(r"\b\d{5}\b", text))
+
+
+def _code_answer(reply: str, steps: list[dict], lessons: list[dict], ru: bool) -> dict:
+    """An answer written by code from the shop's rules (no model call), with Lena's matching lessons applied."""
+    reply = _apply_lessons(reply, lessons, ru)
+    steps = steps + _lesson_steps(lessons)
+    return {"reply": reply, "steps": steps, "checkout": None, "usd": 0.0, "model": "rule",
+            "memo": "; ".join(f"{st['label']}: {st['result']}" for st in steps), "lessons": [n["id"] for n in lessons]}
+
+
+def _notify_answer(messages: list[dict]) -> dict | None:
+    """The shop offered to email the person when something changes, and they typed their email: it goes to Lena
+    in code (their own words kept), not to a model that has no tool for it."""
+    if len(messages) < 2 or messages[-1]["role"] != "user" or messages[-2]["role"] != "assistant":
+        return None
+    if EMAIL_OFFER not in messages[-2]["content"] and EMAIL_OFFER_RU not in messages[-2]["content"]:
+        return None
+    said = messages[-1]["content"].strip()
+    em = [e.rstrip(".") for e in EMAIL_IN.findall(said)]
+    if not em or ZIP_IN.search(said) or PHONE.search(said):   # an address or a phone: they're ordering, not waiting
+        return None
+    about = next((m["content"] for m in reversed(messages[:-2]) if m["role"] == "user"), "")
+    typed = " / ".join(m["content"] for m in messages if m["role"] == "user")
+    try:
+        shop.new_notify(em[-1], about, said, typed[-400:], channel="demo-shopper")
+    except ValueError:
+        return None
+    ru = bool(re.search(r"[а-яё]", said + about, re.I))
+    reply = ("Спасибо! Лена сохранила вашу почту и напишет, когда это изменится. Чем ещё помочь?" if ru else
+             "Thanks! Lena has your email and will write to you when that changes. Anything else I can help with?")
+    step = {"tool": "notify", "label": LABELS["notify"], "args": {}, "result": "Lena will email you", "ms": 0}
+    return {"reply": reply, "steps": [step], "checkout": None, "usd": 0.0, "model": "rule",
+            "memo": f"{step['label']}: {step['result']}", "lessons": []}
+
+
+def _fallback_reply(steps: list[dict], ru: bool, last_user: str = "", lessons: list[dict] | None = None) -> str:
     """Out of time: say what the tools already found, written by code, instead of making the person wait."""
     if not steps and re.search(r"\b(ship|deliver|send)\w*\b.*\b(to|in)\b|доставк|отправ", last_user, re.I):
         st = _state_said(last_user)
@@ -710,6 +801,10 @@ def _fallback_reply(steps: list[dict], ru: bool, last_user: str = "") -> str:
         if st["tool"] in ("search_counter", "item_details") and re.search(r"\$\d+|in stock", r):
             return ((f"Вот что есть: {r}. Сколько штук и в какой штат отправить?") if ru else
                     (f"Here's what I found: {r}. How many would you like, and which US state should it go to?"))
+    if lessons:   # Lena wrote what to say for exactly this question: that's the answer, not "send it again"
+        said = _apply_lessons("", lessons, ru)
+        if said:
+            return said
     return ("Простите, не успела. Напишите, пожалуйста, ещё раз." if ru else "Sorry, I didn't catch that in time. Could you send it once more?")
 
 
@@ -785,9 +880,20 @@ def _qty_in(text: str):
 def run(messages: list[dict], visitor: str = "") -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
-    answered = _news_answer(messages)
+    answered = _news_answer(messages) or _notify_answer(messages)
     if answered:
         return answered
+    last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    # Lena's lessons that this very message calls for (checked in code, not only handed to the model)
+    taught_now = shop.lessons_matching(last_user, visitor)
+    if _outside_us(last_user):
+        # a shop rule, answered in code before any model: US only, every state (judge 29.10, Canada)
+        ru = bool(re.search(r"[а-яё]", last_user, re.I))
+        step = {"tool": "about_counter", "label": LABELS["about_counter"], "args": {},
+                "result": "ships inside the US only, every state incl. Alaska and Hawaii", "ms": 0}
+        return _code_answer("Пока нет: Лена отправляет только по США, во все штаты, включая Аляску и Гавайи." if ru else
+                            "Not yet: Lena ships inside the US only for now, to every state including Alaska and Hawaii.",
+                            [step], taught_now, ru)
     if spent_today() >= DAILY_CAP_USD:
         raise OverBudget("today's demo budget is spent")
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
@@ -804,8 +910,10 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         convo.append({"role": m["role"], "content": MEMO_TAG.sub("", m["content"]).strip()})
         if m["role"] == "assistant" and m.get("memo"):
             convo.append({"role": "system", "content": "Tool results from your last turn: " + m["memo"]})
+    if taught_now:   # right next to the question, where the model can't miss it
+        convo.append({"role": "system", "content": "Lena wrote a lesson for exactly this kind of question. Follow it in "
+                      "this answer: " + " | ".join(n["note"] for n in taught_now)})
     steps, checkout, usd, nudges = [], None, 0.0, 2
-    last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
     quoted_before = any("made-to-order build" in (m.get("memo") or "") and "ready" in (m.get("memo") or "")
                         for m in messages if m["role"] == "assistant")
     # 'You asked for' is the person's own words, not the model's paraphrase of them.
@@ -901,7 +1009,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
         left = TURN_SECONDS - (time.time() - t_start)
         if left < 1.5:
             # the person has waited long enough: answer with what the tools already found instead of thinking on
-            reply = _must_say(_fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user),
+            reply = _must_say(_fallback_reply(steps or ([] if taught_now else _earlier_steps(messages)), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user, taught_now),
                               last_user, steps, checkout, lang_text)
             by_code = True
             break
@@ -910,7 +1018,7 @@ def run(messages: list[dict], visitor: str = "") -> dict:
                 model=MODEL, messages=convo, tools=TOOLS, max_tokens=500, temperature=0.2,
                 extra_body={"chat_template_kwargs": {"enable_thinking": False}})
         except Exception:   # the model host was slow or failed: say what we have, never an endless wait
-            reply = _must_say(_fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user),
+            reply = _must_say(_fallback_reply(steps or ([] if taught_now else _earlier_steps(messages)), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user, taught_now),
                               last_user, steps or _earlier_steps(messages), checkout, lang_text)
             by_code = True
             break
@@ -1090,10 +1198,10 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             if re.search(r"here'?s my (information|info|details|address)|\bmy (full )?name is\b|^\s*full name\s*:|"
                          r"вот мои (данные|контакты)|меня зовут", reply, re.I | re.M):
                 # the model wrote as if it were the shopper (and made up a person): never send that
-                reply = _fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user)
+                reply = _fallback_reply(steps or ([] if taught_now else _earlier_steps(messages)), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user, taught_now)
             reply = _scrub_dates(reply, steps, messages, typed)
             if len(reply.strip()) < 25 and not checkout:   # "Sure!" alone answers nothing
-                reply = _fallback_reply(steps or _earlier_steps(messages), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user)
+                reply = _fallback_reply(steps or ([] if taught_now else _earlier_steps(messages)), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user, taught_now)
             reply = _must_say(reply, last_user, steps or _earlier_steps(messages), checkout, lang_text)
             break
         convo.append({"role": "assistant", "content": msg.content or "",
@@ -1123,6 +1231,9 @@ def run(messages: list[dict], visitor: str = "") -> dict:
             reply = _scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", last)), typed) or \
                 "I couldn't finish that in a few steps. Could you tell me a bit more?"
     add_spend(usd)
+    if taught_now:   # her lesson holds whatever path wrote the reply: model, code or out-of-time
+        reply = _apply_lessons(reply, taught_now, bool(re.search(r"[а-яё]", lang_text, re.I)))
+        steps += _lesson_steps(taught_now)
     # What the tools returned this turn, so the next turn still knows it (the browser sends it back with the reply).
     memo = "; ".join(f"{st['label']}: {st['result']}" for st in steps)
     # after the first order with an email, the shop asks about news once (the model is told not to ask itself)
@@ -1136,4 +1247,4 @@ def run(messages: list[dict], visitor: str = "") -> dict:
     if not reply.strip():
         reply = "Sorry, I lost my thread there. Could you say that again in a few words?"
     return {"reply": reply.strip(), "steps": steps, "checkout": checkout, "usd": round(usd, 5), "model": MODEL,
-            "memo": memo}
+            "memo": memo, "lessons": [n["id"] for n in taught_now]}

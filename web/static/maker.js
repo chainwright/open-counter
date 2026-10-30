@@ -117,15 +117,20 @@ window.OC = (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const box = document.getElementById("reqs"); if (!box) return;
   async function load() {
-    const rs = (await fetch("/api/maker/requests").then((r) => r.json()).catch(() => [])).filter((r) => r.kind === "callback");
-    box.hidden = !rs.length; if (!rs.length) return;
-    box.innerHTML = `<h2 class="rq-h">Call back <span>${rs.filter((r) => r.status === "to_call").length} waiting</span></h2>` + rs.map((r) => `
+    const all = await fetch("/api/maker/requests").then((r) => r.json()).catch(() => []);
+    const rs = all.filter((r) => r.kind === "callback"), mails = all.filter((r) => r.kind === "notify");
+    box.hidden = !rs.length && !mails.length; if (box.hidden) return;
+    box.innerHTML = (rs.length ? `<h2 class="rq-h">Call back <span>${rs.filter((r) => r.status === "to_call").length} waiting</span></h2>` : "") + rs.map((r) => `
       <div class="rq ${esc(r.status)}"><span class="badge rqb">${r.status === "to_call" ? "CALL THEM" : "CALLED"}</span>
         <h3><a href="tel:${esc(r.contact.phone)}">${esc(r.contact.phone)}</a>${r.contact.name ? " · " + esc(r.contact.name) : ""}</h3>
         ${r.message ? `<div class="asked">"${esc(r.message)}"</div>` : ""}
         <div class="m">via ${r.channel === "mcp" ? "AI agent (MCP)" : "AI agent"} · ${new Date(r.created * 1000).toLocaleString()}</div>
         ${r.status === "to_call" ? `<div class="acts"><a class="p btn" href="tel:${esc(r.contact.phone)}">Call</a><button data-rq="${esc(r.id)}" data-st="called">Done</button></div>` : ""}
-      </div>`).join("");
+      </div>`).join("")
+      // emails the agent took because one of Lena's lessons told it to offer ("tell me when you ship to Canada")
+      + (mails.length ? `<h2 class="rq-h">Email when it changes <span>${mails.length}</span></h2>` + mails.map((r) => `
+      <div class="rq"><span class="badge rqb">EMAIL THEM</span><h3>${esc(r.contact.email)}</h3>
+        ${r.about ? `<div class="asked">"${esc(r.about)}"</div>` : ""}<div class="m">via AI agent · ${new Date(r.created * 1000).toLocaleString()}</div></div>`).join("") : "");
   }
   box.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-rq]"); if (!b) return;

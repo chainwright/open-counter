@@ -583,6 +583,79 @@ def active_lessons(limit: int = 12, visitor: str = "") -> list[str]:
     return [n["note"] for n in lessons_for(visitor) if n.get("active")][-limit:]
 
 
+# A lesson in the prompt alone is only advice: the model may skip it, and answers written by code never read it
+# (judge 29.10: L-S1 "outside the US → US only" was active and Canada still went unanswered). So a lesson of the
+# form "If/When <situation>, <do this>" is matched against each new message in code, and the reply is checked
+# against it (shopper._apply_lessons).
+TOPICS = {
+    "outside_us": r"outside (?:of )?(?:the )?(?:us|u\.s\.?|usa|united states|america)|international(?:ly)?|abroad|overseas|"
+                  r"another country|other countries|worldwide|\bcanad[a-z]*|\bmexic[a-z]*|\buk\b|united kingdom|\bbritain\b|"
+                  r"\bengland\b|\beurope\b|\bgermany\b|\bfrance\b|\bitaly\b|\bspain\b|\baustralia\b|\bjapan\b|\bireland\b|"
+                  r"за границ|за рубеж|канад|мексик|европ|в другую страну",
+    "returns": r"\breturn(?:s|ed|ing)?\b|refund|exchange|send it back|возврат|вернуть|обмен",
+    "packaging": r"gift[- ]?wrap|wrapping|packaging|упаков|подарочн",
+    "payment": r"credit card|debit card|pay (?:with|by|via)|apple pay|google pay|venmo|crypto|bitcoin|\bcash\b|оплат|картой",
+    "damage": r"broken|damaged|arrived broke|warranty|guarantee|сломан|поврежд|гаранти",
+    "speed": r"express|faster|overnight|rush|expedite|срочн|быстрее",
+    "discount": r"discount|cheaper|% off|coupon|\bdeal\b|скидк|дешевл",
+}
+_LESSON = re.compile(r"^\s*(?:if|when|whenever|in case|если|когда)\b(?P<when>.+?)(?:,\s*|\s+then\s+|\s*:\s*|\s+[—-]\s+)"
+                     r"(?P<do>(?:then\s+)?(?:say|tell|answer|reply|offer|ask|mention|explain|suggest|point|give|let|don.?t|"
+                     r"do not|never|always|invite|recommend|take|send|show|add|keep|скажи|ответь|предложи|попроси|не)\b.*)$",
+                     re.I | re.S)
+_STOP = {"someone", "somebody", "asks", "asked", "asking", "about", "shopper", "shoppers", "person", "people", "customer",
+         "they", "them", "their", "there", "what", "which", "something", "anything", "question", "questions", "wants",
+         "want", "says", "said", "this", "that", "with", "from", "have", "does", "more", "your", "cars", "shop", "tell",
+         "they're", "you're", "would", "could", "should", "will", "into", "when", "where", "kind", "like"}
+
+
+def split_lesson(note: str) -> tuple[str, str]:
+    """'If someone asks about X, say Y' -> ('someone asks about X', 'say Y'); ('', note) when it has no situation."""
+    m = _LESSON.match(note or "")
+    return (m.group("when").strip(), m.group("do").strip()) if m else ("", (note or "").strip())
+
+
+def topics(text: str) -> set[str]:
+    return {k for k, rx in TOPICS.items() if re.search(rx, text or "", re.I)}
+
+
+def content_words(text: str) -> set[str]:
+    return {w.rstrip("s") for w in re.findall(r"[a-zа-яё']{4,}", (text or "").lower()) if w not in _STOP}
+
+
+def lesson_matches(note: str, text: str) -> bool:
+    """Does this message raise the situation the lesson is about? By topic when the lesson names one (returns,
+    shipping outside the US, ...), otherwise by a distinctive word they share ('dust cover', 'plinth')."""
+    when, _ = split_lesson(note)
+    if not when or not (text or "").strip():
+        return False
+    want = topics(when)
+    if want:
+        return bool(want & topics(text))
+    return bool(content_words(when) & content_words(text))
+
+
+def lessons_matching(text: str, visitor: str = "") -> list[dict]:
+    """Every active lesson in this visitor's scope (Lena's, plus their own on the demo) that this message calls for.
+    All of them are checked, not only the newest few that fit in the prompt."""
+    return [n for n in lessons_for(visitor) if n.get("active") and lesson_matches(n["note"], text)]
+
+
+def new_notify(email: str, about: str, said: str, asked_for: str, channel: str) -> dict:
+    """The person left their email after the shop offered to tell them when something changes (e.g. shipping
+    outside the US). Kept for Lena with their own words as the record of what they asked for."""
+    if not EMAIL.match((email or "").strip()):
+        raise ValueError("That doesn't look like an email address.")
+    rq = {"id": "NT-" + uuid.uuid4().hex[:8].upper(), "kind": "notify", "status": "to_email", "created": time.time(),
+          "contact": {"email": email.strip()[:120]}, "about": (about or "")[:160], "message": (said or "")[:300],
+          "asked_for": asked_for[:400], "channel": channel}
+    with _lock:
+        all_ = requests_()
+        all_.append(rq)
+        _requests_path().write_text(json.dumps(all_[-MAX_ORDERS:], indent=2, ensure_ascii=False))
+    return rq
+
+
 # ZIP code prefixes (first three digits) by state, from USPS ranges, so a ZIP can't sit in the wrong state.
 _ZIP3 = {
     "AL": [(350, 369)], "AK": [(995, 999)], "AZ": [(850, 865)], "AR": [(716, 729)], "CA": [(900, 961)],

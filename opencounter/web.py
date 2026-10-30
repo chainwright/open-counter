@@ -794,7 +794,8 @@ def request_balance(oid: str, req: Request):
 @app.get("/api/maker/requests")
 def maker_requests():
     """Call-back requests for Lena (newest first; masked on the public demo screen)."""
-    return [{**r, "contact": _mask(r.get("contact")), "message": _hide_contact(r.get("message") or "")}
+    return [{**r, "contact": _mask(r.get("contact")), "message": _hide_contact(r.get("message") or ""),
+             "about": _hide_contact(r.get("about") or ""), "asked_for": _hide_contact(r.get("asked_for") or "")}
             for r in reversed(shop.requests_())]
 
 
