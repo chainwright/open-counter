@@ -10,8 +10,9 @@ import re
 import threading
 import time
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.environ.get("OPENCOUNTER_DATA", ROOT / "data"))
@@ -25,6 +26,27 @@ _lock = threading.RLock()
 DEMO = os.environ.get("OPENCOUNTER_DEMO", "1") != "0"
 RESTOCK_AFTER_S = float(os.environ.get("OPENCOUNTER_DEMO_RESTOCK_MIN", "10")) * 60
 MAX_ORDERS = 2000
+
+# The shop's clock: Lena's bench in Columbus, Ohio. Ship days, delivery dates, "today" in the back office and the
+# daily AI budget all follow it, not the server's UTC (judge 29.10: a US shopper in the evening saw dates a day late).
+SHOP_TZ = ZoneInfo(os.environ.get("OPENCOUNTER_TZ", "America/New_York"))
+
+
+def _clock() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def now() -> datetime:
+    return _clock().astimezone(SHOP_TZ)
+
+
+def today() -> date:
+    return now().date()
+
+
+def local(ts: float) -> datetime:
+    """A stored timestamp on the shop's clock."""
+    return datetime.fromtimestamp(ts, SHOP_TZ)
 
 # USPS Ground Advantage from Columbus, OH, in business days after drop-off. A planning estimate, shown as one.
 _ZONE_DAYS = {
@@ -111,7 +133,7 @@ def shipping_policy() -> str:
 
 def next_ship_day(today: date | None = None) -> date:
     s = shop()["rules"]
-    d = (today or date.today()) + timedelta(days=s["handling_days"])
+    d = (today or now().date()) + timedelta(days=s["handling_days"])
     while d.strftime("%a") not in s["ship_days"]:
         d += timedelta(days=1)
     return d
@@ -163,7 +185,7 @@ def delivery_estimate(state: str, today: date | None = None, need_by: str = "") 
     if state not in US_STATES:
         return {"ok": False, "reason": f"Lena ships inside the US only; '{state or '?'}' is not a US state code."}
     lo, hi = next((z[0], z[1]) for z in _ZONE_DAYS.values() if state in z[2])
-    today = today or date.today()
+    today = today or now().date()
     ship = next_ship_day(today)
     early, late = _add_business_days(ship, lo), _add_business_days(ship, hi)
     day = lambda d: f"{d.strftime('%A')} {d.isoformat()}"
@@ -223,7 +245,7 @@ def commission_quote(lines: list[dict], state: str = "", today: date | None = No
     discount = round(subtotal * pct / 100, 2)
     shipping = 0.0 if qty >= r["commission_free_shipping_from"] else r["shipping_usd"]
     weeks = commission_weeks(qty)
-    today = today or date.today()
+    today = today or now().date()
     ready = today + timedelta(weeks=weeks)
     out = {"ok": True, "cars": clean, "total_cars": qty, "unit_usd": unit, "subtotal_usd": subtotal,
            "volume_discount_percent": pct, "discount_usd": discount, "shipping_usd": round(shipping, 2),

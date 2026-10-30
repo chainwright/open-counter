@@ -87,8 +87,8 @@ def facts(today: float | None = None) -> dict:
     listings = {l["id"]: l for l in shop.shop()["listings"]}
     out = {}
     for label, days in (("today", 1), ("last 7 days", 7), ("last 30 days", 30), ("last 90 days", 90)):
-        lt = time.localtime(now)
-        t0 = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1)) - (days - 1) * 86400
+        midnight = shop.local(now).replace(hour=0, minute=0, second=0, microsecond=0)   # Lena's day, not UTC
+        t0 = midnight.timestamp() - (days - 1) * 86400
         os_ = [o for o in shop.orders() if o.get("created", 0) >= t0 and o.get("status") not in ("error", "cancelled")]
         paid = [o for o in os_ if o.get("status") in ("paid", "shipped")]
         by_model: dict[str, int] = {}

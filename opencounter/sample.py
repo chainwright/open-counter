@@ -60,8 +60,7 @@ def build(now: float | None = None):
 
         def when(d: int) -> float:   # evenings are busiest, some lunch-time chats
             hour = rnd.choice([9, 11, 12, 12, 13, 17, 18, 19, 19, 20, 20, 21, 21, 22])
-            lt = time.localtime(day0 + d * 86400)
-            t = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, hour, rnd.randint(0, 59), 0, 0, 0, -1))
+            t = shop.local(day0 + d * 86400).replace(hour=hour, minute=rnd.randint(0, 59), second=0, microsecond=0).timestamp()
             return t if t < now - 600 else now - rnd.randint(15, 300) * 60   # never in the future
 
         def person(i: int) -> dict:

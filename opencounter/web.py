@@ -9,8 +9,6 @@ import json
 import os
 import re
 import threading
-from datetime import datetime
-from zoneinfo import ZoneInfo
 import time
 from datetime import datetime
 from pathlib import Path
@@ -661,7 +659,7 @@ _STUCK = re.compile(r"couldn.?t finish|can.?t help|cannot help|unable to|don.?t 
                     r"try again later|checkout (is|system is) (currently )?offline", re.I)
 _TOOL_TROUBLE = re.compile(r"^(no listing|only \d+|.*not a us state|checkout is offline|paypal could not|ask the person|"
                            r"still needed|before checkout)", re.I)
-_SHOP_TZ = ZoneInfo("America/New_York")   # Columbus, Ohio
+_SHOP_TZ = shop.SHOP_TZ   # Columbus, Ohio
 _PAINT = {"68-G": "#2FA36B", "67-B": "#3D6FE0", "70-O": "#FF6A2B", "73-Y": "#F5C400", "65-R": "#E3242B"}
 
 
@@ -670,12 +668,12 @@ def maker_insights(days: int = 30):
     """Lena's numbers for a period: cars by model per day (in the cars' own colours), when the shop's AI is busiest,
     and how well it does (chats that became orders, and the replies where it got stuck)."""
     days = max(1, min(int(days), 366))
-    now = time.time()
+    now = shop.now().timestamp()
     t0 = now - days * 86400
     listings = {l["id"]: l for l in shop.shop()["listings"]}
     colour = {lid: _PAINT.get((re.search(r"code (\w+-\w)", l.get("paint", "")) or [None, ""])[1], "#8C9096")
               for lid, l in listings.items()}
-    day = lambda t: time.strftime("%Y-%m-%d", time.localtime(t))
+    day = lambda t: shop.local(t).strftime("%Y-%m-%d")   # days on Lena's clock, like the heatmap
     labels = [day(now - (days - 1 - i) * 86400) for i in range(days)]
     series = {lid: {"title": l["title"].rsplit(",", 1)[0], "colour": colour[lid], "units": [0] * days, "usd": 0.0}
               for lid, l in listings.items()}
@@ -813,7 +811,7 @@ def news_list(key: str = ""):
         if c.get("marketing") is True:
             w.writerow([c.get("full_name"), c.get("email"), c.get("phone"), c.get("city"), c.get("state"),
                         " ".join(c.get("orders", [])), c.get("consent_said", ""),
-                        time.strftime("%Y-%m-%d %H:%M", time.gmtime(c.get("consent_at", 0)))])
+                        shop.local(c.get("consent_at", 0)).strftime("%Y-%m-%d %H:%M")])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=small-garage-news-list.csv"})
 

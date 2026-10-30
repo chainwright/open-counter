@@ -89,6 +89,14 @@
     } catch (e) {}
   }
 
+  // Lena's phone shows her own date and time (Columbus, Ohio), not a frozen day
+  const lock = () => { try {
+    const now = new Date(), tz = "America/New_York";
+    document.getElementById("lockdate").textContent = now.toLocaleDateString("en-US", { timeZone: tz, weekday: "long", month: "long", day: "numeric" });
+    document.getElementById("locktime").textContent = now.toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M$/i, "");
+  } catch (e) {} };
+  lock(); setInterval(lock, 30000);
+
   document.getElementById("ppbtn").addEventListener("click", sold);
   window.addEventListener("load", () => setTimeout(async () => { await run(); if (new URLSearchParams(location.search).has("sold")) setTimeout(sold, 300); }, 700));
   window.openCounter = { run, sold };

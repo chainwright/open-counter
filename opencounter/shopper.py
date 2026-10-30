@@ -168,14 +168,14 @@ def _client_() -> OpenAI:
 def spent_today() -> float:
     if not _spent:   # first call after a restart: the cap survives deploys, it's kept on the data disk
         _spent.update(shop._json("spend.json", {}))
-    return _spent.get(date.today().isoformat(), 0.0)
+    return _spent.get(shop.today().isoformat(), 0.0)   # the shop's day (Ohio), not the server's UTC
 
 
 def add_spend(usd: float):
     """Model spend for the daily cap, written to disk so a restart or a deploy doesn't reset it."""
     with _lock:
         spent_today()
-        d = date.today().isoformat()
+        d = shop.today().isoformat()
         _spent[d] = round(_spent.get(d, 0.0) + usd, 6)
         for k in [k for k in _spent if k < d][:-30]:   # keep a month of days
             _spent.pop(k)
