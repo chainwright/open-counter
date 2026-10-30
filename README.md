@@ -28,6 +28,13 @@ with checks written in code. Latest results and every transcript: [`evals/RESULT
 `evals/transcripts.json`. Every answer has a 7-second budget: when the model runs out of time, the reply is written by
 code from what the tools already found (price, dates, what's still needed), so a shopper never waits on a spinner. Every case also checks that each answer arrived within 8 s (budget plus network).
 
+Honest numbers: the last live run (28 Oct) passed 32 of 33 under that day's checks. The checks are stricter now: no
+reply may ask the person to resend, "on time" must really say it, and the ship date must be the one the shop's tool
+returned (not a fixed calendar day). Re-checked offline on the saved transcripts with no model call
+(`python evals/run_evals.py --rescore`), **27 of the 32 unchanged cases pass**: [`evals/RESCORE.md`](evals/RESCORE.md).
+The five that fail are out-of-time non-answers; the outside-the-US one is now answered in code, and Lena's lessons now
+shape the out-of-time reply too (`tests/test_lessons.py`). A fresh live run is the next step.
+
 The closed-tab case, run on the live sandbox on 28 Oct 2026: order `OC-C7DAD2E3` (PayPal order `9NC75431R2481360K`)
 was approved by a person while the return page was told to stay out of it (a `webhook-only-test` visitor). PayPal's
 `CHECKOUT.ORDER.APPROVED` webhook arrived, its signature was verified, and the webhook handler captured the payment

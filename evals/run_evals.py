@@ -1,6 +1,7 @@
 """Scripted conversations against the live model, each with checks written in code.
 
     .venv/bin/python evals/run_evals.py            # all cases, writes evals/RESULTS.md and evals/transcripts.json
+    .venv/bin/python evals/run_evals.py --rescore  # no model calls: today's checks on the saved transcripts
 
 Every case runs on a fresh copy of the shop (no shared state), through the same shopper.run() the site uses. A check
 looks at what a buyer and Lena would care about: the reply, the tool steps, and the orders that were (or weren't)
@@ -24,12 +25,41 @@ MIA = "Mia Cole, 312-555-0177, mia.cole@example.com, 233 S Wacker Dr, Chicago IL
 IVAN = "Иван Петров, 312-555-0190, ivan@example.com, 233 S Wacker Dr, Chicago IL 60606"
 
 
+def from_transcript(fn):     # a check that can be re-run on a saved transcript (reply and tool steps only)
+    fn.transcript = True
+    return fn
+
+
 def has(pattern):            # the last reply matches
-    return lambda r, o, s: bool(re.search(pattern, r, re.I))
+    return from_transcript(lambda r, o, s: bool(re.search(pattern, r, re.I)))
 
 
 def lacks(pattern):
-    return lambda r, o, s: not re.search(pattern, r, re.I)
+    return from_transcript(lambda r, o, s: not re.search(pattern, r, re.I))
+
+
+WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+
+def ship_date_from_tool():
+    """The reply names the ship date the shop's own tool returned in this chat (its weekday or its date), whatever
+    day the eval runs on. It used to look for 'thursday|oct 29', which only passed on 29 October (judge N10)."""
+    def check(r, o, s):
+        for st in s:
+            m = re.search(r"\bships (mon|tue|wed|thu|fri|sat|sun)[a-z]*(?:,? (\d{4}-\d{2}-\d{2})|,? ([a-z]{3})[a-z]* (\d{1,2}))?",
+                          st["result"], re.I)
+            if not m:
+                continue
+            day = WEEKDAYS[[w[:3] for w in WEEKDAYS].index(m.group(1).lower())]
+            ok = re.search(r"\b(" + day + r"|" + day[:3] + r")\b", r, re.I)
+            mon, d = (MONTHS[int(m.group(2)[5:7]) - 1], int(m.group(2)[8:])) if m.group(2) else (
+                (m.group(3).lower()[:3], int(m.group(4))) if m.group(3) else (None, None))
+            if mon:
+                ok = ok or re.search(r"\b" + mon + r"[a-z]*\.? " + str(d) + r"(st|nd|rd|th)?\b", r, re.I)
+            return bool(ok)
+        return False   # no ship date was ever computed: the reply can't have one from the tool
+    return from_transcript(check)
 
 
 def orders(n, kind=None):    # exactly n live orders (of a kind), ignoring replaced ones
@@ -41,14 +71,20 @@ def total(usd):              # some live order has this total
 
 
 def tool(name):
-    return lambda r, o, s: any(st["tool"] == name for st in s)
+    return from_transcript(lambda r, o, s: any(st["tool"] == name for st in s))
 
 
 def russian():
-    return lambda r, o, s: bool(re.search(r"[а-яё]{4,}", r, re.I)) and not re.search(r"\b(the|please|your)\b", r, re.I)
+    return from_transcript(lambda r, o, s: bool(re.search(r"[а-яё]{4,}", r, re.I)) and not re.search(r"\b(the|please|your)\b", r, re.I))
 
 
 NO_LEAK = lacks(r"</?think>|\b(start_checkout|quote_commission|delivery_estimate|search_counter)\b|let'?s (ask|respond)")
+# Never an answer that asks the person to resend (judge rounds 5 and 6): checked on every reply of every case.
+NON_ANSWER = re.compile(r"didn.?t catch that|send it (once more|again)|could you say that again|не успела|напишите.{0,20}ещё раз", re.I)
+LESSONS = ["If someone asks about shipping outside the US, say Lena ships inside the US only for now, and offer to take "
+           "their email so she can tell them when that changes.",
+           "If someone asks something you can't answer from the shop's facts (returns, custom packaging), say Lena will "
+           "answer it personally and offer to take their phone for a call back."]   # the shop's own sample lessons
 
 CASES = [
     # (name, turns, checks)  checks: list of (label, fn) on the final turn
@@ -72,7 +108,7 @@ CASES = [
     ("stock: over the stock goes to made to order", ["I need 40 green fastbacks to Texas"],
      [("no stock order", orders(0)), ("offers the shelf or made to order", has(r"in stock|made.to.order|build"))]),
     ("deadline: on time", ["A gift for my dad who loved his '68 green fastback. Under $60, Denver, by next Friday."],
-     [("says on time", has(r"on time|by next friday|in time|will (arrive|get there)")), ("clean", NO_LEAK)]),
+     [("says on time", has(r"on time|arrives? in time|by next friday|will (arrive|get there)")), ("clean", NO_LEAK)]),
     ("deadline: too late is said", ["2 green to Denver by Friday please"],
      [("warns", has(r"too late|won.?t arrive|not arrive|miss|after (your|the) (deadline|friday)|past"))]),
     ("discount asked", ["Can I get 20% off 2 red ones? Ship to Austin TX"],
@@ -85,7 +121,8 @@ CASES = [
     ("brand name", ["Hi, I like Porsche"],
      [("no brand in reply", lacks(r"porsche")), ("offers a car", has(r"coup|fastback|convertible|\$59"))]),
     ("outside the US", ["Do you ship to Canada?"],
-     [("says US only", has(r"(only|just).{0,30}(US|United States|within)|not (yet )?(ship|deliver).{0,20}canada|inside the US"))]),
+     [("says US only", has(r"(only|just).{0,30}(US|United States|within)|not (yet )?(ship|deliver).{0,20}canada|inside the US")),
+      ("follows Lena's lesson: offers email", has(r"e-?mail"))]),
     ("Hawaii", ["Do you ship to Hawaii?"],
      [("says yes", has(r"\byes\b|we ship to hawaii|ship to hawaii|deliver to hawaii"))]),
     ("ZIP in another state", [f"1 orange coupe to Denver. Kim Park, 415-555-0101, kim@example.com, 500 Howard St, San Francisco CA 94105"],
@@ -113,7 +150,7 @@ CASES = [
     ("asks for Lena's number", ["What's Lena's phone number?"],
      [("never gives one", lacks(r"\d{3}[-.\s]\d{3}[-.\s]\d{4}"))]),
     ("ship date question", ["3 of the yellow ones to Austin", "After I pay, when will you ship it?"],
-     [("ship date from tool", has(r"thursday|oct(ober)? 29|29"))]),
+     [("ship date from tool", ship_date_from_tool())]),
     ("gibberish", ["asdkjh qwe zzz"],
      [("polite", has(r"\?")), ("no order", orders(0))]),
     ("empty-ish small talk", ["hi"],
@@ -134,25 +171,71 @@ CASES = [
 def run_case(name, turns, checks):
     shop.DATA = pathlib.Path(tempfile.mkdtemp())
     shop.seed(force=True)
-    shop.add_coaching("", "If someone asks something you can't answer from the shop's facts (returns, custom packaging), "
-                          "say Lena will answer it personally and offer to take their phone for a call back.")
-    h, log, t0, slow = [], [], time.time(), 0.0
+    for note in LESSONS:
+        shop.add_coaching("", note)
+    h, log, t0, slow, steps = [], [], time.time(), 0.0, []
     for t in turns:
         h.append({"role": "user", "content": t})
         t1 = time.time()
         r = shopper.run(h)
         slow = max(slow, time.time() - t1)
         h.append({"role": "assistant", "content": r["reply"], "memo": r["memo"]})
+        steps += r["steps"]
         log.append({"user": t, "reply": r["reply"], "steps": [f"{s['tool']}: {s['result']}" for s in r["steps"]]})
     last = h[-1]["content"]
     os_ = shop.orders()
-    res = [(label, bool(fn(last, os_, r["steps"]))) for label, fn in checks]
-    res.append(("every answer within 8 s", slow <= 8.0))   # the 7 s budget, measured (plus network)
+    res = [(label, bool(fn(last, os_, steps))) for label, fn in checks]
+    res += always_checks(log, slow)
     return {"case": name, "seconds": round(time.time() - t0, 1), "slowest_answer_s": round(slow, 1), "checks": res, "passed": all(ok for _, ok in res),
             "transcript": log}
 
 
+def always_checks(log, slow):
+    """On every case: no reply asks the person to resend, and every answer came within the 7 s budget plus network."""
+    return [("no 'send it again' non-answer", not any(NON_ANSWER.search(t["reply"]) for t in log)),
+            ("every answer within 8 s", slow <= 8.0)]
+
+
+def rescore(path=None):
+    """Today's checks on the last saved run, without calling any model: checks on the replies and tool steps are
+    computed again; checks on orders the run created keep their saved result; a case whose script changed since
+    can't be re-checked and is listed apart."""
+    here = pathlib.Path(__file__).parent
+    saved = {r["case"]: r for r in json.loads(pathlib.Path(path or here / "transcripts.json").read_text())}
+    out, changed = [], []
+    for name, turns, checks in CASES:
+        r = saved.get(name)
+        if not r or [t["user"] for t in r.get("transcript", [])] != list(turns):
+            changed.append(name)
+            continue
+        log = r["transcript"]
+        steps = [{"tool": x.split(": ", 1)[0], "result": x.split(": ", 1)[-1]} for t in log for x in t["steps"]]
+        was = dict((label, ok) for label, ok in r["checks"])
+        res = []
+        for label, fn in checks:
+            if getattr(fn, "transcript", False):
+                res.append((label, bool(fn(log[-1]["reply"], [], steps))))
+            elif label in was:
+                res.append((label, was[label]))      # depends on the orders that run made: kept as measured
+        res += always_checks(log, r.get("slowest_answer_s", 0) or 0)
+        out.append({"case": name, "checks": res, "passed": all(ok for _, ok in res)})
+    return out, changed
+
+
 def main():
+    if "--rescore" in sys.argv:
+        out, changed = rescore()
+        p, n = sum(r["passed"] for r in out), len(out)
+        lines = ["# Open Counter: the saved run, re-checked with today's checks\n",
+                 f"No model was called. Saved transcripts (`evals/transcripts.json`) re-checked on "
+                 f"{time.strftime('%Y-%m-%d')}: **{p}/{n} cases pass**. "
+                 f"{len(changed)} case(s) changed their script since and need a live run: {', '.join(changed) or 'none'}.\n",
+                 "| Case | Result | Failed checks |", "|---|---|---|"]
+        lines += [f"| {r['case']} | {'✅' if r['passed'] else '❌'} | {', '.join(l for l, ok in r['checks'] if not ok) or '—'} |"
+                  for r in out]
+        (pathlib.Path(__file__).parent / "RESCORE.md").write_text("\n".join(lines) + "\n")
+        print(f"{p}/{n} pass on the saved transcripts; changed since: {changed}")
+        return
     only = sys.argv[1:]
     out = []
     for name, turns, checks in CASES:
