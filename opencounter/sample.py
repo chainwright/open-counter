@@ -195,7 +195,7 @@ def build(now: float | None = None):
         return len(orders), len(convs)
 
 
-DATA_VERSION = "8"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
+DATA_VERSION = "9"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
 
 # QA and judge runs on the public demo use visitor ids and chat ids starting with "qa" (qa-e0147409, qa5-canada-7409);
 # a real browser's ids are random hex ("anon-…", 24 hex digits) and never do. Orders from the judge rounds that were
