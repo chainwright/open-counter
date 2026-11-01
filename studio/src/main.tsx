@@ -27,7 +27,9 @@ const adapter = shopAdapter();
 function App() {
   const [data, setData] = useState<AgDataSourcesDefinition>();
   useEffect(() => {
-    fetch('/api/maker/orders').then((r) => r.json()).then((o: Order[]) => { const r = rows(o); (window as any).__rows = r; setData({ sources: [{ id: 'sales', data: r }] }); })
+    Promise.all([fetch('/api/maker/orders').then((r) => r.json()), fetch('/api/maker/daily?days=14').then((r) => (r.ok ? r.json() : [])).catch(() => [])])
+      .then(([o, d]: [Order[], any[]]) => { const r = rows(o); (window as any).__rows = r;
+        setData({ sources: [{ id: 'sales', data: r }, { id: 'daily', data: d.map((x) => ({ ...x, day: x.day })) }] }); })
       .catch((e) => { (window as any).__err = String(e); });
   }, []);
   const ai = useMemo<AgAiHarnessSetup>(() => ({ api }) => createAiHarness(api, {
@@ -88,8 +90,10 @@ function App() {
   }), []);
   const initialState = useMemo(() => ({
     pages: [{ id: 'week', name: 'This week',
-      widgets: { sold: { type: 'agent-sold', format: { days: 7 } }, stuck: { type: 'agent-stuck', format: { days: 7 } } },
-      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 16, ySpan: 52 } } }],
+      widgets: { sold: { type: 'agent-sold', format: { days: 7 } }, stuck: { type: 'agent-stuck', format: { days: 7 } },
+        funnel: { type: 'column-chart-grouped', format: { title: { enabled: true, text: 'Chats vs orders · last 14 days' } },
+          dataMapping: { categoryKey: [{ id: 'daily.day' }], valueKey: [{ id: 'daily.chats', aggregation: 'sum' }, { id: 'daily.orders', aggregation: 'sum' }] } } },
+      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 16, ySpan: 52 }, funnel: { xTrack: 16, yTrack: 11, xSpan: 8, ySpan: 30 } } }],
     selectedPageId: 'week',
     panels: { filters: { collapsed: true }, compose: { collapsed: true }, data: { collapsed: true } },
   }), []);

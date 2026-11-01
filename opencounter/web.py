@@ -811,6 +811,25 @@ def maker_insights(days: int = 30):
             "answered_pct": round(100 * (1 - len(stuck) / turns)) if turns else 100}
 
 
+@app.get("/api/maker/daily")
+def maker_daily(days: int = 14):
+    """One row per day on Lena's clock: shopper chats started and orders placed (the studio's chats-vs-orders chart)."""
+    days = max(1, min(int(days), 366))
+    now = shop.now().timestamp()
+    day = lambda t: shop.local(t).strftime("%Y-%m-%d")
+    labels = [day(now - (days - 1 - i) * 86400) for i in range(days)]
+    rows = {d: {"day": d, "chats": 0, "orders": 0} for d in labels}
+    for c in shop.conversations():
+        d = day(c.get("started") or c.get("updated", 0))
+        if d in rows:
+            rows[d]["chats"] += 1
+    for o in shop.orders():
+        d = day(o.get("created", 0))
+        if d in rows and o.get("status") not in ("error", "cancelled", "replaced"):
+            rows[d]["orders"] += 1
+    return [rows[d] for d in labels]
+
+
 @app.get("/api/maker/agent_sales")
 def maker_agent_sales(days: int = 7):
     """The studio's "sold to an agent" strip: orders this period by who sold them — an outside AI agent over MCP,

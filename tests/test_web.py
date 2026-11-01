@@ -137,3 +137,14 @@ def test_agent_sales_strip_counts_orders_by_who_sold_them(monkeypatch):
     out = web.maker_agent_sales(days=7)
     assert (out["via_mcp"], out["her_chat"], out["made_to_order"]) == (2, 1, 1)
     assert out["last_mcp"] == {"id": "B", "status": "awaiting_approval", "paypal": "APPROVAL PENDING"}
+
+
+def test_daily_counts_chats_and_live_orders_per_day(monkeypatch):
+    import time
+    from opencounter import web, shop
+    now = time.time()
+    monkeypatch.setattr(shop, "conversations", lambda: [{"started": now - 60}, {"started": now - 120}, {"started": now - 40 * 86400}])
+    monkeypatch.setattr(shop, "orders", lambda: [{"created": now - 30, "status": "paid"}, {"created": now - 30, "status": "cancelled"}])
+    rows = web.maker_daily(days=14)
+    assert len(rows) == 14 and rows[-1]["chats"] == 2 and rows[-1]["orders"] == 1
+    assert sum(r["chats"] for r in rows) == 2
