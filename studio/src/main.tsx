@@ -9,6 +9,7 @@ import './widgets.css';
 import { AgStudioAiModule, createAiHarness, type AgAiHarnessSetup, type AgDataSourcesDefinition } from 'ag-studio';
 import { shopAdapter } from './adapter';
 import { workshopTheme } from './theme';
+import { studioAi } from './harness';
 
 // Spike: Lena's orders as one flat table (one row per car line), Studio's own agents on Nemotron through our server.
 type Order = { id: string; created: number; status: string; channel: string; ship_state: string;
@@ -32,13 +33,11 @@ function App() {
         setData({ sources: [{ id: 'sales', data: r }, { id: 'daily', data: d.map((x) => ({ ...x, day: x.day })) }] }); })
       .catch((e) => { (window as any).__err = String(e); });
   }, []);
-  const ai = useMemo<AgAiHarnessSetup>(() => ({ api }) => createAiHarness(api, {
-    adapter,
-    promptStarters: [
-      { label: 'Cars sold by model', prompt: 'Add a bar chart of cars sold (qty) by car.' },
-      { label: 'Sales by state', prompt: 'Add a bar chart of revenue by state.' },
-    ],
-  }), []);
+  const ai = useMemo<AgAiHarnessSetup>(() => studioAi([
+    { label: 'Where did my agent go wrong?', prompt: 'Show me where my agent went wrong this week.' },
+    { label: 'Sold to AI agents', prompt: 'How many cars did outside AI agents buy this week?' },
+    { label: 'Cars sold by model', prompt: 'Add a bar chart of cars sold (qty) by car.' },
+  ]), []);
   const widgets = useMemo(() => (cfg: any) => createWidgets({
     additionalTypes: [{
       id: 'agent-stuck',
