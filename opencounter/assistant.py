@@ -51,11 +51,13 @@ def _call(system: str, user: str, max_tokens: int = 900, who=()) -> tuple[str, f
     return r.choices[0].message.content or "", usd
 
 
-def review(days: int = 14, limit: int = 20, who=()) -> dict:
-    """Problems in recent chats, each with a ready lesson. Chats with an accepted lesson are skipped."""
+def review(days: int = 14, limit: int = 20, who=(), chat_ids: list[str] | None = None) -> dict:
+    """Problems in recent chats, each with a ready lesson. Chats with an accepted lesson are skipped.
+    With chat_ids: just those chats ("Draft a lesson" on one row of the studio's widget)."""
     t0 = time.time() - days * 86400
     taught = {n.get("chat") for n in shop.coaching()}
-    recent = [c for c in shop.conversations() if c.get("updated", 0) >= t0 and c["id"] not in taught]
+    recent = ([c for c in shop.conversations() if c["id"] in set(chat_ids)] if chat_ids else
+              [c for c in shop.conversations() if c.get("updated", 0) >= t0 and c["id"] not in taught])
     # chats that ended without an order first: that's where an agent usually went wrong
     chats = sorted(recent, key=lambda c: (bool(c.get("orders")), -c.get("updated", 0)))[:limit]
     if not chats:

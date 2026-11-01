@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from . import assistant, catalog, counter, onboard, paypal, shop, shopper, sample, studio_llm
+from . import misses, assistant, catalog, counter, onboard, paypal, shop, shopper, sample, studio_llm
 from .mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -809,6 +809,43 @@ def maker_insights(days: int = 30):
             "conversion": round(100 * with_order / len(chats)) if chats else 0,
             "stuck": sorted(stuck, key=lambda x: -x["at"])[:30],
             "answered_pct": round(100 * (1 - len(stuck) / turns)) if turns else 100}
+
+
+@app.get("/api/maker/agent_misses")
+def maker_agent_misses(req: Request, days: int = 7):
+    """The studio's hero widget: each lesson with the answer it corrected and every later chat that tested it
+    (followed or not), plus replies where the agent got stuck and no lesson exists yet. Computed in code."""
+    days = max(1, min(int(days), 366))
+    visitor, lena = _who(req)
+    convs = shop.conversations()
+    orders = shop.orders()
+    out = misses.agent_misses(convs, shop.lessons_for(visitor, lena), orders,
+                              since=shop.now().timestamp() - days * 86400, matches=shop.lesson_matches)
+    if not lena:   # public demo: no names, phones or addresses in what the widget quotes
+        chats, by_id = {c["id"]: c for c in convs}, {o["id"]: o for o in orders}
+        for r in out["taught"] + out["open"]:
+            names = _chat_names(chats.get(r.get("chat") or "", {}), by_id)
+            r["asked"], r["said"] = _hide_contact(r["asked"], names), _hide_contact(r["said"], names)
+    return out | {"days": days}
+
+
+@app.post("/api/maker/agent_misses/draft")
+async def maker_draft_lesson(req: Request):
+    """'Draft a lesson' on one row: Lena's assistant reads that chat and proposes an if-then lesson. Nothing is
+    saved: Lena accepts it through /api/maker/coach, like any lesson she writes herself."""
+    b = await req.json()
+    cid = re.sub(r"[^A-Za-z0-9_-]", "", str(b.get("chat") or ""))[:40]
+    if not cid or not any(c["id"] == cid for c in shop.conversations()):
+        raise HTTPException(404, "No such chat.")
+    try:
+        out = await asyncio.to_thread(assistant.review, 14, 1, _budget_keys(req), [cid])
+    except shopper.OverBudget as e:
+        return _busy(e)
+    f = next(iter(out.get("findings") or []), None)
+    if not f:
+        return {"chat": cid, "lesson": None, "why": "The assistant found nothing to teach from this chat."}
+    return {"chat": cid, "lesson": f["lesson"], "problem": _hide_contact(f.get("problem", "")) if not _who(req)[1]
+            else f.get("problem", ""), "usd": out.get("usd", 0)}
 
 
 @app.post("/api/maker/assistant/review")
