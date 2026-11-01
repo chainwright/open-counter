@@ -49,3 +49,10 @@
 @media (prefers-reduced-motion: reduce) { .ss-out, .ss-in, .ss-chip.flip { animation: none; } .ss-out { display: none; } }
 .sw-caret { display: inline-block; width: 2px; height: 1em; background: #A8873F; margin-left: 2px; vertical-align: text-bottom; animation: sw-pulse .9s steps(2) infinite; }
 @media (prefers-reduced-motion: reduce) { .sw-caret { animation: none; } }
+/* red pencil drawn left to right, once, when an agent adds the widget (WOW #1) */
+.sw-struck.draw { text-decoration: none; background-image: linear-gradient(#A3262B, #A3262B); background-repeat: no-repeat;
+  background-position: 0 58%; background-size: 0 2px; animation: sw-strike 500ms ease-out forwards; }
+.sw-table tr:nth-child(2) .sw-struck.draw { animation-delay: 250ms; } .sw-table tr:nth-child(3) .sw-struck.draw { animation-delay: 500ms; }
+.sw-table tr:nth-child(4) .sw-struck.draw { animation-delay: 750ms; }
+@keyframes sw-strike { to { background-size: 100% 2px; } }
+@media (prefers-reduced-motion: reduce) { .sw-struck.draw { animation: none; background-size: 100% 2px; } }
