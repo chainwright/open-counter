@@ -64,8 +64,13 @@ export default function StuckWidget(props: any) {
           const line = buf.slice(0, i); buf = buf.slice(i + 2);
           if (!line.startsWith('data: ')) continue;
           const ev = JSON.parse(line.slice(6));
-          if (ev.type === 'TEXT_MESSAGE_CONTENT') { text += ev.delta; set({ text }); }
-          else if (ev.type === 'RUN_FINISHED') set({ text: ev.lesson, busy: false, err: ev.usable ? undefined : "This draft isn't in the 'If someone asks about…, say…' form the shop can match. Edit it before accepting." });
+          if (ev.type === 'TEXT_MESSAGE_CONTENT') { text += ev.delta; }
+          else if (ev.type === 'RUN_FINISHED') {
+            // pace the finished stream at ~28 chars/s so the writing is visible (the model often delivers it in 1 s)
+            const full: string = ev.lesson; const usable = ev.usable;
+            for (let n = 0; n <= full.length; n += 2) { set({ text: full.slice(0, n) }); await new Promise((r) => setTimeout(r, 70)); }
+            set({ text: full, busy: false, err: usable ? undefined : "This draft isn't in the 'If someone asks about…, say…' form the shop can match. Edit it before accepting." });
+          }
           else if (ev.type === 'RUN_ERROR') set({ busy: false, err: ev.message });
         }
       }
@@ -82,8 +87,10 @@ export default function StuckWidget(props: any) {
   }
 
   if (!data) return <div className="sw" />;
+  // clicks on our buttons must not select the widget (Studio would draw its edit frame with ✕ over the hero)
+  const stop = (e: any) => { if ((e.target as HTMLElement).closest('button')) e.stopPropagation(); };
   return (
-    <div className="sw">
+    <div className="sw" onMouseDown={stop} onClick={stop} onPointerDown={stop}>
       <h2 className="sw-title">Where my agent got stuck — this week</h2>
       <table className="sw-table">
         <thead><tr><th>Shopper asked</th><th>Agent said <span>(original reply)</span></th><th>Lesson</th><th>Later chats</th></tr></thead>

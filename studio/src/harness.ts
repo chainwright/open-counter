@@ -53,7 +53,8 @@ export const studioAi = (promptStarters: { label: string; prompt: string }[]): A
         "\n\nThis dashboard belongs to Lena's shop. Questions about the shop's AI sales agent — its mistakes, Lena's lessons, " +
         "whether it followed them, or sales by channel (outside AI over MCP vs her chat) — go to 'shop' (Lena's shop analyst). " +
         'Call it exactly like this: delegate_to({"type": {"id": "shop"}, "instructions": "<the question>"}). ' +
-        "Do not re-configure the shop's custom widgets yourself; the shop analyst knows them.",
+        "Do not re-configure the shop's custom widgets yourself; the shop analyst knows them. If the widget the user wants is " +
+        "already on the page, say where it is ('It's the Where my agent got stuck panel on your page') — never claim you placed it.",
       tools: (ctx: any) => {
         const orig = builtIn.lead.tools?.(ctx) ?? [];
         const mine = ctx.tools.delegateTo([...builtIns, 'shop']);   // Studio's own delegate tool, with our agent added

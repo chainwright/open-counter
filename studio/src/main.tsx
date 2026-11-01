@@ -30,7 +30,7 @@ function App() {
   useEffect(() => {
     Promise.all([fetch('/api/maker/orders').then((r) => r.json()), fetch('/api/maker/daily?days=14').then((r) => (r.ok ? r.json() : [])).catch(() => [])])
       .then(([o, d]: [Order[], any[]]) => { const r = rows(o); (window as any).__rows = r;
-        setData({ sources: [{ id: 'sales', data: r }, { id: 'daily', data: d.map((x) => ({ ...x, day: x.day })) }] }); })
+        setData({ sources: [{ id: 'sales', data: r }, { id: 'daily', data: d.map((x) => ({ day: new Date(x.day + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), Chats: x.chats, Orders: x.orders })) }] }); })
       .catch((e) => { (window as any).__err = String(e); });
   }, []);
   const ai = useMemo<AgAiHarnessSetup>(() => studioAi([
@@ -92,19 +92,21 @@ function App() {
       widgets: { sold: { type: 'agent-sold', format: { days: 7 } }, stuck: { type: 'agent-stuck', format: { days: 7 } },
         funnel: { type: 'column-chart-grouped', format: { title: { enabled: true, text: 'Chats vs orders · last 14 days' },
           style: { theme: { common: { legend: { enabled: true, position: 'bottom' } } } } },
-          dataMapping: { categoryKey: [{ id: 'daily.day' }], valueKey: [{ id: 'daily.chats', aggregation: 'sum' }, { id: 'daily.orders', aggregation: 'sum' }] } } },
-      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 16, ySpan: 52 }, funnel: { xTrack: 16, yTrack: 11, xSpan: 8, ySpan: 30 } } }],
+          dataMapping: { categoryKey: [{ id: 'daily.day' }], valueKey: [{ id: 'daily.Chats', aggregation: 'sum' }, { id: 'daily.Orders', aggregation: 'sum' }] } } },
+      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 16, ySpan: 53 }, funnel: { xTrack: 16, yTrack: 11, xSpan: 8, ySpan: 53 } } }],
     selectedPageId: 'week',
     panels: { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true } },
   }), []);
-  const focus = new URLSearchParams(location.search).get('focus') === 'loop';
+  const q = new URLSearchParams(location.search);
+  const focus = q.get('focus') === 'loop';
+  const viewOnly = focus || q.has('view');   // recording: no edit frame when a widget button is clicked
   const loopState = useMemo(() => ({
     pages: [{ id: 'week', name: 'This week',
       widgets: { sold: { type: 'agent-sold', format: { days: 7 } }, stuck: { type: 'agent-stuck', format: { days: 7 } } },
-      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 24, ySpan: 60 } } }],
+      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 24, ySpan: 46 } } }],
     selectedPageId: 'week', panels: { filters: { collapsed: true } },
   }), []);
-  return <AgStudio style={{ height: '100%', width: '100%' }} data={data} mode={focus ? 'view' : 'edit'} ai={ai} theme={workshopTheme}
+  return <AgStudio style={{ height: '100%', width: '100%' }} data={data} mode={viewOnly ? 'view' : 'edit'} ai={ai} theme={workshopTheme}
     widgets={widgets as any} initialState={(focus ? loopState : initialState) as any} />;
 }
 

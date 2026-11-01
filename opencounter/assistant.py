@@ -56,7 +56,8 @@ def _call(system: str, user: str, max_tokens: int = 900, who=()) -> tuple[str, f
 LESSON_SYSTEM = """You read one chat between a small shop's AI sales agent and a shopper, for Lena, the maker who owns
 the shop. The agent got something wrong in it. Write ONE lesson for the agent, max 200 characters, in exactly this form:
 If someone asks about <the situation, in the shopper's words>, say <what to tell them>
-(optionally followed by ", and offer <Lena's call back / to email them>"). Use only the shop's facts below; never change
+(optionally followed by ", and offer <Lena's call back / to email them>"). Speak about the shop as Lena ("say Lena …"),
+not "we". Use only the shop's facts below — no card brands or claims the facts don't state; never change
 prices, discounts, stock, delivery times or rules. Reply with the lesson sentence only, no quotes, no preamble."""
 
 
