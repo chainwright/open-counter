@@ -90,7 +90,8 @@ function App() {
   const initialState = useMemo(() => ({
     pages: [{ id: 'week', name: 'This week',
       widgets: { sold: { type: 'agent-sold', format: { days: 7 } }, stuck: { type: 'agent-stuck', format: { days: 7 } },
-        funnel: { type: 'column-chart-grouped', format: { title: { enabled: true, text: 'Chats vs orders · last 14 days' } },
+        funnel: { type: 'column-chart-grouped', format: { title: { enabled: true, text: 'Chats vs orders · last 14 days' },
+          style: { theme: { common: { legend: { enabled: true, position: 'bottom' } } } } },
           dataMapping: { categoryKey: [{ id: 'daily.day' }], valueKey: [{ id: 'daily.chats', aggregation: 'sum' }, { id: 'daily.orders', aggregation: 'sum' }] } } },
       widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 16, ySpan: 52 }, funnel: { xTrack: 16, yTrack: 11, xSpan: 8, ySpan: 30 } } }],
     selectedPageId: 'week',
