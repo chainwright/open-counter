@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { AgStudio, AgStudioProvider } from 'ag-studio-react';
 import { AgStudioAiModule, createAiHarness, type AgAiHarnessSetup, type AgDataSourcesDefinition } from 'ag-studio';
 import { shopAdapter } from './adapter';
+import { workshopTheme } from './theme';
 
 // Spike: Lena's orders as one flat table (one row per car line), Studio's own agents on Nemotron through our server.
 type Order = { id: string; created: number; status: string; channel: string; ship_state: string;
@@ -33,7 +34,7 @@ function App() {
       { label: 'Sales by state', prompt: 'Add a bar chart of revenue by state.' },
     ],
   }), []);
-  return <AgStudio style={{ height: '100%', width: '100%' }} data={data} mode="edit" ai={ai} />;
+  return <AgStudio style={{ height: '100%', width: '100%' }} data={data} mode="edit" ai={ai} theme={workshopTheme} />;
 }
 
 createRoot(document.getElementById('root')!).render(
