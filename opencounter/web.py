@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from . import assistant, catalog, counter, onboard, paypal, shop, shopper, sample
+from . import assistant, catalog, counter, onboard, paypal, shop, shopper, sample, studio_llm
 from .mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -675,6 +675,15 @@ async def webhook(req: Request):
 
 
 # ---- maker side ----
+@app.post("/api/studio/llm")
+async def studio_llm_turn(req: Request):
+    """One model turn for Lena's sales studio (AG Studio's agents run in the page and call this, so no key is in it)."""
+    try:
+        return await asyncio.to_thread(studio_llm.turn, await req.json(), _budget_keys(req))
+    except shopper.OverBudget as e:
+        return JSONResponse({"error": str(e)}, status_code=429)
+
+
 @app.get("/api/maker/orders")
 def maker_orders(req: Request):
     # made-to-order invoices: if a webhook was missed, look again (at most once a minute per order)
