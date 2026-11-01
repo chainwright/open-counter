@@ -867,6 +867,35 @@ def maker_agent_misses(req: Request, days: int = 7):
     return out | {"days": days}
 
 
+@app.post("/api/maker/agent_misses/draft_stream")
+async def maker_draft_lesson_stream(req: Request):
+    """'Draft a lesson', streamed: the model's tokens go to the studio's widget as they come, as AG-UI events
+    (TEXT_MESSAGE_START / _CONTENT / _END), then RUN_FINISHED says whether the shop's matcher understands it."""
+    b = await req.json()
+    cid = re.sub(r"[^A-Za-z0-9_-]", "", str(b.get("chat") or ""))[:40]
+    if not cid or not any(c["id"] == cid for c in shop.conversations()):
+        raise HTTPException(404, "No such chat.")
+    who = _budget_keys(req)
+    mid = "lesson-" + cid
+
+    def events():
+        yield "data: " + json.dumps({"type": "TEXT_MESSAGE_START", "messageId": mid, "role": "assistant"}) + "\n\n"
+        text = ""
+        try:
+            for d in assistant.draft_stream(cid, who):
+                text += d
+                yield "data: " + json.dumps({"type": "TEXT_MESSAGE_CONTENT", "messageId": mid, "delta": d}) + "\n\n"
+        except shopper.OverBudget:
+            yield "data: " + json.dumps({"type": "RUN_ERROR", "message": "Today's AI budget is used up."}) + "\n\n"
+            return
+        text = text.strip().strip('"')
+        yield "data: " + json.dumps({"type": "TEXT_MESSAGE_END", "messageId": mid}) + "\n\n"
+        yield "data: " + json.dumps({"type": "RUN_FINISHED", "lesson": text,
+                                     "usable": bool(shop.split_lesson(text)[0])}) + "\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
 @app.post("/api/maker/agent_misses/draft")
 async def maker_draft_lesson(req: Request):
     """'Draft a lesson' on one row: Lena's assistant reads that chat and proposes an if-then lesson. Nothing is

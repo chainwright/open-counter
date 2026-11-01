@@ -45,11 +45,32 @@ export default function StuckWidget(props: any) {
     return () => clearInterval(id);
   }, [days]);
 
+  // The lesson streams into the cell token by token: AG-UI events (TEXT_MESSAGE_CONTENT) from our server, which
+  // forwards the model's own stream. Accept appears only once the finished sentence passes the shop's matcher.
   async function draft(chat: string) {
     setDrafts((d) => ({ ...d, [chat]: { text: '', busy: true } }));
-    const r = await fetch('/api/maker/agent_misses/draft', { method: 'POST', headers: headers(), body: JSON.stringify({ chat }) });
-    const j = await r.json().catch(() => ({}));
-    setDrafts((d) => ({ ...d, [chat]: { text: j.lesson || '', busy: false, err: j.lesson ? undefined : (j.why || j.detail || 'No lesson drafted.') } }));
+    const set = (patch: any) => setDrafts((d) => ({ ...d, [chat]: { ...(d[chat] || { text: '', busy: true }), ...patch } }));
+    try {
+      const r = await fetch('/api/maker/agent_misses/draft_stream', { method: 'POST', headers: headers(), body: JSON.stringify({ chat }) });
+      if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+      const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = '', text = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const line = buf.slice(0, i); buf = buf.slice(i + 2);
+          if (!line.startsWith('data: ')) continue;
+          const ev = JSON.parse(line.slice(6));
+          if (ev.type === 'TEXT_MESSAGE_CONTENT') { text += ev.delta; set({ text }); }
+          else if (ev.type === 'RUN_FINISHED') set({ text: ev.lesson, busy: false, err: ev.usable ? undefined : "This draft isn't in the 'If someone asks about…, say…' form the shop can match. Edit it before accepting." });
+          else if (ev.type === 'RUN_ERROR') set({ busy: false, err: ev.message });
+        }
+      }
+    } catch (e: any) {
+      set({ busy: false, err: 'No lesson drafted: ' + (e?.message || e) });
+    }
   }
   async function accept(chat: string) {
     const note = drafts[chat]?.text;
@@ -91,7 +112,7 @@ export default function StuckWidget(props: any) {
                 <td>{o.asked}</td>
                 <td><span className="sw-struck">{o.said}</span></td>
                 <td>{!d ? <button className="sw-primary" onClick={() => draft(o.chat)}>Draft a lesson</button>
-                  : d.busy ? <em className="sw-draft">Lena's shop analyst is writing…</em>
+                  : d.busy ? <em className="sw-draft">{d.text ? <>{d.text}<span className="sw-caret" /></> : "Lena's shop analyst is writing…"}</em>
                   : d.err ? <span className="sw-err">{d.err}</span>
                   : (<>
                       <em className="sw-draft">{d.text}</em>

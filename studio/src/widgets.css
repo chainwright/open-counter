@@ -47,3 +47,5 @@
 @keyframes ss-up-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes ss-flip { 0% { transform: rotateX(90deg); } 100% { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .ss-out, .ss-in, .ss-chip.flip { animation: none; } .ss-out { display: none; } }
+.sw-caret { display: inline-block; width: 2px; height: 1em; background: #A8873F; margin-left: 2px; vertical-align: text-bottom; animation: sw-pulse .9s steps(2) infinite; }
+@media (prefers-reduced-motion: reduce) { .sw-caret { animation: none; } }

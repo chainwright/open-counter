@@ -53,6 +53,35 @@ def _call(system: str, user: str, max_tokens: int = 900, who=()) -> tuple[str, f
     return r.choices[0].message.content or "", usd
 
 
+LESSON_SYSTEM = """You read one chat between a small shop's AI sales agent and a shopper, for Lena, the maker who owns
+the shop. The agent got something wrong in it. Write ONE lesson for the agent, max 200 characters, in exactly this form:
+If someone asks about <the situation, in the shopper's words>, say <what to tell them>
+(optionally followed by ", and offer <Lena's call back / to email them>"). Use only the shop's facts below; never change
+prices, discounts, stock, delivery times or rules. Reply with the lesson sentence only, no quotes, no preamble."""
+
+
+def draft_stream(chat_id: str, who=()):
+    """Stream one lesson for one chat, token by token, straight from the model (the studio's "Draft a lesson").
+    Yields text deltas; the caller checks the finished sentence with shop.split_lesson before offering Accept."""
+    c = next((x for x in shop.conversations() if x["id"] == chat_id), None)
+    if not c:
+        raise ValueError("No such chat.")
+    shopper.check_budget(who)
+    about = json.dumps(counter.about_counter())
+    stream = shopper._client_().chat.completions.create(
+        model=shopper.MODEL, max_tokens=160, temperature=0.1, stream=True,
+        stream_options={"include_usage": True},
+        messages=[{"role": "system", "content": LESSON_SYSTEM + "\nThe shop's facts: " + about},
+                  {"role": "user", "content": _chat_text(c)}],
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+    for ev in stream:
+        if getattr(ev, "usage", None):
+            u = ev.usage
+            shopper.add_spend((u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6, who)
+        if ev.choices and ev.choices[0].delta and ev.choices[0].delta.content:
+            yield ev.choices[0].delta.content
+
+
 def review(days: int = 14, limit: int = 20, who=(), chat_ids: list[str] | None = None) -> dict:
     """Problems in recent chats, each with a ready lesson. Chats with an accepted lesson are skipped.
     With chat_ids: just those chats ("Draft a lesson" on one row of the studio's widget)."""
