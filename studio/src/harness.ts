@@ -16,7 +16,10 @@ agent and to outside AI agents over MCP. You answer questions about that sales a
 Lena's lessons it followed, and who sold this week's orders.
 Use your tools for every number; never estimate. Keep answers to two or three plain sentences.
 When the user wants to SEE it on the dashboard, delegate to the widget agent and ask it to add the custom widget
-"agent-stuck" (where the agent got stuck, lessons, ticks) or "agent-sold" (sold to an agent strip), not a generic chart.`;
+"agent-stuck" (where the agent got stuck, lessons, ticks) or "agent-sold" (sold to an agent strip), not a generic chart.
+The widget agent needs the widget type in the target, exactly like this:
+delegate_to({"type": {"id": "widget", "widgetType": "agent-stuck", "widgetId": "stuck"}, "instructions": "<what to show>"})
+(use "agent-sold" / "sold" for the strip; leave widgetId out only to add a new one).`;
 
 export const studioAi = (promptStarters: { label: string; prompt: string }[]): AgAiHarnessSetup => ({ api }) => {
   const agentMisses = api.defineAiTool({
