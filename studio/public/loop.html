@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Open Counter · the loop: a lesson lands</title>
+<style>
+  html,body{margin:0;height:100%;background:#E9E3D6;font-family:"Geist",system-ui,sans-serif}
+  .wrap{display:grid;grid-template-columns:38fr 62fr;gap:10px;height:100%;padding:10px;box-sizing:border-box}
+  .pane{display:flex;flex-direction:column;min-width:0;border:1px solid #D8CDB4;border-radius:6px;overflow:hidden;background:#F2F0EA}
+  .cap{font:500 12px "Geist Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:#4A4238;padding:8px 12px;border-bottom:1px solid #D8CDB4}
+  iframe{flex:1;border:0;width:100%}
+</style></head>
+<body>
+<!-- One take, real time: a shopper asks on the left; Lena's lesson (accepted in the studio on the right seconds ago)
+     shapes the agent's answer, and the studio row draws its tick. Same origin, so both panes share the visitor id. -->
+<div class="wrap">
+  <div class="pane"><div class="cap">A shopper, on Lena's shop</div><iframe src="/#try"></iframe></div>
+  <div class="pane"><div class="cap">Lena's studio (AG Studio)</div><iframe src="/studio/?focus=loop"></iframe></div>
+</div>
+</body></html>

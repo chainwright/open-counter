@@ -95,10 +95,17 @@ function App() {
           dataMapping: { categoryKey: [{ id: 'daily.day' }], valueKey: [{ id: 'daily.chats', aggregation: 'sum' }, { id: 'daily.orders', aggregation: 'sum' }] } } },
       widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 16, ySpan: 52 }, funnel: { xTrack: 16, yTrack: 11, xSpan: 8, ySpan: 30 } } }],
     selectedPageId: 'week',
-    panels: { filters: { collapsed: true }, compose: { collapsed: true }, data: { collapsed: true } },
+    panels: { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true } },
   }), []);
-  return <AgStudio style={{ height: '100%', width: '100%' }} data={data} mode="edit" ai={ai} theme={workshopTheme}
-    widgets={widgets as any} initialState={initialState as any} />;
+  const focus = new URLSearchParams(location.search).get('focus') === 'loop';
+  const loopState = useMemo(() => ({
+    pages: [{ id: 'week', name: 'This week',
+      widgets: { sold: { type: 'agent-sold', format: { days: 7 } }, stuck: { type: 'agent-stuck', format: { days: 7 } } },
+      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 24, ySpan: 60 } } }],
+    selectedPageId: 'week', panels: { filters: { collapsed: true } },
+  }), []);
+  return <AgStudio style={{ height: '100%', width: '100%' }} data={data} mode={focus ? 'view' : 'edit'} ai={ai} theme={workshopTheme}
+    widgets={widgets as any} initialState={(focus ? loopState : initialState) as any} />;
 }
 
 createRoot(document.getElementById('root')!).render(
