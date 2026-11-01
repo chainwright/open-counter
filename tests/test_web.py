@@ -121,3 +121,19 @@ def test_a_makers_counter_page_loads_the_fonts_its_stylesheet_names(c):
 def test_the_home_page_says_the_payments_are_sandbox(c):
     page = c.get("/").text
     assert "real PayPal sandbox payments" in page and "the payments are real." not in page
+
+
+def test_agent_sales_strip_counts_orders_by_who_sold_them(monkeypatch):
+    import time
+    from opencounter import web, shop
+    now = time.time()
+    orders = [{"id": "A", "created": now - 100, "status": "paid", "channel": "mcp"},
+              {"id": "B", "created": now - 50, "status": "awaiting_approval", "channel": "mcp"},
+              {"id": "C", "created": now - 80, "status": "paid", "channel": "demo-shopper"},
+              {"id": "D", "created": now - 90, "status": "paid", "channel": "demo-shopper", "kind": "commission"},
+              {"id": "E", "created": now - 30, "status": "cancelled", "channel": "mcp"},
+              {"id": "F", "created": now - 10 * 86400, "status": "paid", "channel": "mcp"}]
+    monkeypatch.setattr(shop, "orders", lambda: orders)
+    out = web.maker_agent_sales(days=7)
+    assert (out["via_mcp"], out["her_chat"], out["made_to_order"]) == (2, 1, 1)
+    assert out["last_mcp"] == {"id": "B", "status": "awaiting_approval", "paypal": "APPROVAL PENDING"}

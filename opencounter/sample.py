@@ -225,13 +225,19 @@ def build(now: float | None = None):
                                           "made_by_hand": True, "price_usd": float(price), "stock": stock,
                                           "keywords": [], "paypal_catalog_product": None}}
         shop._save_json("counters.json", counters)
+        # Some of this week's stock sales came from outside AI agents over MCP (the studio's "sold to an agent" strip):
+        # the newest paid stock orders of the last 7 days, every other one, so both channels show in the week.
+        week = sorted([o for o in orders if o.get("kind") != "commission" and o.get("status") in ("paid", "shipped")
+                       and o["created"] >= now - 7 * 86400], key=lambda o: o["created"])
+        for o in week[::2]:
+            o["channel"] = "mcp"
         shop._save_orders(orders)
         shop._save_json("conversations.json", convs)
         shop._save_json("customers.json", custs)
         return len(orders), len(convs)
 
 
-DATA_VERSION = "10"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
+DATA_VERSION = "11"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
 
 # QA and judge runs on the public demo use visitor ids and chat ids starting with "qa" (qa-e0147409, qa5-canada-7409);
 # a real browser's ids are random hex ("anon-…", 24 hex digits) and never do. Orders from the judge rounds that were

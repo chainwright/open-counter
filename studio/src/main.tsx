@@ -4,6 +4,7 @@ import React, { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AgStudio, AgStudioProvider, createWidgets } from 'ag-studio-react';
 import StuckWidget from './StuckWidget';
+import SoldStrip from './SoldStrip';
 import './widgets.css';
 import { AgStudioAiModule, createAiHarness, type AgAiHarnessSetup, type AgDataSourcesDefinition } from 'ag-studio';
 import { shopAdapter } from './adapter';
@@ -61,13 +62,34 @@ function App() {
       comp: StuckWidget,
       defaultSize: { width: 900, height: 520 },
       minSize: { width: 520, height: 300 },
+    } as any, {
+      id: 'agent-sold',
+      label: 'Sold to an agent',
+      formatShape: ({ api }: any) => {
+        let shape: any;
+        api.defineAiCommand((b: any) => {
+          shape = b.object({ days: b.number({ description: 'Period in days (default 7).' }).optional(), widget: b.object({}).optional() });
+          return { input: shape, execute: () => null };
+        });
+        return shape;
+      },
+      ai: {
+        label: 'Sold to an agent',
+        description: "A strip of three big numbers for the period: orders an outside AI agent placed over MCP (red accent), orders from Lena's own sales chat, and made-to-order builds, plus the newest MCP sale with its PayPal status.",
+        usage: 'Use when the user asks how many sales came from AI agents, MCP, or by channel. Not for revenue trends.',
+        configuration: 'No data mapping. Full width, short (about 6 rows).',
+      },
+      form: (params: any) => params.createDefaults({ dataMappingItems: [] }),
+      comp: SoldStrip,
+      defaultSize: { width: 1200, height: 150 },
+      minSize: { width: 480, height: 120 },
     } as any],
-    menu: [{ label: "Lena's shop", widgetIds: ['agent-stuck'] }, ...cfg.menu],
+    menu: [{ label: "Lena's shop", widgetIds: ['agent-stuck', 'agent-sold'] }, ...cfg.menu],
   }), []);
   const initialState = useMemo(() => ({
     pages: [{ id: 'week', name: 'This week',
-      widgets: { stuck: { type: 'agent-stuck', format: { days: 7 } } },
-      widgetLayout: { stuck: { xTrack: 0, yTrack: 0, xSpan: 16, ySpan: 30 } } }],
+      widgets: { sold: { type: 'agent-sold', format: { days: 7 } }, stuck: { type: 'agent-stuck', format: { days: 7 } } },
+      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 16, ySpan: 52 } } }],
     selectedPageId: 'week',
     panels: { filters: { collapsed: true }, compose: { collapsed: true }, data: { collapsed: true } },
   }), []);

@@ -811,6 +811,25 @@ def maker_insights(days: int = 30):
             "answered_pct": round(100 * (1 - len(stuck) / turns)) if turns else 100}
 
 
+@app.get("/api/maker/agent_sales")
+def maker_agent_sales(days: int = 7):
+    """The studio's "sold to an agent" strip: orders this period by who sold them — an outside AI agent over MCP,
+    Lena's own sales chat, or a made-to-order build — and the newest MCP sale with its PayPal status."""
+    days = max(1, min(int(days), 366))
+    t0 = shop.now().timestamp() - days * 86400
+    live = [o for o in shop.orders() if o.get("created", 0) >= t0
+            and o.get("status") not in ("error", "cancelled", "refunded_out_of_stock", "replaced")]
+    mcp = [o for o in live if o.get("channel") == "mcp"]
+    made = [o for o in live if o.get("kind") == "commission" and o.get("channel") != "mcp"]
+    chat = [o for o in live if o not in mcp and o not in made]
+    last = max(mcp, key=lambda o: o.get("created", 0), default=None)
+    paypal = {"paid": "CAPTURED", "shipped": "CAPTURED", "awaiting_approval": "APPROVAL PENDING",
+              "deposit_paid": "DEPOSIT CAPTURED"}
+    return {"days": days, "via_mcp": len(mcp), "her_chat": len(chat), "made_to_order": len(made),
+            "last_mcp": ({"id": last["id"], "status": last.get("status"), "paypal": paypal.get(last.get("status"), "PENDING")}
+                         if last else None)}
+
+
 @app.get("/api/maker/agent_misses")
 def maker_agent_misses(req: Request, days: int = 7):
     """The studio's hero widget: each lesson with the answer it corrected and every later chat that tested it

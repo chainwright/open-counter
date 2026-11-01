@@ -26,3 +26,24 @@
 @keyframes sw-draw { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
 @keyframes sw-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .sw-tick.fresh path, .sw-watch::before { animation: none; } }
+
+/* KPI strip "Sold to an agent" */
+.ss { height: 100%; box-sizing: border-box; padding: 12px 22px 14px; color: #2B2620; font-family: "Geist", system-ui, sans-serif; }
+.ss-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.ss-label { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #4A4238; }
+.ss-chip { font: 500 12px "Geist Mono", monospace; background: #C9A85A; color: #2B2620; border-radius: 4px; padding: 4px 8px; transition: background .3s; }
+.ss-chip.flip { animation: ss-flip 600ms ease-out; }
+.ss-row { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 8px; }
+.ss-cell { padding: 4px 16px 0; border-left: 1px solid #D8CDB4; } .ss-cell:first-child { border-left: 0; padding-left: 0; }
+.ss-k { font-size: 15px; color: #4A4238; }
+.ss-cell.accent .ss-k { color: #A3262B; }
+.ss-v { font-family: "Big Shoulders Display", "Geist", sans-serif; font-weight: 800; font-size: 60px; line-height: 1; margin-top: 4px; }
+.ss-cell.accent .ss-v { color: #A3262B; }
+.ss-roll { position: relative; display: inline-block; overflow: hidden; height: 1em; vertical-align: top; }
+.ss-roll > span { display: block; }
+.ss-out { position: absolute; top: 0; animation: ss-up-out 600ms ease-in forwards; }
+.ss-in { animation: ss-up-in 600ms ease-out; }
+@keyframes ss-up-out { to { transform: translateY(-100%); opacity: 0; } }
+@keyframes ss-up-in { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ss-flip { 0% { transform: rotateX(90deg); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ss-out, .ss-in, .ss-chip.flip { animation: none; } .ss-out { display: none; } }
