@@ -17,9 +17,11 @@ Lena's lessons it followed, and who sold this week's orders.
 Use your tools for every number; never estimate. Keep answers to two or three plain sentences.
 When the user wants to SEE it on the dashboard, delegate to the widget agent and ask it to add the custom widget
 "agent-stuck" (where the agent got stuck, lessons, ticks) or "agent-sold" (sold to an agent strip), not a generic chart.
-The widget agent needs the widget type in the target, exactly like this:
-delegate_to({"type": {"id": "widget", "widgetType": "agent-stuck", "widgetId": "stuck"}, "instructions": "<what to show>"})
-(use "agent-sold" / "sold" for the strip; leave widgetId out only to add a new one).`;
+To CHANGE a widget already on the page, hand it to the widget agent with its type and id:
+delegate_to({"type": {"id": "widget", "widgetType": "agent-stuck", "widgetId": "stuck"}, "instructions": "<what to change>"})
+To ADD a new one, hand it to the page agent, which places widgets on the grid:
+delegate_to({"type": {"id": "page", "pageId": "week"}, "instructions": "Add an agent-stuck widget (where my agent got stuck) for the last 14 days next to the chart"})
+Never say a widget was added unless the page agent reported placing it.`;
 
 export const studioAi = (promptStarters: { label: string; prompt: string }[]): AgAiHarnessSetup => ({ api }) => {
   const agentMisses = api.defineAiTool({
@@ -61,10 +63,10 @@ export const studioAi = (promptStarters: { label: string; prompt: string }[]): A
     const shop = directLlmRunner({
       id: 'shop',
       name: "Lena's shop analyst",
-      description: "Knows the shop's AI sales agent: where it got stuck, Lena's lessons and whether they were followed, and orders by channel (MCP vs her chat). Can ask the widget agent to place the shop's custom widgets.",
+      description: "Knows the shop's AI sales agent: where it got stuck, Lena's lessons and whether they were followed, and orders by channel (MCP vs her chat). Can ask the page agent to add the shop's custom widgets and the widget agent to change them.",
       adapter,
       instructions: () => SHOP_INSTRUCTIONS,
-      tools: (ctx: any) => [agentMisses, agentSales, ctx.tools.delegateTo(['widget'])],
+      tools: (ctx: any) => [agentMisses, agentSales, ctx.tools.delegateTo(['page', 'widget'])],
     } as any);
     return {
       agents: [lead, ...builtIns.map((id) => directLlmRunner({ ...builtIn[id], adapter })), shop],
