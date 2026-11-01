@@ -134,3 +134,16 @@ def test_the_last_resort_says_so_when_the_shelf_is_empty():
         shop.take_stock(x["id"], x["stock"])
     said = shopper._fallback_reply([], False, "anything nice?")
     assert said.startswith("The shelf is empty right now.") and "to order" in said and "send it" not in said
+
+
+def test_a_reply_made_only_of_stalling_or_notes_to_itself_is_written_by_code(monkeypatch):
+    # live run 31 Oct: "Let me fetch the current checkout details…" and "…so I can call start_checkout." reached the
+    # shopper, because when the filter removed every sentence the original came back whole
+    for words in ("Let me fetch the current checkout details for 3 Red American Convertibles to CA.",
+                  "We need the checkout created to get the exact total and dates. Please provide your full name, phone "
+                  "number, email, street address, city, and ZIP code so I can call start_checkout."):
+        monkeypatch.setattr(shopper, "_client_", lambda: FakeModel(*[words] * 12))
+        out = shopper.run([{"role": "user", "content": "Model 65, California"}])
+        assert out["reply"].strip()
+        assert not out["reply"].lower().startswith("let me")
+        assert "start_checkout" not in out["reply"] and "we need the checkout" not in out["reply"].lower()

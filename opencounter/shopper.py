@@ -1247,17 +1247,23 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
                     reply = BRANDS.sub("that model", reply)
             reply = ITEM_ID.sub("", reply)
             reply = _scrub_invented(reply, typed)
-            if late:   # drop notes-to-self sentences instead of a rewrite pass
-                reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not SELF_TALK.search(x)) or reply
+            fallback = lambda: _fallback_reply(steps or ([] if taught_now else _earlier_steps(messages)),
+                                               bool(re.search(r"[а-яё]", lang_text, re.I)), last_user, taught_now)
+            if late:   # drop notes-to-self sentences instead of a rewrite pass; if nothing is left, code answers
+                reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not SELF_TALK.search(x)) or fallback()
             else:
                 fixed, fusd = _polish(reply, lang_text, TURN_SECONDS - (time.time() - t_start))
                 reply, usd = _scrub_invented(fixed, typed), usd + fusd
+                # the rewrite can keep a note to itself: drop it; if nothing is left, code answers
+                reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not SELF_TALK.search(x)) or fallback()
             # a final answer never says "one moment" or "let me check" (nothing happens after it), nor labels its parts
             reply = re.sub(r"\b(first|second|third|final) (sentence|answer|reply|part)\s*:\s*", "", reply, flags=re.I)
             reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not re.match(
                 r"(let me (confirm|check|fetch|retry|get|look|see|pull)|i'?ll (confirm|check|fetch|pull|look) |one moment|please (wait|hold)|"
                 r"секунду|минуту|сейчас (проверю|уточню))",
-                x.strip(), re.I)) or reply
+                x.strip(), re.I)) or fallback()
+            if TOOL_NAME.search(reply):   # a tool's name is never shown to a shopper
+                reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not TOOL_NAME.search(x)) or fallback()
             if re.search(r"here'?s my (information|info|details|address)|\bmy (full )?name is\b|^\s*full name\s*:|"
                          r"вот мои (данные|контакты)|меня зовут", reply, re.I | re.M):
                 # the model wrote as if it were the shopper (and made up a person): never send that
@@ -1291,8 +1297,12 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
         if not by_code:
             # out of steps: keep the last real answer the model wrote rather than a canned apology
             last = next((c["content"] for c in reversed(convo) if c.get("role") == "assistant" and c.get("content")), "")
-            reply = _scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", last)), typed) or \
-                "I couldn't finish that in a few steps. Could you tell me a bit more?"
+            reply = _scrub_invented(ITEM_ID.sub("", MEMO_TAG.sub("", last)), typed)
+            # the same rule as a normal answer: no notes to itself, no tool names, no "let me fetch" with nothing after
+            reply = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply) if not (SELF_TALK.search(x) or TOOL_NAME.search(x)
+                             or re.match(r"(let me|i'?ll (confirm|check|fetch|pull|look) |one moment)", x.strip(), re.I)))
+            reply = reply or _fallback_reply(steps or ([] if taught_now else _earlier_steps(messages)),
+                                             bool(re.search(r"[а-яё]", lang_text, re.I)), last_user, taught_now)
     add_spend(usd, who)
     if taught_now:   # her lesson holds whatever path wrote the reply: model, code or out-of-time
         reply = _apply_lessons(reply, taught_now, bool(re.search(r"[а-яё]", lang_text, re.I)))

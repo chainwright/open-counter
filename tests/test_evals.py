@@ -1,6 +1,7 @@
 """The eval checks themselves: independent of the day they run on, and a non-answer never passes (judge N10,
 TO_NINE #3). Uses the saved transcripts only: no model call."""
 import importlib.util
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -45,7 +46,12 @@ def test_a_non_answer_never_passes():
     assert dict(ev.always_checks(log, 2.0))["no 'send it again' non-answer"] is False
 
 
-def test_the_offline_rescore_reports_changed_cases_apart():
-    out, changed = ev.rescore()
+def test_the_offline_rescore_reports_changed_cases_apart(tmp_path):
+    # a saved run where one case's script has changed since: it is listed apart, never scored on the old words
+    saved = json.loads((shop.ROOT / "evals" / "transcripts.json").read_text())
+    edited = next(r for r in saved if r["case"] == "stock: several cars, one order")
+    edited["transcript"][0]["user"] += " (an older script)"
+    (tmp_path / "t.json").write_text(json.dumps(saved))
+    out, changed = ev.rescore(tmp_path / "t.json")
     assert "stock: several cars, one order" in changed and all(r["case"] not in changed for r in out)
     assert len(out) + len(changed) == len(ev.CASES)
