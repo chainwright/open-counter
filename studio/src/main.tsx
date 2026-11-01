@@ -37,5 +37,5 @@ function App() {
 }
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode><AgStudioProvider modules={[AgStudioAiModule]}><App /></AgStudioProvider></StrictMode>,
+  <StrictMode><AgStudioProvider licenseKey={import.meta.env.VITE_AG_STUDIO_LICENSE} modules={[AgStudioAiModule]}><App /></AgStudioProvider></StrictMode>,
 );
