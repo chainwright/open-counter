@@ -169,6 +169,42 @@ def build(now: float | None = None):
                     "note": "If someone asks something you can't answer from the shop's facts (returns, custom "
                             "packaging), say Lena will answer it personally and offer to take their phone for a call back."}]
         shop._save_json("coaching.json", lessons)
+        # Chats after each lesson, so the studio's "where my agent got stuck" widget has something to measure: the shop
+        # logs an applied lesson as a step "following Lena's lesson · <note>". One reply missed it (a model timeout
+        # fell back to the old answer): 3 of 4 followed is what a real week looks like, not a perfect score.
+        ls1, ls2 = lessons[0]["note"], lessons[1]["note"]
+        us_only = ("Lena ships inside the US only for now. Leave your email and she'll write to you when that changes.",
+                   ["following Lena's lesson · " + ls1[:160]])
+        tpl = next((o for o in orders if o.get("status") == "paid" and o.get("kind") != "commission"), None)
+
+        def bought(t: float, oid: str, cust: dict) -> str | None:
+            if not tpl:
+                return None
+            order({k: v for k, v in tpl.items() if k not in ("events", "paid_at", "tracking", "customer")} |
+                  {"id": oid, "ship_state": cust["state"]}, cust, t, "paid")
+            return oid
+
+        t = now - 2.6 * 86400
+        chat(t, [("Do you ship to Canada? I'm in Toronto.", *us_only)])
+        t = now - 2.2 * 86400
+        chat(t, [("Can you send one to London, UK?", *us_only)])
+        t = now - 1.8 * 86400
+        cust = person(41)
+        chat(t, [("Do you ship to Canada? If not, my brother lives in the US.", *us_only),
+                 (f"Then send it to him: {cust['full_name']}, {cust['city']} {cust['state']}", "Done, the PayPal button is below.",
+                  ["preparing PayPal checkout · waiting for your approval in PayPal"])],
+             name=cust["full_name"], order_id=bought(t + 120, "OC-L001", cust))
+        t = now - 1.4 * 86400
+        chat(t, [("Shipping to Mexico City?", "I couldn't finish that in a few steps. Could you tell me a bit more?", [])])
+        t = now - 0.5 * 86400
+        cust = person(42)
+        chat(t, [("Can I return it if it arrives chipped?",
+                  "Lena will answer that personally. Leave your phone number and she'll call you back today.",
+                  ["following Lena's lesson · " + ls2[:160]]),
+                 (f"{cust['phone']}. And I'll take the green one to {cust['city']} {cust['state']}.",
+                  "Thanks, Lena will call. The green one is in stock; the PayPal button is below.",
+                  ["preparing PayPal checkout · waiting for your approval in PayPal"])],
+             name=cust["full_name"], order_id=bought(t + 150, "OC-L002", cust))
         # three counters other makers opened at /open (sample), so the page shows what it makes
         import shutil
         cdir = shop._path("counters"); cdir.mkdir(exist_ok=True)
@@ -195,7 +231,7 @@ def build(now: float | None = None):
         return len(orders), len(convs)
 
 
-DATA_VERSION = "9"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
+DATA_VERSION = "10"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
 
 # QA and judge runs on the public demo use visitor ids and chat ids starting with "qa" (qa-e0147409, qa5-canada-7409);
 # a real browser's ids are random hex ("anon-…", 24 hex digits) and never do. Orders from the judge rounds that were
