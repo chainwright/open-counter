@@ -844,7 +844,8 @@ async def maker_draft_lesson(req: Request):
     f = next(iter(out.get("findings") or []), None)
     if not f:
         return {"chat": cid, "lesson": None, "why": "The assistant found nothing to teach from this chat."}
-    return {"chat": cid, "lesson": f["lesson"], "problem": _hide_contact(f.get("problem", "")) if not _who(req)[1]
+    when, _ = shop.split_lesson(f["lesson"])
+    return {"chat": cid, "lesson": f["lesson"], "usable": bool(when), "problem": _hide_contact(f.get("problem", "")) if not _who(req)[1]
             else f.get("problem", ""), "usd": out.get("usd", 0)}
 
 

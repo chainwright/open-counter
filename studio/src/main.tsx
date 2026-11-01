@@ -2,7 +2,9 @@ window.addEventListener('error', (e) => { (window as any).__errs = [...((window 
 window.addEventListener('unhandledrejection', (e) => { (window as any).__errs = [...((window as any).__errs || []), String((e as any).reason)]; });
 import React, { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { AgStudio, AgStudioProvider } from 'ag-studio-react';
+import { AgStudio, AgStudioProvider, createWidgets } from 'ag-studio-react';
+import StuckWidget from './StuckWidget';
+import './widgets.css';
 import { AgStudioAiModule, createAiHarness, type AgAiHarnessSetup, type AgDataSourcesDefinition } from 'ag-studio';
 import { shopAdapter } from './adapter';
 import { workshopTheme } from './theme';
@@ -34,7 +36,43 @@ function App() {
       { label: 'Sales by state', prompt: 'Add a bar chart of revenue by state.' },
     ],
   }), []);
-  return <AgStudio style={{ height: '100%', width: '100%' }} data={data} mode="edit" ai={ai} theme={workshopTheme} />;
+  const widgets = useMemo(() => (cfg: any) => createWidgets({
+    additionalTypes: [{
+      id: 'agent-stuck',
+      label: 'Where my agent got stuck',
+      // the shape of this widget's format: just the period. Studio exposes its shape builder to command factories,
+      // so we borrow it there (public api.defineAiCommand) instead of reaching into internals.
+      formatShape: ({ api }: any) => {
+        let shape: any;
+        api.defineAiCommand((b: any) => {
+          shape = b.object({ days: b.number({ description: 'How many days back to look (default 7).' }).optional(),
+                              widget: b.object({}).optional() });
+          return { input: shape, execute: () => null };
+        });
+        return shape;
+      },
+      ai: {
+        label: 'Where my agent got stuck',
+        description: "A ledger of the shop's AI sales agent's mistakes: what the shopper asked, the agent's original reply struck through, the lesson Lena wrote, and for every later chat the lesson applied to a tick (followed) or a cross (not followed), plus the paid value of orders from those chats. Rows with no lesson yet have a 'Draft a lesson' button.",
+        usage: "Use when the user asks where the shop's agent went wrong, what it got stuck on, which lessons work, or how to teach/coach the agent. Not for sales totals.",
+        configuration: 'No data mapping: it reads the shop\'s own records. Give it a large slot (about 16 tracks wide).',
+      },
+      form: (params: any) => params.createDefaults({ dataMappingItems: [] }),
+      comp: StuckWidget,
+      defaultSize: { width: 900, height: 520 },
+      minSize: { width: 520, height: 300 },
+    } as any],
+    menu: [{ label: "Lena's shop", widgetIds: ['agent-stuck'] }, ...cfg.menu],
+  }), []);
+  const initialState = useMemo(() => ({
+    pages: [{ id: 'week', name: 'This week',
+      widgets: { stuck: { type: 'agent-stuck', format: { days: 7 } } },
+      widgetLayout: { stuck: { xTrack: 0, yTrack: 0, xSpan: 16, ySpan: 30 } } }],
+    selectedPageId: 'week',
+    panels: { filters: { collapsed: true }, compose: { collapsed: true }, data: { collapsed: true } },
+  }), []);
+  return <AgStudio style={{ height: '100%', width: '100%' }} data={data} mode="edit" ai={ai} theme={workshopTheme}
+    widgets={widgets as any} initialState={initialState as any} />;
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -148,3 +148,17 @@ def test_a_reply_made_only_of_stalling_or_notes_to_itself_is_written_by_code(mon
         assert not out["reply"].lower().startswith("let me")
         assert "start_checkout" not in out["reply"] and "we need the checkout" not in out["reply"].lower()
         assert "Red American Convertible, 1965" in out["reply"] and "$65.50" in out["reply"]   # the one car "65" means
+
+
+def test_drafted_lessons_in_the_forms_the_assistant_writes_are_understood():
+    # 1.11: a drafted "When asked about payment methods, clearly state ..." was never matched, so a lesson Lena
+    # accepted from the studio would silently do nothing. Adverb + state/confirm verbs and plain "payment" now count.
+    from opencounter import shop
+    for note, hit, miss in [
+        ("When asked about payment methods, clearly state that PayPal is accepted.", "Can I pay with a credit card?", "Do you ship to Ohio?"),
+        ("If someone asks about returns, confirm unopened cars come back within 14 days.", "Do you take returns?", "How much is the red one?"),
+        ("If a shopper asks about gift wrapping, politely say Lena wraps every car in tissue.", "Can you gift wrap it?", "Is it in stock?"),
+    ]:
+        assert shop.split_lesson(note)[0], note
+        assert shop.lesson_matches(note, hit), (note, hit)
+        assert not shop.lesson_matches(note, miss), (note, miss)

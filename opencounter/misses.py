@@ -63,7 +63,8 @@ def agent_misses(conversations: list[dict], lessons: list[dict], orders: list[di
         if c["id"] in taught_chats:
             continue
         for t in c.get("turns", []):
-            if t.get("at", 0) >= since and STUCK.search(t.get("reply", "")):
+            covered = any(matches(n["note"], t.get("user", "")) for n in lessons if n.get("active", True))
+            if t.get("at", 0) >= since and STUCK.search(t.get("reply", "")) and not covered:
                 open_.append({"chat": c["id"], "no": c.get("no"), "at": t["at"], "asked": t.get("user", "")[:200],
                               "said": t.get("reply", "")[:240]})
                 break   # one row per chat: the first place it got stuck

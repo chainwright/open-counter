@@ -20,7 +20,9 @@ the shop. Find the agent replies that a good shop assistant would have done diff
 "I'm not sure"/"I couldn't" non-answers, a missed sale, asking for details twice, not answering the question, a
 wrong language, being pushy. Ignore chats that went fine.
 For each problem return one JSON object: {"chat": "<chat id>", "problem": "<one short sentence, plain English>",
-"lesson": "<one instruction for the agent, max 200 characters, starting with When/If/Always/Never>"}.
+"lesson": "<one instruction for the agent, max 200 characters, in exactly this form: 'If someone asks about <the
+situation, in the shopper's words>, say <what to tell them>' (optionally ', and offer <Lena's call back / to email
+them>')>"}. The shop matches the 'If ...' part against new messages in code, so name the situation plainly.
 Lessons must not change prices, discounts, stock, delivery times or rules; they are about how to answer.
 Return only a JSON array (empty if nothing needs fixing)."""
 

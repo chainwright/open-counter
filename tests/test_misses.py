@@ -59,3 +59,10 @@ def test_two_lessons_touching_one_chat_count_its_money_once():
                     "note": "If someone asks about Canada, say we don't ship there yet."})
     out = misses.agent_misses(convs, lessons, orders, since=0, matches=shop.lesson_matches)
     assert out["orders_usd"] == 65.5
+
+
+def test_a_mistake_an_active_lesson_already_covers_is_not_open():
+    convs, lessons, orders = data()
+    convs.append(chat("c6", [turn(700, "Do you ship to Canada?", "I couldn't finish that in a few steps.")]))
+    out = misses.agent_misses(convs, lessons, orders, since=0, matches=shop.lesson_matches)
+    assert [r["chat"] for r in out["open"]] == ["c4"]

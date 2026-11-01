@@ -1,0 +1,28 @@
+/* Our two custom widgets (B v2): the only place with serif titles, red pencil and brass. */
+.sw { height: 100%; box-sizing: border-box; padding: 18px 22px; overflow: auto; color: #2B2620; font-family: "Geist", system-ui, sans-serif; }
+.sw-title { font-family: "Newsreader", Georgia, serif; font-weight: 600; font-size: 34px; line-height: 1.1; margin: 0 0 14px; }
+.sw-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sw-table th { text-align: left; font-weight: 600; padding: 8px 10px; border-bottom: 1px solid #A8873F; vertical-align: bottom; }
+.sw-table th span { font-weight: 400; color: #7A7062; }
+.sw-table td { padding: 10px; border-bottom: 1px solid #D8CDB4; vertical-align: top; line-height: 1.35; }
+.sw-table td:nth-child(1) { width: 20%; } .sw-table td:nth-child(2) { width: 20%; } .sw-table td:nth-child(4) { width: 18%; }
+.sw-struck { text-decoration: line-through; text-decoration-color: #A3262B; text-decoration-thickness: 2px; color: #6E6457; }
+.sw-draft { font-family: "Newsreader", Georgia, serif; font-style: italic; font-size: 15px; display: block; }
+.sw-actions { display: flex; gap: 8px; margin-top: 8px; }
+.sw-primary { background: #A8873F; color: #FAF8F3; border: 0; border-radius: 4px; padding: 6px 12px; font: 500 13px "Geist", sans-serif; cursor: pointer; }
+.sw-secondary { background: transparent; color: #8A6D2E; border: 1px solid #A8873F; border-radius: 4px; padding: 5px 11px; font: 500 13px "Geist", sans-serif; cursor: pointer; }
+.sw-watch { color: #7A7062; font-style: italic; }
+.sw-watch::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #A8873F; margin-right: 6px; animation: sw-pulse 1.6s ease-in-out infinite; }
+.sw-err { color: #A3262B; font-size: 13px; }
+.sw-ticks { display: flex; gap: 6px; }
+.sw-tick { width: 24px; height: 24px; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.sw-tick.ok { stroke: #2F7A47; } .sw-tick.no { stroke: #A3262B; }
+.sw-tick path { stroke-dasharray: 40; stroke-dashoffset: 0; }
+.sw-tick.fresh path { animation: sw-draw 700ms ease-out both; }
+.sw-count { font-size: 13px; margin-top: 4px; color: #4A4238; }
+.sw-pay { display: flex; align-items: baseline; gap: 14px; margin-top: 16px; flex-wrap: wrap; }
+.sw-pay span { font-size: 14px; color: #4A4238; }
+.sw-pay strong { font-family: "Newsreader", Georgia, serif; font-weight: 600; font-size: 40px; }
+@keyframes sw-draw { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
+@keyframes sw-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sw-tick.fresh path, .sw-watch::before { animation: none; } }

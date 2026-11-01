@@ -630,13 +630,15 @@ TOPICS = {
                   r"за границ|за рубеж|канад|мексик|европ|в другую страну",
     "returns": r"\breturn(?:s|ed|ing)?\b|refund|exchange|send it back|возврат|вернуть|обмен",
     "packaging": r"gift[- ]?wrap|wrapping|packaging|упаков|подарочн",
-    "payment": r"credit card|debit card|pay (?:with|by|via)|apple pay|google pay|venmo|crypto|bitcoin|\bcash\b|оплат|картой",
+    "payment": r"\bpayments?\b|\bpay(?:ing)?\b|credit card|debit card|pay (?:with|by|via)|apple pay|google pay|venmo|crypto|bitcoin|\bcash\b|оплат|картой",
     "damage": r"broken|damaged|arrived broke|warranty|guarantee|сломан|поврежд|гаранти",
     "speed": r"express|faster|overnight|rush|expedite|срочн|быстрее",
     "discount": r"discount|cheaper|% off|coupon|\bdeal\b|скидк|дешевл",
 }
 _LESSON = re.compile(r"^\s*(?:if|when|whenever|in case|если|когда)\b(?P<when>.+?)(?:,\s*|\s+then\s+|\s*:\s*|\s+[—-]\s+)"
-                     r"(?P<do>(?:then\s+)?(?:say|tell|answer|reply|offer|ask|mention|explain|suggest|point|give|let|don.?t|"
+                     r"(?P<do>(?:then\s+)?(?:(?:clearly|politely|briefly|kindly|always|first|just)\s+)?"
+                     r"(?:say|tell|answer|reply|offer|ask|mention|explain|suggest|point|give|let|don.?t|state|confirm|clarify|"
+                     r"inform|reassure|apologi[sz]e|"
                      r"do not|never|always|invite|recommend|take|send|show|add|keep|скажи|ответь|предложи|попроси|не)\b.*)$",
                      re.I | re.S)
 _STOP = {"someone", "somebody", "asks", "asked", "asking", "about", "shopper", "shoppers", "person", "people", "customer",
