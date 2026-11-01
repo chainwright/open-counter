@@ -42,6 +42,24 @@ WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", 
 MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 
 
+def deadline_verdict_said():
+    """The reply says the delivery verdict the shop's own tool gave for the person's date: 'too late' must be a
+    warning, 'possible, not certain' must say it isn't certain, 'on time' must say it arrives in time. 'By Friday'
+    is a different Friday on different days, so a fixed expectation only passed on some weekdays (31 Oct run)."""
+    say = {"too late": r"too late|won.?t (arrive|make it|get there)|not arrive|miss|after (your|the) (deadline|date|friday)|past",
+           "possible, not certain": r"not certain|no guarantee|can.?t (promise|guarantee)|might|may not|possible|could",
+           "on time": r"on time|in time|will (arrive|get there)|arrives? (by|before)"}
+
+    @from_transcript
+    def check(r, o, s):
+        for st in reversed(s):
+            m = re.search(r"by [\w ]+: (too late|possible, not certain|on time)", st["result"])
+            if m:
+                return bool(re.search(say[m.group(1)], r, re.I))
+        return False   # the shop never judged the date: the reply can't have its verdict
+    return check
+
+
 def ship_date_from_tool():
     """The reply names the ship date the shop's own tool returned in this chat (its weekday or its date), whatever
     day the eval runs on. It used to look for 'thursday|oct 29', which only passed on 29 October (judge N10)."""
@@ -110,7 +128,7 @@ CASES = [
     ("deadline: on time", ["A gift for my dad who loved his '68 green fastback. Under $60, Denver, by next Friday."],
      [("says on time", has(r"on time|arrives? in time|by next friday|will (arrive|get there)")), ("clean", NO_LEAK)]),
     ("deadline: too late is said", ["2 green to Denver by Friday please"],
-     [("warns", has(r"too late|won.?t arrive|not arrive|miss|after (your|the) (deadline|friday)|past"))]),
+     [("says the shop's verdict for the date", deadline_verdict_said())]),
     ("discount asked", ["Can I get 20% off 2 red ones? Ship to Austin TX"],
      [("answers discount", has(r"fixed|no (flat )?discount|discount")), ("no fake price", lacks(r"\$\s?(47|94)\b")),
       ("the one right total", has(r"\$\s?124\.50")), ("no other total", lacks(r"\$\s?(?!124\.50|59(\.00)?\b|6\.50|118(\.00)?\b)\d[\d,]*\.\d\d"))]),

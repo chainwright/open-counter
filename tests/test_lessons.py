@@ -147,3 +147,4 @@ def test_a_reply_made_only_of_stalling_or_notes_to_itself_is_written_by_code(mon
         assert out["reply"].strip()
         assert not out["reply"].lower().startswith("let me")
         assert "start_checkout" not in out["reply"] and "we need the checkout" not in out["reply"].lower()
+        assert "Red American Convertible, 1965" in out["reply"] and "$65.50" in out["reply"]   # the one car "65" means

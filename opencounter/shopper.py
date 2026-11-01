@@ -851,6 +851,18 @@ def _fallback_reply(steps: list[dict], ru: bool, last_user: str = "", lessons: l
         said = _apply_lessons("", lessons, ru)
         if said:
             return said
+    car = _one_car_meant(last_user)
+    m = re.search(r"item_id (\S+),", car)
+    x = next((x for x in shop.shop()["listings"] if m and x["id"] == m.group(1) and x["stock"] > 0), None)
+    if x:   # "Model 65, California": one shelf car fits, so answer about that car, not the whole shelf
+        ship, st = shop.shop()["rules"]["shipping_usd"], _state_said(last_user)
+        where = (f" в {st}" if ru else f" to {st}") if st else ""
+        return (f"Это {x['title']}: ${x['price_usd']:.0f}, в наличии {x['stock']}. Доставка{where} ${ship:.2f}, за одну "
+                f"машинку итого ${x['price_usd'] + ship:.2f}. Сколько штук? И пришлите одним сообщением имя и фамилию, "
+                "телефон, email и адрес с ZIP, я подготовлю оплату через PayPal." if ru else
+                f"That's the {x['title']}: ${x['price_usd']:.0f}, {x['stock']} in stock. Shipping{where} is ${ship:.2f}, "
+                f"so one comes to ${x['price_usd'] + ship:.2f}. How many would you like? Then send your first and last "
+                "name, phone, email and address with ZIP in one message, and I'll get the PayPal checkout ready.")
     return _shelf_answer(ru)
 
 
