@@ -30,13 +30,7 @@ code from what the tools already found (price, dates, what's still needed), and 
 shelf itself (what's in stock, shipping, how to order). A shopper never waits on a spinner and is never asked to send
 the message again. Every case also checks that each answer arrived within 8 s (budget plus network).
 
-Honest numbers: the last live run (28 Oct) passed 32 of 33 under that day's checks. The checks are stricter now: no
-reply may ask the person to resend, "on time" must really say it, and the ship date must be the one the shop's tool
-returned (not a fixed calendar day). Re-checked offline on the saved transcripts with no model call
-(`python evals/run_evals.py --rescore`), **27 of the 32 unchanged cases pass**: [`evals/RESCORE.md`](evals/RESCORE.md).
-The five that fail are out-of-time non-answers saved before the fixes: the outside-the-US one is now answered in code,
-Lena's lessons shape the out-of-time reply, and the last-resort "send it again" line is gone, replaced by the shelf
-answer above (`tests/test_lessons.py`). A fresh live run is the next step.
+Honest numbers: the latest live run (31 Oct, with the stricter checks: no reply may ask the person to resend, "on time" must really say it, the ship date must be the one the shop's tool returned) passed **31 of 33**, median 4.1 s per case: [`evals/RESULTS.md`](evals/RESULTS.md). The two misses are the model's wording, not money or stock: in "colour and year only" one reply stalled ("Let me fetch the current checkout details…") instead of naming the price, and in "too late" the reply said "Friday possible but not certain" where the check wants a plain warning. The run before (28 Oct, older checks) passed 32 of 33. The model varies run to run, so the pass rate is the number we report.
 
 The closed-tab case, run on the live sandbox on 28 Oct 2026: order `OC-C7DAD2E3` (PayPal order `9NC75431R2481360K`)
 was approved by a person while the return page was told to stay out of it (a `webhook-only-test` visitor). PayPal's
