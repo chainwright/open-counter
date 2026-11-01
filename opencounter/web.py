@@ -55,6 +55,8 @@ async def lifespan(_app):
 app = FastAPI(title="Open Counter", lifespan=lifespan)
 app.mount("/mcp", mcp_app)
 app.mount("/static", StaticFiles(directory=WEB / "static"), name="static")
+if (WEB / "studio").is_dir():   # Lena's studio (AG Studio), built by the Dockerfile's node stage into web/studio
+    app.mount("/studio", StaticFiles(directory=WEB / "studio", html=True), name="studio")
 
 
 def _who(req: Request) -> tuple[str, bool]:
@@ -675,6 +677,15 @@ async def webhook(req: Request):
 
 
 # ---- maker side ----
+@app.get("/api/studio/config.js")
+def studio_config():
+    """The AG Studio licence for the studio page, from the server's environment (AG_STUDIO_LICENSE), so the key is
+    never in the repo or the built bundle. A browser licence is visible to the page anyway; this keeps it out of git."""
+    key = os.environ.get("AG_STUDIO_LICENSE", "")
+    return Response(f"window.__AG_STUDIO_LICENSE__={json.dumps(key)};", media_type="application/javascript",
+                    headers={"Cache-Control": "no-store"})
+
+
 @app.post("/api/studio/llm")
 async def studio_llm_turn(req: Request):
     """One model turn for Lena's sales studio (AG Studio's agents run in the page and call this, so no key is in it)."""

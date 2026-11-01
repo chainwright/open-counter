@@ -101,5 +101,5 @@ function App() {
 }
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode><AgStudioProvider licenseKey={import.meta.env.VITE_AG_STUDIO_LICENSE} modules={[AgStudioAiModule]}><App /></AgStudioProvider></StrictMode>,
+  <StrictMode><AgStudioProvider licenseKey={(window as any).__AG_STUDIO_LICENSE__ || import.meta.env.VITE_AG_STUDIO_LICENSE} modules={[AgStudioAiModule]}><App /></AgStudioProvider></StrictMode>,
 );

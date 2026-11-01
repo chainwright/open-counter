@@ -2,3 +2,6 @@
 data
 tests
 __pycache__
+studio/node_modules
+studio/.env.local
+web/studio
