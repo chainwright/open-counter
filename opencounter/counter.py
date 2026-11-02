@@ -4,6 +4,9 @@ the built-in demo shopper, so the demo shows exactly what a real outside agent g
 None of these can take money. start_checkout only creates a PayPal order; a human approves it in PayPal."""
 from __future__ import annotations
 
+import hashlib
+import json
+
 import os
 
 from . import paypal, shop
@@ -19,6 +22,14 @@ def _media_url(name: str) -> str:
     p = shop.MEDIA_DIR / name
     v = f"?v={p.stat().st_size:x}{int(p.stat().st_mtime):x}" if p.exists() else ""
     return f"{PUBLIC_URL}/media/{name}{v}"
+
+
+def quote_lock(order_id: str, rows: list, extra: list, total: float) -> str:
+    """A short fingerprint of exactly what the shopper was quoted (lines, discount, shipping, total). PayPal is only
+    asked for this total; if anything differs by a cent, no PayPal order is created."""
+    canon = json.dumps({"id": order_id, "rows": rows, "extra": extra, "total": round(float(total), 2)},
+                       sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canon.encode()).hexdigest()[:8]
 
 
 def receipt(o: dict) -> dict:
@@ -38,6 +49,7 @@ def receipt(o: dict) -> dict:
         extra = []
     extra.append({"name": "Shipping" if o["shipping_usd"] else "Shipping (free)", "sum": o["shipping_usd"]})
     out = {"rows": rows, "extra": extra, "total": o["total_usd"]}
+    out["lock"] = quote_lock(o["id"], rows, extra, o["total_usd"])
     if o.get("deposit_usd"):
         out["deposit"] = o["deposit_usd"]
     return out
@@ -135,7 +147,7 @@ def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone:
     try:
         pp = paypal.create_order(order_id=o["id"], shop=s, listing=lines[0][0], qty=lines[0][1], lines=lines,
                                  shipping_usd=o["shipping_usd"], discount_usd=q["discount_usd"],
-                                 customer=o.get("customer"),
+                                 customer=o.get("customer"), quoted_total_usd=o["total_usd"],
                                  return_url=f"{PUBLIC_URL}/paypal/return?oc={o['id']}",
                                  cancel_url=f"{PUBLIC_URL}/paypal/cancel?oc={o['id']}")
     except paypal.PayPalError:
@@ -196,7 +208,7 @@ def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_
         pp = paypal.create_order(order_id=o["id"], shop=s, listing=item, qty=o["qty"],
                                  shipping_usd=o["shipping_usd"],
                                  lines=[(shop.listing(ln["listing_id"]), ln["qty"]) for ln in o["lines"]],
-                                 customer=o.get("customer"),
+                                 customer=o.get("customer"), quoted_total_usd=o["total_usd"],
                                  return_url=f"{PUBLIC_URL}/paypal/return?oc={o['id']}",
                                  cancel_url=f"{PUBLIC_URL}/paypal/cancel?oc={o['id']}")
     except paypal.PayPalError as e:

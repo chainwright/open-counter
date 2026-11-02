@@ -69,7 +69,8 @@ def money(x) -> str:
 
 def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping_usd: float,
                  return_url: str, cancel_url: str, lines: list[tuple[dict, int]] | None = None,
-                 customer: dict | None = None, discount_usd: float = 0.0, payee_email: str | None = None) -> dict:
+                 customer: dict | None = None, discount_usd: float = 0.0, payee_email: str | None = None,
+                 quoted_total_usd: float | None = None) -> dict:
     """One purchase unit with the exact item, quantity and shipping. Amounts are recomputed here from the
     listing, never taken from the agent's words. The buyer's address comes from their PayPal account.
     payee_email: the PayPal account the money goes to (a maker who opened a counter at /open); without it, the
@@ -77,6 +78,9 @@ def create_order(*, order_id: str, shop: dict, listing: dict, qty: int, shipping
     lines = lines or [(listing, qty)]
     item_total = sum(Decimal(money(li["price_usd"])) * q for li, q in lines)
     total = item_total - Decimal(money(discount_usd)) + Decimal(money(shipping_usd))
+    if quoted_total_usd is not None and total != Decimal(money(quoted_total_usd)):
+        # the price moved between the quote and the payment: never ask PayPal for a different amount
+        raise PayPalError(409, {"name": "QUOTE_CHANGED", "details": [{"issue": f"total {money(total)} differs from the quoted {money(quoted_total_usd)}; no order created"}]})
     body = {
         "intent": "CAPTURE",
         "purchase_units": [{
