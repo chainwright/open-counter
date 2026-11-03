@@ -592,6 +592,16 @@ def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | No
             and not re.search(r"discount|fixed|скидк|фиксир", reply, re.I)):
         reply = ("Цены фиксированные; скидки есть только на сборку под заказ: 10% от 10 машинок и 15% от 25. " if ru else
                  "Prices are fixed; the only discounts are on made-to-order builds: 10% from 10 cars, 15% from 25. ") + reply
+    if checkout:
+        # the order exists: a sentence still asking for the details, or a bare "Your order is ready!" next to the
+        # receipt line below, reads as a glitch (live check 3 Nov: both reached the shopper)
+        sents = re.split(r"(?<=[.!?])\s+", reply.strip())
+        asks = re.compile(r"\b(send|provide|share|need|give)\b.{0,40}\b(name|phone|e-?mail|address|zip)\b|"
+                          r"\bI'?ll (create|generate|set up) (it|the (order|checkout|invoice|link|button))\b|"
+                          r"(пришлите|напишите|нужн\w*).{0,40}(имя|телефон|почт|адрес|индекс)", re.I)
+        kept = [x for x in sents if not asks.search(x) and not re.fullmatch(r"(your order is ready|заказ готов)\s*[!.]?", x.strip(), re.I)]
+        if kept != sents:
+            reply = " ".join(kept)
     if checkout and checkout.get("receipt") and not re.search(r"\$\s?\d|\d\s?\$|\d\s?доллар|\d\s?usd", reply, re.I):
         r_ = checkout["receipt"]
         if r_.get("deposit"):
@@ -1027,7 +1037,9 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
                                   last_user, steps, checkout, lang_text)
     # One colour or one year that fits a single car on the shelf ("a blue one", "the red '65"): that's the car.
     # the car can have been named a few messages ago ("I need red car" … "1" … "California")
-    mto = any(parse_made_to_order(u) for u in typed.split(" / ")) or any(
+    # the spec can be spread over messages ("a grey fastback, brown inside, two" … "it's a 1967"): read the
+    # conversation as a whole too, or a bare year later on looks like a pick from the shelf (live check 03.11)
+    mto = any(parse_made_to_order(u) for u in typed.split(" / ")) or bool(parse_made_to_order(typed)) or any(
         "made-to-order build" in (m.get("memo") or "") for m in messages if m["role"] == "assistant")
     hint = "" if checkout or mto else next((h for h in (_one_car_meant(u) for u in reversed(typed.split(" / ")[-4:])) if h), "")
     if hint:

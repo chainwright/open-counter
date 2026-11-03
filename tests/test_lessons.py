@@ -162,3 +162,28 @@ def test_drafted_lessons_in_the_forms_the_assistant_writes_are_understood():
         assert shop.split_lesson(note)[0], note
         assert shop.lesson_matches(note, hit), (note, hit)
         assert not shop.lesson_matches(note, miss), (note, miss)
+
+
+def test_a_build_spec_spread_over_two_messages_is_not_turned_into_a_shelf_car(monkeypatch):
+    # live check 3 Nov (judge step 1): "A grey fastback … brown inside, two of them." → "what year?" → "It is a 1967.
+    # Alex Doe …" got "We have the Highland Blue Fastback, 1967 in stock", because each message alone isn't a full
+    # build spec and a bare 1967 matches one shelf car. Read together they are a build.
+    fake = FakeModel(*["Two grey fastbacks, made to order."] * 12)
+    monkeypatch.setattr(shopper, "_client_", lambda: fake)
+    history = [{"role": "user", "content": "A grey fastback with two black stripes, brown inside, two of them."},
+               {"role": "assistant", "content": "Which year is the real car?"}]
+    shopper.run(history + [{"role": "user", "content": "It is a 1967. Alex Doe, 512-555-0100, alex@example.com, "
+                                                       "12 Oak St, Austin TX 78701."}])
+    sent = " ".join(m.get("content") or "" for c in fake.calls for m in c["messages"] if m["role"] == "system")
+    assert "The person means" not in sent and "only car on the shelf" not in sent   # no shelf-car hint
+
+
+def test_once_the_order_exists_the_reply_stops_asking_for_details_and_says_ready_once():
+    checkout = {"receipt": {"total": 184.50, "deposit": 92.25}}
+    for model_text in ("Your order is ready! Let me know if you'd like any adjustments!",
+                       "It's paid with a PayPal invoice. Send your first and last name, phone, email and address with "
+                       "ZIP in one message, and I'll create it."):
+        out = shopper._must_say(model_text, "It is a 1967. Alex Doe …", [], checkout, "")
+        assert out.count("order is ready") <= 1, out
+        assert "Send your" not in out and "I'll create it" not in out, out
+        assert "$92.25 deposit" in out, out
