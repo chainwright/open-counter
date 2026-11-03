@@ -4,6 +4,7 @@ gets over MCP. NVIDIA Nemotron on Nebius Token Factory with native tool calls, a
 It can find, compare and prepare a checkout. It cannot pay: start_checkout returns a PayPal link for the human."""
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import re
@@ -219,6 +220,15 @@ def add_spend(usd: float, who=()):
             shop._save_json("spend_by.json", _spent_by)
 
 
+# who is chatting right now: an order is only ever shown again to the visitor it was made for (asyncio.to_thread
+# copies the context, so parallel chats don't see each other's value)
+_VISITOR: contextvars.ContextVar[str] = contextvars.ContextVar("visitor", default="")
+
+
+def _mine(o: dict) -> bool:
+    return (o.get("visitor") or "") == _VISITOR.get()
+
+
 def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
     if name == "about_counter":
         return counter.about_counter()
@@ -240,11 +250,11 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
             c = {"full_name": args.get("name", ""), "phone": args.get("phone", ""), **c}
         # "same name, phone and email": take what this person already gave for an order in this chat
         prev = next((o.get("customer") for o in reversed(shop.orders())
-                     if o.get("customer") and o.get("asked_for", "")[:60] == asked[:60]), None)
+                     if o.get("customer") and _mine(o) and o.get("asked_for", "")[:60] == asked[:60]), None)
         if prev:
             c = {k: v for k, v in c.items() if v}
             for k in ("full_name", "phone", "email"):
-                c.setdefault(k, prev[k])
+                c.setdefault(k, prev.get(k, ""))
             if not c.get("address_line_1"):
                 for k in ("address_line_1", "address_line_2", "city", "state", "postal_code"):
                     c.setdefault(k, prev.get(k))
@@ -294,7 +304,7 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
             except (ValueError, TypeError):
                 lines = None
             for o in shop.orders():
-                if (lines and o.get("status") == "awaiting_approval" and o.get("kind") != "commission"
+                if (lines and _mine(o) and o.get("status") == "awaiting_approval" and o.get("kind") != "commission"
                         and o.get("asked_for", "")[:60] == asked[:60] and o.get("approve_url")
                         and [(x["listing_id"], x["qty"]) for x in o.get("lines") or []] == [(x["listing_id"], x["qty"]) for x in lines]
                         and (o.get("customer") or {}).get("postal_code") == zip_):
@@ -313,7 +323,7 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
                     car["details"] = said["details"]
         cars = sum(int((x or {}).get("quantity") or 0) for x in (args.get("cars") or []))
         for o in shop.orders():   # the same build for the same person in this chat already waits: show it again
-            if (o.get("kind") == "commission" and o.get("status") == "awaiting_approval" and o.get("approve_url")
+            if (o.get("kind") == "commission" and _mine(o) and o.get("status") == "awaiting_approval" and o.get("approve_url")
                     and o.get("asked_for", "")[:60] == asked[:60] and o.get("qty") == cars
                     and (o.get("customer") or {}).get("postal_code") == zip_):
                 q = o["quote"]
@@ -966,6 +976,7 @@ def _qty_in(text: str):
 def run(messages: list[dict], visitor: str = "", who=()) -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
+    _VISITOR.set(visitor)
     answered = _news_answer(messages) or _notify_answer(messages)
     if answered:
         return answered

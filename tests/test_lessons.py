@@ -187,3 +187,29 @@ def test_once_the_order_exists_the_reply_stops_asking_for_details_and_says_ready
         assert out.count("order is ready") <= 1, out
         assert "Send your" not in out and "I'll create it" not in out, out
         assert "$92.25 deposit" in out, out
+
+
+def test_an_order_is_shown_again_only_to_the_visitor_it_was_made_for(monkeypatch):
+    # live check 3 Nov: two separate chats with the same words and ZIP got the same invoice, and with it the first
+    # person's name and address. The "show it again" shortcut must stay inside one visitor's chats.
+    theirs = {"id": "OC-1", "kind": "commission", "status": "awaiting_approval", "approve_url": "https://x/inv",
+              "asked_for": "two grey fastbacks", "qty": 2, "visitor": "v-first",
+              "customer": {"postal_code": "78701", "full_name": "Alex Doe", "phone": "512-555-0100", "email": "a@x.com"},
+              "quote": {"total_cars": 2, "unit_usd": 80, "build_weeks": 1, "delivery": {"ships_on": "Wednesday"}},
+              "title": "Grey Fastback", "total_usd": 184.5}
+    monkeypatch.setattr(shop, "orders", lambda: [theirs])
+    monkeypatch.setattr(shopper.counter, "_ship_to", lambda o: "Alex Doe, 12 Oak St")
+    monkeypatch.setattr(shopper.counter, "receipt", lambda o: {})
+    made = []
+    monkeypatch.setattr(shopper.counter, "start_commission_checkout",
+                        lambda *a, **k: made.append(k.get("customer") or {}) or {"ok": True, "order_id": "OC-NEW"})
+    typed = "two grey fastbacks / Bea Roe, 512-555-0199, b@y.com, 5 Elm St, Austin TX 78701"
+    for who, expect in (("v-second", "OC-NEW"), ("v-first", "OC-1")):
+        shopper._VISITOR.set(who)
+        args = {"cars": [{"model": "fastback", "year": "1967", "body_colour": "grey", "interior_colour": "brown",
+                          "quantity": 2}], "us_state": "TX", "name": "Bea Roe", "phone": "512-555-0199",
+                "customer": {"postal_code": "78701", "email": "b@y.com", "address_line_1": "5 Elm St", "city": "Austin"}}
+        out = shopper._call_tool("start_commission_checkout", args, "two grey fastbacks", typed)
+        assert out["order_id"] == expect, (who, out)
+    # the second visitor's new order must not be filled with the first person's name, phone or email
+    assert made and not any(v in ("Alex Doe", "512-555-0100", "a@x.com") for v in made[0].values()), made
