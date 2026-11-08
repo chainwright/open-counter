@@ -959,6 +959,12 @@ SAFETY_Q = re.compile(r"toxic|lead[- ]?(free|based)|\blead\b.{0,25}\bpaint|\bpai
                       r"son|daughter|grandson|granddaughter)\b.{0,40}\b(safe|play|toy|age|old)\b|\b\d{1,2}[- ]?(years?|yrs?|y\.?o\.?)[- ]?old\b|"
                       r"\b(age|ages)\b.{0,20}\b(limit|range|for|\d)|choking|small parts|swallow|allerg|chew|\bbpa\b|phthalat|"
                       r"chemical|is it a toy|for (a |my )?(child|kid|toddler|baby)|"
+                      # final judge 08.11 P1-3: "Can my toddler have it?", "ok for a 4yo?", "Is the resin poisonous?",
+                      # "Any sharp edges?", "Can a kid handle it?"
+                      r"poison|harmful|harmless|sharp|\bedges?\b|\btoddlers?\b|\binfants?\b|little ones?|\b\d{1,2}[- ]?y\.?o\b|"
+                      r"\b(child|children|kids?|bab(y|ies)|son|daughter|grandson|granddaughter)\b.{0,30}"
+                      r"\b(have|handle|hold|use|touch|ok|okay|fine|alright|mouth|room)\b|"
+                      r"\b(have|handle|hold|use|touch|ok|okay|fine|alright)\b.{0,20}\b(child|children|kids?|bab(y|ies))\b|"
                       r"токсич|безопас|свин[ец]|ребён|ребен|детск|для дет|лет\b.{0,10}(сын|доч|ребён|ребен)|игрушк", re.I)
 # A safety claim in a reply that isn't in the listing text is never sent.
 _H = r"[\s\-‑–]?"   # "non-toxic", "non‑toxic" (U+2011, as the model wrote it on 08.11), "non toxic"
@@ -969,6 +975,30 @@ SAFETY_CLAIM = re.compile(rf"non{_H}toxic|lead{_H}free|safety{_H}tested|child{_H
                           r"нетоксич|без свинца|подходит (для )?дет|безопасн\w* для дет", re.I)
 # inside an answer to a safety question, any "safe" is a claim
 SAFE_WORD = re.compile(r"\bsafe\b|\bsafely\b|безопасн", re.I)
+# The reply side of the same rule (final judge 08.11 P1-3: claim patterns are a deny-list, and "It contains no lead",
+# "free of lead and harmless", "Totally fine for little ones" got past it). Any reply that touches the safety
+# vocabulary at all is not trusted: it is replaced by the listing-quote answer. Words quoted from the listings
+# themselves ("Not a toy, not for children under 14.") don't count, nor "safe" about shipping or paying.
+REPLY_SAFETY = re.compile(r"\blead\b(?![\s\-‑–]?times?\b)|toxic|poison|harm(ful|less)?\b|\bsafe(ly|ty|r|st)?\b|"
+                          r"\b(child|children|kids?|toddlers?|bab(y|ies)|little ones?|infants?|youngsters?)\b|"
+                          r"\b\d{1,2}[\s\-‑–]?(yo|y\.o\.|years?[\s\-‑–]?olds?)\b|\bages?\b|\bplay(s|ing|ed|thing)?\b|\bchew|"
+                          r"sharp|\bedges?\b|chok(e|ing)|swallow|allerg|hypoallergenic|\bbpa\b|phthalat|"
+                          r"свин[ец]|токсич|ядовит|безопасн|ребён|ребен|\bдет(и|ей|ям|ьми|ск\w*)\b|малыш|игрушк|играт", re.I)
+_NOT_PRODUCT = re.compile(r"ship|pack|deliver|transit|mail|box|pay|card|checkout|secure|order|account|доставк|оплат|упаков", re.I)
+
+
+def _touches_safety(reply: str) -> bool:
+    text = reply or ""
+    for x in shop.shop()["listings"]:   # the listings' own words may be quoted
+        for sent in re.split(r"(?<=\.)\s+", x.get("notes", "")):
+            if sent.strip():
+                text = re.sub(re.escape(sent.strip()), " ", text, flags=re.I)
+    for sent in re.split(r"(?<=[.!?])\s+", text):
+        for m in REPLY_SAFETY.finditer(sent):
+            if re.match(r"safe|безопасн", m.group(0), re.I) and _NOT_PRODUCT.search(sent[max(0, m.start() - 40):m.end() + 40]):
+                continue   # "packed safely", "PayPal keeps your payment safe" (same sentence only)
+            return True
+    return False
 
 
 def _listing_text() -> str:
@@ -1033,7 +1063,12 @@ _FOR_SHOPPER = [
 INTERNAL = re.compile(r"before quoting|ask the person|ask them (first|for)|don.?t change it yourself|tool results|"
                       r"notes? (for|to) (you|yourself)|done in code|computed in code|already done for you|lena's notes from|"
                       r"use only what they type|don.?t name tools|i missed asking|i.?ll (now )?(run|call|use) the tools?|\b[a-z]+_[a-z0-9_]+\b|"
-                      r"^(now )?let'?s (create|get|make|call|run|prepare|finali[sz]e|include|proceed)\b", re.I)
+                      r"^(now )?let'?s (create|get|make|call|run|prepare|finali[sz]e|include|proceed)\b|"
+                      # final judge 08.11 P1-3: paraphrases of the same notes
+                      r"\b(my|the|a|these|those) tools?\b|\btools? (returned|says?|said|results?|output|shows?)\b|"
+                      r"system prompt|\bmy (instructions|notes|rules|prompt|guidelines)\b|\bin my notes\b|"
+                      r"\bi(?:'m| am) (instructed|told|not allowed)\b|\b(quote commission|search counter|about counter)\b|"
+                      r"^(now )?(let me|i'?ll|i will) (fetch|check|look( it)? up|pull|run|call|query|look)\b", re.I)
 
 
 def _note_for_shopper(text: str) -> str:
@@ -1650,11 +1685,20 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
     if taught_now:   # her lesson holds whatever path wrote the reply: model, code or out-of-time
         reply = _apply_lessons(reply, taught_now, bool(re.search(r"[а-яё]", lang_text, re.I)))
         steps += _lesson_steps(taught_now)
-    # Output boundary: no safety claim the listings don't make; a safety question always gets the listing's words
+    # Output boundary: a safety question, or a reply that touches safety, age or materials at all, gets the listing's
+    # own words instead of the model's (final judge 08.11 P1-3: fix the class, not more patterns). Only when the
+    # message was also an order are the reply's other sentences kept (the total, what's still needed), after them.
     asked_safety = _safety_q(last_user)
-    reply = _scrub_safety(reply, asked_safety)
-    if asked_safety:
-        reply = _safety_answer(last_user, bool(re.search(r"[а-яё]", lang_text, re.I))) + (" " + reply if reply else "")
+    if asked_safety or _touches_safety(reply):
+        ordering = bool(checkout or parse_made_to_order(last_user) or _qty_in(last_user) or PHONE.search(last_user)
+                        or EMAIL_IN.search(last_user))
+        rest = " ".join(x for x in re.split(r"(?<=[.!?])\s+", reply or "") if not _touches_safety(x)) if ordering else ""
+        rest = _scrub_safety(rest, True)
+        reply = _safety_answer(last_user, bool(re.search(r"[а-яё]", lang_text, re.I))) + (" " + rest if rest else "")
+        steps.append({"tool": "item_details", "label": LABELS["item_details"], "args": {},
+                      "result": "safety and age: quoted from the listings only", "ms": 0})
+    else:
+        reply = _scrub_safety(reply, False)
     # over a made-to-order receipt card the words describe that build, never the shelf (live check 08.11)
     if checkout and (checkout.get("payment") == "invoice" or "built in" in str(checkout.get("delivery", ""))) \
             and not re.search(r"\bbuil[dt]|made to order|под заказ|собер", reply, re.I):

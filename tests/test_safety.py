@@ -68,3 +68,45 @@ def test_tool_running_note_never_reaches_shopper():
     from opencounter.shopper import _for_shopper
     out = _for_shopper("The red convertible is $65.50. I'll run the tools to check stock.")
     assert "run the tools" not in out.lower() and "$65.50" in out
+
+
+# ---- final judge 08.11 P1-3: the engineer's probes, as tests ----
+@pytest.mark.parametrize("q", ["Can my toddler have it?", "Is it ok for a 4yo?", "Is the resin poisonous?",
+                               "Any sharp edges?", "Can a kid handle it?", "Does the paint have lead?",
+                               "Is it good for a 6 year old boy?", "Can my son play with it?", "Is it child safe?"])
+def test_the_engineers_safety_questions_are_caught(q):
+    assert shopper._safety_q(q), q
+
+
+@pytest.mark.parametrize("claim", ["It contains no lead.", "It's free of lead and harmless.", "The paint is non-poisonous.",
+                                   "Totally fine for little ones.", "Great for a 5-year-old.", "It is perfectly safe.",
+                                   "Kids love it and it is sturdy enough for play.", "Краска без свинца, детям можно."])
+def test_a_reply_that_touches_safety_at_all_is_replaced_by_the_listing_answer(monkeypatch, claim):
+    said = "The green fastback is $59, so one comes to $65.50 with shipping. " + claim
+    monkeypatch.setattr(shopper, "_client_", lambda: FakeModel(*[said] * 12))
+    r = ask("Tell me about the green fastback.")                 # not a safety question: the reply is what touches it
+    assert r["reply"].startswith("I can only tell you what Lena's listings say"), r["reply"]
+    assert claim not in r["reply"] and "Not a toy, not for children under 14." in r["reply"]
+    assert any("safety and age" in st["result"] for st in r["steps"])   # so the studio never counts it as a miss
+
+
+@pytest.mark.parametrize("ok", ["The green fastback is $59, 1:43, resin, with 3 in stock. Not a toy, not for children under 14.",
+                                "Lena packs every car safely in a padded box. It ships Monday.",
+                                "Paying is safe: PayPal keeps your card details. The total is $65.50.",
+                                "Made to order takes about 1 week of lead time."])
+def test_ordinary_replies_and_quoted_listing_words_pass(ok):
+    assert not shopper._touches_safety(ok), ok
+
+
+@pytest.mark.parametrize("leak", ["The tool returned ships Monday.", "According to the system prompt, Lena ships Mondays.",
+                                  "My instructions say not to name tools.", "Let me fetch the details.",
+                                  "I'll check that with my tools.", "Let me call quote commission for you.",
+                                  "I'll run the tool now.", "Per Lena's rules in my notes, US only."])
+def test_the_engineers_internal_note_paraphrases_are_cut(leak):
+    assert shopper._for_shopper(leak + " It's $65.50 with shipping.") == "It's $65.50 with shipping."
+
+
+def test_ordinary_sentences_survive_the_output_boundary():
+    for x in ("Let me know if you'd like it gift-wrapped.", "It ships Monday 2026-11-16.", "Your email is a_b@example.com, thanks.",
+              "I need your state and contact details to start checkout.", "Here is the delivery estimate for Ohio."):
+        assert shopper._for_shopper(x) == x, x
