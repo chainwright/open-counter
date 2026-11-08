@@ -34,7 +34,7 @@ function App() {
       .catch((e) => { (window as any).__err = String(e); });
   }, []);
   const ai = useMemo<AgAiHarnessSetup>(() => studioAi([
-    { label: 'Where did my agent go wrong?', prompt: 'Show me where my agent went wrong this week.' },
+    { label: 'Where did my agent go wrong?', prompt: "Ask Lena's shop analyst where my agent went wrong this week and whether her lessons worked." },
     { label: 'Sold to AI agents', prompt: 'How many cars did outside AI agents buy this week?' },
     { label: 'Cars sold by model', prompt: 'Add a bar chart of cars sold (qty) by car.' },
   ]), []);

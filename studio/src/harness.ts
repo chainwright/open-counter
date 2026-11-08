@@ -5,7 +5,8 @@ import { shopAdapter } from './adapter';
 // The studio's AI: AG's five built-in agents plus ours, "Lena's shop analyst", all on Nemotron through our server.
 // Ours knows the shop (its agent's mistakes and lessons, who sold this week's orders) through two tools that call the
 // shop's own endpoints, so every number is computed in code. The Lead hands it shop questions; it hands widget work on
-// to Studio's Widget agent — the chain the chat panel shows as Lead → Lena's shop analyst → Widget agent.
+// to Studio's Page agent (to add one) or Widget agent (to change one) — so the chat panel shows Lead → Lena's shop
+// analyst for a question, and Lead → Lena's shop analyst → Page/Widget agent when Lena asks for a panel.
 
 const adapter = shopAdapter();
 const visitor = () => localStorage.getItem('oc_visitor') || '';
@@ -55,8 +56,12 @@ export const studioAi = (promptStarters: { label: string; prompt: string }[]): A
         "\n\nThis dashboard belongs to Lena's shop. Questions about the shop's AI sales agent — its mistakes, Lena's lessons, " +
         "whether it followed them, or sales by channel (outside AI over MCP vs her chat) — go to 'shop' (Lena's shop analyst). " +
         'Call it exactly like this: delegate_to({"type": {"id": "shop"}, "instructions": "<the question>"}). ' +
-        "Do not re-configure the shop's custom widgets yourself; the shop analyst knows them. If the widget the user wants is " +
-        "already on the page, say where it is ('It's the Where my agent got stuck panel on your page') — never claim you placed it.",
+        "Any question about where the agent went wrong, what it got stuck on, or whether Lena's lessons worked: ALWAYS " +
+        "delegate_to shop first, then answer with the numbers it returns. Do not answer such a question from the page layout. " +
+        "Never describe widget positions, tracks, rows, columns or widget ids to the user. " +
+        "Do not re-configure the shop's custom widgets yourself; the shop analyst knows them. Only when the user asks you to " +
+        "ADD a widget that is already on the page, say it's already there by its title ('the Where my agent got stuck panel') " +
+        "— never claim you placed it.",
       tools: (ctx: any) => {
         const orig = builtIn.lead.tools?.(ctx) ?? [];
         const mine = ctx.tools.delegateTo([...builtIns, 'shop']);   // Studio's own delegate tool, with our agent added

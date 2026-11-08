@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from . import shopper
 
@@ -48,9 +49,32 @@ def to_tool_choice(req: dict):
     return c if c in ("auto", "none", "required") else None
 
 
+# A turn that announces a tool call and then stops ("Now I'll place the widget:") ends Studio's run half-way, since
+# Studio sees no tool call and no question. Seen in 2 of 3 widget requests by the final AG judge, 08.11 (P1-1).
+HALF_DONE = re.compile(r":\s*$|\b(now |next,? )?(i'?ll|i will|let me|i'?m going to)\s+(now\s+)?(place|add|configure|check|create|"
+                       r"update|call|delegate|hand|ask|put|look|fetch|view|set|build|make|move|resize)\b", re.I)
+CONTINUE = "Continue: make the tool call now."
+
+
+def half_done(text: str, calls: list, tools: list) -> bool:
+    """The model said what it would do next but made no tool call, although tools were offered."""
+    return bool(tools) and not calls and bool(text) and bool(HALF_DONE.search(text[-240:]))
+
+
+def _ask(kw: dict, who) -> tuple[str, list, object, str]:
+    r = shopper._client_().with_options(timeout=60, max_retries=1).chat.completions.create(**kw)
+    u = r.usage
+    usd = (u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6 if u else 0.0
+    shopper.add_spend(usd, who)
+    m = r.choices[0].message
+    calls = [{"id": c.id, "name": c.function.name, "arguments": c.function.arguments or "{}"} for c in (m.tool_calls or [])]
+    text = (m.content or "").rsplit("</think>", 1)[-1].strip()
+    return text, calls, u, r.choices[0].finish_reason
+
+
 def turn(req: dict, who=()) -> dict:
     """One turn: {text, tool_calls: [{id, name, arguments}], usage, model}. Raises shopper.OverBudget when the share is
-    spent."""
+    spent. A turn that only announces its next step is asked once more, with a tool call required."""
     shopper.check_budget(who)
     kw = {"model": shopper.MODEL, "messages": to_messages(req), "max_tokens": MAX_TOKENS, "temperature": 0.2,
           "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
@@ -63,18 +87,29 @@ def turn(req: dict, who=()) -> dict:
     if (req.get("responseFormat") or {}).get("type") == "json":
         rf = req["responseFormat"]
         kw["response_format"] = {"type": "json_schema", "json_schema": {"name": rf.get("name") or "out", "schema": rf.get("schema") or {}}}
-    r = shopper._client_().with_options(timeout=60, max_retries=1).chat.completions.create(**kw)
-    u = r.usage
-    usd = (u.prompt_tokens * shopper.PRICE_IN + u.completion_tokens * shopper.PRICE_OUT) / 1e6 if u else 0.0
-    shopper.add_spend(usd, who)
-    m = r.choices[0].message
-    calls = [{"id": c.id, "name": c.function.name, "arguments": c.function.arguments or "{}"} for c in (m.tool_calls or [])]
-    text = (m.content or "").rsplit("</think>", 1)[-1].strip()
+    text, calls, u, finish = _ask(kw, who)
+    retried = False
+    if half_done(text, calls, tools) and kw.get("tool_choice") != "none":
+        # one retry, with what it said kept and a tool call required; the first text stays in front of the calls
+        retry = {**kw, "messages": kw["messages"] + [{"role": "assistant", "content": text},
+                                                    {"role": "user", "content": CONTINUE}],
+                 "tool_choice": "required"}
+        try:
+            shopper.check_budget(who)
+            t2, c2, u2, finish = _ask(retry, who)
+        except Exception:   # the retry is a bonus: on any error keep the first answer
+            t2, c2, u2 = "", [], None
+        if c2:
+            calls, retried = c2, True
+            text = (text + ("\n\n" + t2 if t2 else "")).strip()
+            if u and u2:
+                u = type("U", (), {"prompt_tokens": u.prompt_tokens + u2.prompt_tokens,
+                                   "completion_tokens": u.completion_tokens + u2.completion_tokens})()
     if os.environ.get("STUDIO_LLM_DEBUG"):   # local debugging only: what went in and what came out
         with open(os.environ["STUDIO_LLM_DEBUG"], "a") as fh:
             fh.write(json.dumps({"tools": [t["function"]["name"] for t in tools], "choice": kw.get("tool_choice"),
                                  "last": kw["messages"][-1], "text": text, "calls": calls,
-                                 "finish": r.choices[0].finish_reason}) + "\n")
+                                 "finish": finish, "retried": retried}) + "\n")
     return {"text": text, "tool_calls": calls, "model": shopper.MODEL,
             "usage": {"inputTokens": u.prompt_tokens, "outputTokens": u.completion_tokens} if u else None}
 
