@@ -881,7 +881,8 @@ def maker_agent_misses(req: Request, days: int = 7):
     convs = shop.conversations()
     orders = shop.orders()
     out = misses.agent_misses(convs, shop.lessons_for(visitor, lena), orders,
-                              since=shop.now().timestamp() - days * 86400, matches=shop.lesson_matches)
+                              since=shop.now().timestamp() - days * 86400, matches=shop.lesson_matches,
+                              viewer=None if lena else visitor)
     if not lena:   # public demo: no names, phones or addresses in what the widget quotes
         chats, by_id = {c["id"]: c for c in convs}, {o["id"]: o for o in orders}
         for r in out["taught"] + out["open"]:

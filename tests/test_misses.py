@@ -66,3 +66,56 @@ def test_a_mistake_an_active_lesson_already_covers_is_not_open():
     convs.append(chat("c6", [turn(700, "Do you ship to Canada?", "I couldn't finish that in a few steps.")]))
     out = misses.agent_misses(convs, lessons, orders, since=0, matches=shop.lesson_matches)
     assert [r["chat"] for r in out["open"]] == ["c4"]
+
+
+# ---- final judges 08.11: the safety answer is not a miss; a viewer sees only sample chats and their own ----
+SAFE_STEP = "reading the listing · safety and age: quoted from the listings only"
+
+
+def test_the_deliberate_safety_answer_is_never_an_open_row():
+    from opencounter import shopper
+    convs, lessons, orders = data()
+    reply = shopper._safety_answer("Is the paint toxic for a kid?", False)
+    assert misses.STUCK.search(reply)                       # it says "I don't know" for what the listing doesn't say…
+    convs.append(chat("c7", [turn(800, "Is the paint toxic for a kid?", reply, [SAFE_STEP])]))
+    out = misses.agent_misses(convs, lessons, orders, since=0, matches=shop.lesson_matches)
+    assert [r["chat"] for r in out["open"]] == ["c4"]       # …but that's the right answer, not a place it got stuck
+
+
+def _mine(c, visitor=None, sample=False):
+    return {**c, "visitor": visitor or "", "sample": sample}
+
+
+def test_a_visitor_sees_open_rows_only_from_sample_chats_and_their_own():
+    convs = [_mine(chat("c1", [turn(100, "Ferrari?", "Sorry, I can't help with that.")]), sample=True),
+             _mine(chat("c2", [turn(200, "Credit card?", "I'm not sure.")]), visitor="judgeA"),
+             _mine(chat("c3", [turn(300, "Gift wrap?", "I don't know.")]), visitor="judgeB")]
+    see = lambda viewer: [r["chat"] for r in misses.agent_misses(convs, [], [], since=0, matches=shop.lesson_matches,
+                                                                 viewer=viewer)["open"]]
+    assert see("judgeA") == ["c2", "c1"] and see("judgeB") == ["c3", "c1"] and see("") == ["c1"]
+    assert see(None) == ["c3", "c2", "c1"]                  # Lena sees every chat
+
+
+def test_crosses_come_only_from_chats_the_lesson_could_apply_to():
+    convs, lessons, orders = data()
+    convs = [_mine(c, sample=True) for c in convs]
+    convs.append(_mine(chat("c8", [turn(900, "Ship to Mexico?", "Sure, 2 weeks.")]), visitor="judgeB"))
+    # Lena's lesson: a judge sees the sample chats and their own, not another judge's chat
+    later = lambda viewer, ls: [x["chat"] for x in misses.agent_misses(convs, ls, orders, since=0,
+                                                                         matches=shop.lesson_matches, viewer=viewer)["taught"][0]["later"]]
+    assert later("judgeA", lessons) == ["c2", "c3"] and later("judgeB", lessons) == ["c2", "c3", "c8"]
+    # a visitor's own lesson only ever applies to that visitor's chats, so only those can tick or cross it
+    own = [{**lessons[0], "visitor": "judgeA", "chat": "c1"}]
+    convs.append(_mine(chat("c9", [turn(950, "Send it to Canada?", "We ship to the US only.", [STEP])]), visitor="judgeA"))
+    assert later("judgeA", own) == ["c9"] and later(None, own) == ["c9"]
+
+
+def test_the_studio_endpoint_scopes_open_rows_to_the_viewer(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from opencounter import web
+    monkeypatch.setattr(shop, "DATA", tmp_path)
+    shop.seed(force=True)
+    shop.log_turn("chat-b1", "Do you do gift wrap?", "I'm not sure about that.", [], None, visitor="judgeB")
+    c = TestClient(web.app)
+    rows = lambda v: [r["chat"] for r in c.get("/api/maker/agent_misses", headers={"x-visitor": v}).json()["open"]]
+    assert "chat-b1" in rows("judgeB") and "chat-b1" not in rows("judgeA")
