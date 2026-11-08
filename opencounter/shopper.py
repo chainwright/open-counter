@@ -241,6 +241,12 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
     if name == "delivery_estimate":
         # the shopper's own deadline ("by next Friday") is always checked, even if the model forgot to pass it
         return counter.delivery_estimate(args.get("us_state", ""), args.get("need_by", "") or shop.deadline_in(typed))
+    if name in ("quote_commission", "start_commission_checkout"):
+        # the year of the real car must be one the person typed: a year the model filled in is dropped, so the tool
+        # asks for it (live check 08.11: a build was quoted and its contacts taken before the year was asked)
+        for car in args.get("cars") or []:
+            if isinstance(car, dict) and car.get("year") and not _year_typed(car["year"], typed):
+                car["year"] = ""
     if name == "quote_commission":
         return counter.quote_commission(args.get("cars") or [], args.get("us_state", ""))
     if name in ("start_checkout", "start_commission_checkout"):
@@ -521,6 +527,12 @@ _NUMS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven"
 def parse_made_to_order(text: str) -> dict | None:
     """A made-to-order spec written in plain words (English or Russian), read in code so a quote never depends on the
     model noticing it: body style, year, body colour, interior colour, quantity, extras. None if anything is missing."""
+    f = mto_fields(text)
+    return f if all(f[k] for k in ("model", "year", "body_colour", "interior_colour", "quantity")) else None
+
+
+def mto_fields(text: str) -> dict:
+    """What a made-to-order description says so far; a missing field is None."""
     t = text.lower()
     style = next((v for k, v in _STYLES.items() if k in t), None)
     year = re.search(r"\b(19[2-9]\d|20[0-2]\d)\b", t)
@@ -549,10 +561,122 @@ def parse_made_to_order(text: str) -> dict | None:
     if q is None:
         q = next((n for k, n in _NUMS.items() if re.search(r"\b" + k + r"\w*\b", t) and k in ("две", "два", "two", "три", "three")), None)
     extras = re.search(r"((?:two|2|две|с двумя)\s+\w+\s+(?:stripes|полос\w*)|(?:racing )?stripes|полос\w+)", t)
-    if not (style and year and body and in_col and q):
+    return {"model": style, "year": year.group(1) if year else None, "body_colour": body, "interior_colour": in_col,
+            "quantity": q, "details": extras.group(0) if extras else ""}
+
+
+_SHELF_COLOURS = {"green", "blue", "orange", "yellow", "red"}
+_BUILD_WORDS = re.compile(r"\b(build|built|custom|commission|made to order|to order|под заказ|сдела|собер)", re.I)
+_MTO_ASK = {"model": ("which body style (fastback, coupe, convertible…)", "какой кузов (фастбек, купе, кабриолет…)"),
+            "body_colour": ("the body colour", "цвет кузова"), "interior_colour": ("the interior colour", "цвет салона"),
+            "quantity": ("how many", "сколько штук")}
+
+
+def _build_wanted(user_msgs: list[str]) -> dict | None:
+    """A made-to-order build is being described but the year isn't there yet: the fields so far (read over the
+    whole chat). None for a plain shelf purchase ("2 green fastbacks to Austin") or when nothing points to a build."""
+    text = " / ".join(user_msgs)
+    f = mto_fields(text)
+    if f["year"] or not f["model"]:
         return None
-    return {"model": style, "year": year.group(1), "body_colour": body, "interior_colour": in_col, "quantity": q,
-            "details": extras.group(0) if extras else ""}
+    if not (f["interior_colour"] or f["details"] or _BUILD_WORDS.search(text)
+            or (f["body_colour"] and f["body_colour"] not in _SHELF_COLOURS)):
+        return None
+    return f
+
+
+def _ask_year(f: dict, ru: bool) -> str:
+    """Before any quote: the year of the real car first (and anything else still missing), in one question."""
+    what = " ".join(x for x in (str(f["quantity"]) + " ×" if f["quantity"] else "", f["model"]) if x)
+    look = ", ".join(x for x in ((f["body_colour"] + (" кузов" if ru else " body")) if f["body_colour"] else "",
+                                 (f["interior_colour"] + (" салон" if ru else " interior")) if f["interior_colour"] else "",
+                                 f["details"]) if x)
+    rest = [_MTO_ASK[k][1 if ru else 0] for k in ("model", "body_colour", "interior_colour", "quantity") if not f[k]]
+    if ru:
+        return (f"Лена соберёт это под заказ: {what}" + (f", {look}" if look else "") + ". Какого года настоящая машина, "
+                "с которой делать копию?" + (f" И ещё: {', '.join(rest)}." if rest else "")
+                + " Тогда сразу назову цену, срок сборки и дату отправки.")
+    return (f"Lena can build that to order: {what}" + (f", {look}" if look else "") + ". Which year is the real car "
+            "it's modelled on?" + (f" And {', '.join(rest)}?" if rest else "")
+            + " Then I'll give you the price, the build time and the ship date.")
+
+
+def _year_typed(year: str, typed: str) -> bool:
+    """The year of the real car is one the person wrote ('1967', "'67"), never one the model filled in."""
+    y = re.sub(r"\D", "", str(year or ""))
+    if len(y) != 4:
+        return False
+    return bool(re.search(rf"(?<![\d-]){y}(?!\d)|['’‘]{y[2:]}\b|\b{y[2:]}(?:-?(?:го|year|model)|\s+(?:fastback|coupe|"
+                          rf"convertible|model|year))", typed, re.I))
+
+
+SPEC_YEAR = shop.SPEC["year"]
+_RU_WORDS = {"grey": "серый", "black": "чёрный", "white": "белый", "red": "красный", "blue": "синий", "light blue": "голубой",
+             "green": "зелёный", "yellow": "жёлтый", "orange": "оранжевый", "brown": "коричневый", "tan": "песочный",
+             "beige": "бежевый", "silver": "серебристый", "cream": "кремовый", "purple": "фиолетовый",
+             "burgundy": "бордовый", "fastback": "фастбек", "coupe": "купе", "convertible": "кабриолет",
+             "rear-engine coupe": "купе с задним мотором", "muscle coupe": "маслкар-купе"}
+
+
+def _car_words(c: dict, ru: bool) -> str:
+    """'2 × fastback (1967), grey body, brown interior, two black stripes' (in Russian when the chat is)."""
+    w = (lambda x: _RU_WORDS.get(str(x).lower(), x)) if ru else (lambda x: x)
+    return (f"{c['quantity']} × {w(c['model'])} ({c['year']}), " + (f"кузов {w(c['body_colour'])}, салон {w(c['interior_colour'])}"
+            if ru else f"{c['body_colour']} body, {c['interior_colour']} interior") + (f", {c['details']}" if c.get("details") else ""))
+
+
+def _iso(day: str) -> str:
+    return day.split()[-1] if day else ""
+
+
+def _quote_reply(q: dict, ru: bool, ask: bool = True) -> str:
+    """A made-to-order quote said by code: the build, the total, the build time and the ship date (one date, the same
+    one the receipt card will show), the discount tiers, and one request for the contact details."""
+    cars = "; ".join(_car_words(c, ru) for c in q["cars"])
+    tiers = shop.shop()["rules"]["commission_volume_discounts"]
+    if ru:
+        disc = (f", скидка за объём {q['volume_discount_percent']}% уже учтена" if q["discount_usd"] else
+                f". Скидка за объём: {tiers[0]['percent']}% от {tiers[0]['min_cars']} машинок, {tiers[-1]['percent']}% от {tiers[-1]['min_cars']}")
+        return (f"Под заказ: {cars}. Всего ${q['total_usd']:.2f} с доставкой{disc}. Сборка около {q['build_weeks']} нед., "
+                f"отправка {_iso(q['ready_to_ship_by'])}. Оплата счётом PayPal: половина сейчас, остальное перед отправкой."
+                + (" Пришлите одним сообщением имя и фамилию, телефон, email и адрес с городом и ZIP, и я выставлю счёт."
+                   if ask else ""))
+    disc = (f", with the {q['volume_discount_percent']}% volume discount" if q["discount_usd"] else
+            f". Volume discounts start at {tiers[0]['min_cars']} cars ({tiers[0]['percent']}% off; "
+            f"{tiers[-1]['percent']}% from {tiers[-1]['min_cars']})")
+    return (f"Made to order: {cars}. ${q['total_usd']:.2f} in total with shipping{disc}. The build takes about "
+            f"{q['build_weeks']} week(s) and it ships {q['ready_to_ship_by']}. It's paid with a PayPal invoice: half now, "
+            "the rest before it ships." + (" Send your first and last name, phone, email and street address with city "
+                                          "and ZIP in one message, and I'll make the invoice." if ask else ""))
+
+
+def _build_made(messages: list[dict]) -> bool:
+    """A made-to-order invoice was already made in this chat, after its quote (so a later 'thanks' makes no second one)."""
+    quoted = False
+    for m in messages:
+        memo = (m.get("memo") or "") if m["role"] == "assistant" else ""
+        quoted |= "made-to-order build" in memo and "ready" in memo
+        if quoted and "waiting for your approval" in memo:
+            return True
+    return False
+
+
+def _build_reply(out: dict, ru: bool) -> str:
+    """The words over a made-to-order receipt card: the build itself, its money and its dates, from the order."""
+    o = shop.order(out.get("order_id", "")) or {}
+    q = o.get("quote") or {}
+    cars = "; ".join(_car_words(c, ru) for c in q.get("cars", []))
+    total, dep = o.get("total_usd", 0.0), out.get("deposit_usd")
+    ships = (q.get("delivery") or {}).get("ships_on") or q.get("ready_to_ship_by", "")
+    disc = (f" (−{q['volume_discount_percent']}%" + (" за объём)" if ru else " volume discount)")) if q.get("discount_usd") else ""
+    if ru:
+        pay = (f"сейчас предоплата ${dep:.2f} по счёту PayPal ниже, остальное перед отправкой" if dep else "оплата кнопкой PayPal ниже")
+        return (f"Спасибо, всё есть. Лена соберёт: {cars}. Всего ${total:.2f}{disc} с доставкой, {pay}. "
+                f"Сборка около {q.get('build_weeks')} нед., отправка {_iso(ships)}.")
+    pay = (f"${dep:.2f} deposit now through the PayPal invoice below, the rest before it ships" if dep
+           else "paid with the PayPal button below")
+    return (f"Thanks, that's everything. Lena will build {cars}: ${total:.2f}{disc} in total with shipping, {pay}. "
+            f"The build takes about {q.get('build_weeks')} week(s) and it ships {ships}.")
 
 
 US_STATE_NAMES = {n.lower() for n in (
@@ -621,7 +745,7 @@ def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | No
         else:
             reply = (f"Заказ готов: всего ${r_['total']:.2f} с доставкой, кнопка PayPal ниже. " if ru else
                      f"Your order is ready: ${r_['total']:.2f} with shipping. The PayPal button is below. ") + reply
-    q = next((m for m in (re.search(r"^(\d+) cars · \$([\d,.]+)( \(\d+% off\))? · ready (\S+)", st["result"])
+    q = next((m for m in (re.search(r"^(\d+) cars · \$([\d,.]+)( \(\d+% off\))? · ready (\d{4}-\d{2}-\d{2})", st["result"])
                           for st in steps if st["tool"] == "quote_commission") if m), None)
     if q and not checkout and q.group(2) not in reply:
         # a made-to-order quote was computed this turn but the reply skipped the money: say it in code
@@ -672,14 +796,23 @@ def gather_customer(user_msgs: list[str]) -> dict:
             sm = re.search(r"(?:^|\bto\s+|\bat\s+)(\d{2,6}[a-z]?\s+[A-Za-zА-Яа-я][\w .'#-]{1,40}?)(?:\s+\d{5})?$", x, re.I)
             if sm and not (zips and sm.group(1).split()[0] == zips[-1]):   # "95608 Carmichael" is a ZIP and a city
                 c["address_line_1"] = sm.group(1).strip()
+        city_here = False
         for x in parts:   # the city sits next to the ZIP or the state
             if zips and zips[-1] in x or re.search(r"\b[A-Z]{2}\b", x) and not re.match(r"^\d", x) and x != c.get("address_line_1"):
                 y = re.sub(r"\d{5}", " ", x)
                 y = STATE_NAMES.sub(" ", y)
                 y = re.sub(r"\b[A-Z]{2}\b", " ", y)
                 y = " ".join(w for w in y.split() if not re.search(r"\d", w))
-                if 2 <= len(y) <= 40 and not re.search(STREET_WORDS + r"\.?$", y, re.I) and (zips or em or ph):
+                if 2 <= len(y) <= 40 and not re.search(r"\b" + STREET_WORDS + r"\.?$", y, re.I) and (zips or em or ph):
                     c["city"] = y.strip()
+                    city_here = True
+        if zips and not city_here:   # "…, Austin, TX 78701": the city is its own part, just before the state and ZIP
+            i = next((k for k, x in enumerate(parts) if zips[-1] in x), 0)
+            prev = parts[i - 1].strip() if i else ""
+            # not the first part (that's where a name usually is), not the street
+            if (i >= 2 and re.fullmatch(r"[A-Za-zА-Яа-яЁё .'-]{2,40}", prev) and prev != c.get("address_line_1")
+                    and not re.search(r"\b" + STREET_WORDS + r"\.?$", prev, re.I)):
+                c["city"] = prev
         alone = re.fullmatch(r"\s*[A-ZА-ЯЁ][a-zа-яё'’-]+(\s+[A-ZА-ЯЁ][a-zа-яё'’-]+){1,2}\s*", t)   # a message that is just a name
         if ph or em or zips or c.get("address_line_1") or alone:
             for x in parts:   # a name: two to four words, letters only, written with capitals
@@ -689,7 +822,7 @@ def gather_customer(user_msgs: list[str]) -> dict:
                         and all(w[0].isupper() for w in ws) and x != c.get("city")
                         and not re.search(r"\b(cars?|red|green|blue|yellow|orange|grey|gray|black|white|coupe|fastback|"
                                           r"convertible|hi|hello|thanks|yes|no|машин\w*)\b", x, re.I)
-                        and not STATE_NAMES.search(x) and not re.search(STREET_WORDS + r"$", x, re.I)):
+                        and not STATE_NAMES.search(x) and not re.search(r"\b" + STREET_WORDS + r"$", x, re.I)):
                     c["full_name"] = x
     if c.get("postal_code"):
         c["state"] = shop.zip_state(c["postal_code"]) or ""
@@ -955,7 +1088,7 @@ def _fallback_reply(steps: list[dict], ru: bool, last_user: str = "", lessons: l
                     f"заказ в PayPal, пришлите одним сообщением: имя и фамилию, телефон, email, адрес с ZIP." if ru else
                     f"That's ${m.group(3)} with ${m.group(2)} shipping ({m.group(1)}); {m.group(4).strip()}. To create the "
                     f"PayPal order, send in one message: {m.group(5)}.")
-        q = re.search(r"^(\d+) cars · \$([\d,.]+)( \(\d+% off\))? · ready (\S+)", r)
+        q = re.search(r"^(\d+) cars · \$([\d,.]+)( \(\d+% off\))? · ready (\d{4}-\d{2}-\d{2})", r)
         if st["tool"] == "quote_commission" and q:
             return (f"{q.group(1)} шт. под заказ: ${q.group(2)}{q.group(3) or ''}, готово к отправке {q.group(4)}. "
                     "Оплата счётом PayPal: половина сейчас, остальное перед отправкой. Пришлите одним сообщением имя "
@@ -1201,14 +1334,63 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
         out = counter.leave_contact(PHONE.search(last_user).group(1), "", last_user[:300], asked, channel="demo-shopper")
         steps.append({"tool": "leave_contact", "label": LABELS["leave_contact"], "args": {}, "result": _summary("leave_contact", out), "ms": 0})
         convo.append({"role": "system", "content": "Done in code: " + json.dumps(out) + " Tell them Lena will call them back."})
-    spec = None if checkout else parse_made_to_order(last_user)
-    if spec and not any("made-to-order build" in (m.get("memo") or "") for m in messages if m["role"] == "assistant"):
+    # Made to order, in one fixed order (live check 08.11 P1-1): the year of the real car first, then the quote, then
+    # the contacts, then the invoice. Each step is done in code once its facts are typed, over any number of messages.
+    user_msgs = [m["content"] for m in messages if m["role"] == "user"]
+    ru_now = bool(re.search(r"[а-яё]", lang_text, re.I))
+    wanted = None if checkout or quoted_before or by_code else _build_wanted(user_msgs)
+    contacts_now = bool(PHONE.search(last_user) or EMAIL_IN.search(last_user))
+    if wanted and (_build_wanted([last_user]) or contacts_now):
+        # a build is being described and no year is given yet: ask for it before any price (and if the contacts came
+        # first, keep them: they're used once the build is quoted)
+        need = [SPEC_YEAR] + [_MTO_ASK[k][0] for k in ("model", "body_colour", "interior_colour", "quantity") if not wanted[k]]
+        steps.append({"tool": "quote_commission", "label": LABELS["quote_commission"], "args": {},
+                      "result": "still needed: " + ", ".join(need), "ms": 0})
+        reply = ((("Спасибо, контакты есть. " if ru_now else "Thanks, I have your details. ") if contacts_now else "")
+                 + _ask_year(wanted, ru_now))
+        by_code = True
+    spec = None if checkout or by_code else (parse_made_to_order(last_user) or (parse_made_to_order(typed) if mto else None))
+    quoted_now = None
+    if spec and not quoted_before:
         out = counter.quote_commission([spec], "")
         steps.append({"tool": "quote_commission", "label": LABELS["quote_commission"], "args": {"cars": [spec]},
                       "result": _summary("quote_commission", out), "ms": 0})
+        quoted_now = out if out.get("ok") else None
         convo.append({"role": "system", "content": "Quote from the shop (made to order, computed in code): "
                       + json.dumps(out)[:2000] + " Give this total, the build time and ready date now, then ask in one "
                       "message for name, phone, email and full address (street, city, state, ZIP)."})
+        if quoted_now and "?" not in last_user:
+            # nothing else was asked: the quote is said by code, so it can't stall or skip the money
+            reply, by_code = _quote_reply(quoted_now, ru_now), True
+    build_spec = parse_made_to_order(typed) if (quoted_before or quoted_now) and not checkout else None
+    if build_spec and not _build_made(messages) and (quoted_now or PHONE.search(last_user) or EMAIL_IN.search(last_user)
+                                                    or ZIP_IN.search(last_user)):
+        cust = gather_customer(user_msgs)
+        named = _state_said(last_user)
+        if named and cust.get("state") and named != cust["state"] and not ZIP_IN.search(last_user):
+            # "…to California" with an Austin address typed earlier: ask for the new address, don't invoice the old one
+            reply = ((_quote_reply(quoted_now, ru_now, ask=False) + " ") if quoted_now else "") + (
+                f"Куда именно в {named} отправить? Пришлите улицу, город и ZIP." if ru_now else
+                f"Where in {next((k.title() for k, v in ABBR.items() if v == named), named)} should it go? Send the "
+                "street address, city and ZIP.")
+            by_code, cust = True, {}
+        if all(cust.get(k) for k in ("full_name", "phone", "email", "address_line_1", "city", "postal_code", "state")):
+            # quoted, and every contact detail typed (before or after the quote): the invoice is made in code
+            args = {"cars": [build_spec], "us_state": cust["state"], "name": cust["full_name"], "phone": cust["phone"],
+                    "customer": cust}
+            t0 = time.time()
+            out = _call_tool("start_commission_checkout", args, asked, typed)
+            steps.append({"tool": "start_commission_checkout", "label": LABELS["start_commission_checkout"], "args": args,
+                          "result": _summary("start_commission_checkout", out), "ms": int((time.time() - t0) * 1000)})
+            if out.get("ok"):
+                checkout, reply, by_code = out, _build_reply(out, ru_now), True
+            else:   # e.g. the ZIP is in another state: say so plainly, with the quote if it was made just now
+                need = out.get("ask_the_person_for")
+                problem = ((f"Чтобы выставить счёт, нужно ещё: {', '.join(need)}." if ru_now else
+                            f"To make the invoice I still need: {', '.join(need)}.") if need else
+                           ("Проверьте, пожалуйста: " if ru_now else "Please check this: ") + _note_for_shopper(out.get("reason", "")))
+                reply = ((_quote_reply(quoted_now, ru_now, ask=False) + " ") if quoted_now else "") + problem
+                by_code = True
     for _ in range(0 if by_code else MAX_STEPS):
         left = TURN_SECONDS - (time.time() - t_start)
         if left < 1.5:
@@ -1453,6 +1635,10 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
     reply = _scrub_safety(reply, asked_safety)
     if asked_safety:
         reply = _safety_answer(last_user, bool(re.search(r"[а-яё]", lang_text, re.I))) + (" " + reply if reply else "")
+    # over a made-to-order receipt card the words describe that build, never the shelf (live check 08.11)
+    if checkout and (checkout.get("payment") == "invoice" or "built in" in str(checkout.get("delivery", ""))) \
+            and not re.search(r"\bbuil[dt]|made to order|под заказ|собер", reply, re.I):
+        reply = _build_reply(checkout, bool(re.search(r"[а-яё]", lang_text, re.I)))
     # ...and no words written for the agent: a note to itself, a tool's instruction, a raw field name
     reply = _for_shopper(reply) or _for_shopper(_fallback_reply(
         steps or ([] if taught_now else _earlier_steps(messages)), bool(re.search(r"[а-яё]", lang_text, re.I)),
