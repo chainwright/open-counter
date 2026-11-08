@@ -4,8 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 // Who sold this week's orders: an outside AI agent over MCP (the accent), Lena's own sales chat, a made-to-order build.
 // When a new MCP sale lands, only that one digit rolls up (no odometer) and the PayPal chip flips to its new status.
 
-type Sales = { via_mcp: number; her_chat: number; made_to_order: number;
-  last_mcp: { id: string; status: string; paypal: string } | null };
+type Sales = { via_mcp: number; her_chat: number; made_to_order: number; includes_sample?: boolean;
+  last_mcp: { id: string; status: string; paypal: string; sample?: boolean } | null };
 
 function Roll({ value }: { value: number }) {
   const prev = useRef(value);
@@ -45,8 +45,10 @@ export default function SoldStrip(props: any) {
   return (
     <div className="ss">
       <div className="ss-head">
-        <span className="ss-label">Sold to an agent · this week</span>
-        {s.last_mcp && <span className={'ss-chip' + (flip ? ' flip' : '')}>PayPal · {s.last_mcp.id} · {s.last_mcp.paypal}</span>}
+        <span className="ss-label">Sold to an agent · {days === 7 ? 'this week' : `last ${days} days`}
+          {s.includes_sample && <span className="ss-note"> · includes sample history</span>}</span>
+        {s.last_mcp && <span className={'ss-chip' + (flip ? ' flip' : '') + (s.last_mcp.sample ? ' sample' : '')}>
+          {s.last_mcp.sample ? 'SAMPLE · ' : 'PayPal · '}{s.last_mcp.id} · {s.last_mcp.sample ? 'sample, no PayPal call' : s.last_mcp.paypal}</span>}
       </div>
       <div className="ss-row">
         <div className="ss-cell accent"><div className="ss-k">Via outside AI (MCP)</div><div className="ss-v"><Roll value={s.via_mcp} /></div></div>

@@ -136,7 +136,11 @@ def test_agent_sales_strip_counts_orders_by_who_sold_them(monkeypatch):
     monkeypatch.setattr(shop, "orders", lambda: orders)
     out = web.maker_agent_sales(days=7)
     assert (out["via_mcp"], out["her_chat"], out["made_to_order"]) == (2, 1, 1)
-    assert out["last_mcp"] == {"id": "B", "status": "awaiting_approval", "paypal": "APPROVAL PENDING"}
+    assert out["last_mcp"] == {"id": "B", "status": "awaiting_approval", "paypal": "APPROVAL PENDING", "sample": False}
+    assert out["includes_sample"] is False
+    orders[1]["sample"] = True      # a sample order never went through PayPal: the strip must be able to say so
+    out = web.maker_agent_sales(days=7)
+    assert out["last_mcp"]["sample"] is True and out["includes_sample"] is True
 
 
 def test_daily_counts_chats_and_live_orders_per_day(monkeypatch):

@@ -59,3 +59,5 @@
 /* the payoff sits at the bottom of the ledger, so the widget never ends in empty paper (build judge P1 #1) */
 .sw { display: flex; flex-direction: column; }
 .sw-pay { margin-top: auto; padding-top: 18px; border-top: 1px solid #D8CDB4; align-items: baseline; }
+.ss-note { text-transform: none; letter-spacing: 0; color: #7A7062; }
+.ss-chip.sample { background: transparent; border: 1px dashed #A8873F; color: #4A4238; }

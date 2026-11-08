@@ -40,3 +40,8 @@ def test_the_widget_uses_the_stream_reader_and_no_replay_loop():
     src = (ROOT / "studio" / "src" / "StuckWidget.tsx").read_text()
     assert "readLessonStream" in src and "setTimeout" not in src
     assert "Lena's assistant is writing" in src and "shop analyst is writing" not in src
+
+
+def test_the_sold_strip_marks_sample_orders():
+    src = (ROOT / "studio" / "src" / "SoldStrip.tsx").read_text()
+    assert "last_mcp.sample ? 'SAMPLE · '" in src and "includes sample history" in src

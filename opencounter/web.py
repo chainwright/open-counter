@@ -867,9 +867,11 @@ def maker_agent_sales(days: int = 7):
     last = max(mcp, key=lambda o: o.get("created", 0), default=None)
     paypal = {"paid": "CAPTURED", "shipped": "CAPTURED", "awaiting_approval": "APPROVAL PENDING",
               "deposit_paid": "DEPOSIT CAPTURED"}
+    # sample orders never went through PayPal: the strip marks them SAMPLE, as /maker does (final judges 08.11)
     return {"days": days, "via_mcp": len(mcp), "her_chat": len(chat), "made_to_order": len(made),
-            "last_mcp": ({"id": last["id"], "status": last.get("status"), "paypal": paypal.get(last.get("status"), "PENDING")}
-                         if last else None)}
+            "includes_sample": any(o.get("sample") for o in live),
+            "last_mcp": ({"id": last["id"], "status": last.get("status"), "sample": bool(last.get("sample")),
+                          "paypal": paypal.get(last.get("status"), "PENDING")} if last else None)}
 
 
 @app.get("/api/maker/agent_misses")
