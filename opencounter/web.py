@@ -84,10 +84,23 @@ def _initials(name: str | None) -> str:
     return " ".join(w[0].upper() + "." for w in re.findall(r"[^\W\d_][\w'’-]*", name or ""))
 
 
+def _client_ip(req: Request) -> str:
+    """The network a request came from, as the server saw it. Behind Render's proxy that is the LAST hop of
+    X-Forwarded-For (the address Render's proxy appends); every hop to its left was written by the client and can be
+    anything (final judge 08.11 P1-2: uvicorn's --proxy-headers with '*' takes the first, spoofable, entry).
+    OPENCOUNTER_PROXY_HOPS: how many proxies append to the header (1 on Render, set automatically there; 0 = none)."""
+    hops = int(os.environ.get("OPENCOUNTER_PROXY_HOPS") or (1 if os.environ.get("RENDER") else 0))
+    xff = [h.strip() for h in req.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    if hops and xff:
+        return xff[-min(hops, len(xff))]
+    return req.client.host if req.client else ""
+
+
 def _budget_keys(req: Request) -> list[str]:
-    """Whose share of the day's AI budget a request uses: this browser's and this network's."""
+    """Whose share of the day's AI budget a request uses: this browser's (its visitor id, which a client can change
+    at will) and this network's (from the server's side of the connection, which it can't)."""
     v = _who(req)[0]
-    ip = req.client.host if req.client else ""
+    ip = _client_ip(req)
     return ([f"v:{v}"] if v else []) + ([f"ip:{ip}"] if ip else [])
 
 
@@ -702,7 +715,7 @@ def studio_config():
 async def studio_llm_turn(req: Request):
     """One model turn for Lena's sales studio (AG Studio's agents run in the page and call this, so no key is in it)."""
     try:
-        return await asyncio.to_thread(studio_llm.turn, await req.json(), _budget_keys(req))
+        return await asyncio.to_thread(studio_llm.turn, await req.json(), _budget_keys(req) + ["pool:studio"])
     except shopper.OverBudget as e:
         return JSONResponse({"error": str(e)}, status_code=429)
 

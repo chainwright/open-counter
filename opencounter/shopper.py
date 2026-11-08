@@ -23,6 +23,12 @@ DAILY_CAP_USD = float(os.environ.get("SHOPPER_DAILY_CAP_USD", "1.00"))
 # up the day for every other visitor (judge 29.10, N9). The cap itself is the owner's money and isn't raised here.
 VISITOR_CAP_USD = float(os.environ.get("SHOPPER_VISITOR_CAP_USD", "0.15"))
 IP_CAP_USD = float(os.environ.get("SHOPPER_IP_CAP_USD", "0.30"))
+# The studio's agents (/api/studio/llm, five-agent turns with large prompts) get their own pool inside the day, so
+# studio use can never switch off the shop's chat for shoppers (final judges 08.11 P1-2). Default: half the day.
+STUDIO_CAP_USD = float(os.environ.get("STUDIO_DAILY_CAP_USD", str(round(DAILY_CAP_USD / 2, 2))))
+POOL_CAPS = {"pool:studio": STUDIO_CAP_USD}
+BUSY_STUDIO = ("Today's AI budget for the studio's agents is used up until midnight in Ohio. The shop's sales agent, "
+               "the widgets and the back office still work.")
 BUSY_ALL = ("Today's AI demo budget is used up, so the AI parts of the demo rest until midnight in Ohio. Everything "
             "else still works: the shelf with its Buy buttons and 3D cars, PayPal checkout, and Lena's back office.")
 BUSY_YOU = ("You've used this browser's share of today's AI demo budget, so the AI parts rest for you until midnight "
@@ -198,7 +204,10 @@ def check_budget(who=()):
     if spent_today() >= DAILY_CAP_USD:
         raise OverBudget(BUSY_ALL)
     for k in who:
-        if spent_by(k) >= (IP_CAP_USD if k.startswith("ip:") else VISITOR_CAP_USD):
+        if k in POOL_CAPS:
+            if spent_by(k) >= POOL_CAPS[k]:
+                raise OverBudget(BUSY_STUDIO)
+        elif spent_by(k) >= (IP_CAP_USD if k.startswith("ip:") else VISITOR_CAP_USD):
             raise OverBudget(BUSY_YOU, mine=True)
 
 
@@ -1237,7 +1246,6 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
         step = {"tool": "item_details", "label": LABELS["item_details"], "args": {},
                 "result": "safety and age: quoted from the listings only", "ms": 0}
         return _code_answer(_safety_answer(last_user, ru), [step], taught_now, ru)
-    check_budget(who)   # the day's cap, and this visitor's share of it
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
     shelf = "; ".join(f"{x['id']} = {x['title']}, ${x['price_usd']:.0f}, {x['stock']} in stock"
                       for x in shop.shop()["listings"])
@@ -1398,6 +1406,11 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
                            ("Проверьте, пожалуйста: " if ru_now else "Please check this: ") + _note_for_shopper(out.get("reason", "")))
                 reply = ((_quote_reply(quoted_now, ru_now, ask=False) + " ") if quoted_now else "") + problem
                 by_code = True
+    if not by_code:
+        # the day's cap, and this visitor's and network's share of it: checked only now, so every answer written in
+        # code above (a cart or build made in code, the year question, the quote, the invoice) needs no AI budget and
+        # still works once the day is spent (final judge 08.11 P1-2)
+        check_budget(who)
     for _ in range(0 if by_code else MAX_STEPS):
         left = TURN_SECONDS - (time.time() - t_start)
         if left < 1.5:

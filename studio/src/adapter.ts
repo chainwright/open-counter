@@ -51,8 +51,10 @@ export function shopAdapter(endpoint = '/api/studio/llm'): AgLlmAdapter {
   };
 }
 
+// the same browser id as the shop, the widgets and /maker ('oc_visitor'), so a studio turn is charged to the same
+// share of the AI budget (final judges 08.11: this used to be a second key, 'oc-visitor', and doubled the share)
 function visitor(): string {
-  let v = localStorage.getItem('oc-visitor');
-  if (!v) { v = Math.random().toString(36).slice(2, 14); localStorage.setItem('oc-visitor', v); }
+  let v = localStorage.getItem('oc_visitor');
+  if (!v) { v = 'v' + Math.random().toString(36).slice(2, 12); localStorage.setItem('oc_visitor', v); }
   return v;
 }
