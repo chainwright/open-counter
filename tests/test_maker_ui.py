@@ -41,7 +41,7 @@ def test_a_made_to_order_card_shows_the_shelf_car_of_its_body_style_not_a_broken
 def test_the_balance_button_says_why_a_second_reminder_waits():
     assert "Cars ready: request the balance" in feed([MTO])["feed"]
     assert feed([MTO], 429, "A reminder already went out in the last hour.")["clicked"] == "Already reminded within the last hour"
-    assert feed([MTO], 200)["clicked"] == "Reminder sent via PayPal"
+    assert feed([MTO], 200)["clicked"] == "Reminder sent · again in an hour"
     just = feed([{**MTO, "balance_requested": time.time() - 60}])["feed"]
     assert "Reminder sent · again in an hour" in just and 'data-balance="OC-MTO1"' not in just
 

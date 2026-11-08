@@ -99,7 +99,7 @@ window.OC = (() => {
       e.target.disabled = true;
       const r = await fetch(`/api/maker/orders/${bal}/balance`, { method: "POST" });
       // a second click within the hour is PayPal's reminder already on its way, not a failure: say so
-      e.target.textContent = r.ok ? "Reminder sent via PayPal" : r.status === 429 ? "Already reminded within the last hour"
+      e.target.textContent = r.ok ? "Reminder sent · again in an hour" : r.status === 429 ? "Already reminded within the last hour"
         : ((await r.json().catch(() => ({}))).detail || "Couldn't send");
       return;
     }
