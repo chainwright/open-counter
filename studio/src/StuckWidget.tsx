@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { readLessonStream } from './lessonStream';
 
 // "Where my agent got stuck — this week": the hero custom widget of Lena's studio (design B v2, WOW plan).
 // Data comes from the shop's own endpoint (/api/maker/agent_misses), computed in code; this component only shows it,
@@ -20,7 +21,7 @@ const usd = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigi
 
 export default function StuckWidget(props: any) {
   const [data, setData] = useState<Data>();
-  const [drafts, setDrafts] = useState<Record<string, { text: string; busy: boolean; err?: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { text: string; busy: boolean; err?: string; unusable?: boolean }>>({});
   const seen = useRef<Set<string> | null>(null);       // ticks already on screen: only NEW ones animate
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const days = props?.format?.days ?? 7;
@@ -46,34 +47,20 @@ export default function StuckWidget(props: any) {
     return () => clearInterval(id);
   }, [days]);
 
-  // The lesson streams into the cell token by token: AG-UI events (TEXT_MESSAGE_CONTENT) from our server, which
-  // forwards the model's own stream. Accept appears only once the finished sentence passes the shop's matcher.
+  // The lesson streams into the cell token by token: our server forwards the model's own stream as AG-UI events
+  // (TEXT_MESSAGE_CONTENT), and each delta is drawn the moment it arrives — no buffering, no typing it out again
+  // afterwards. Accept appears only once the finished sentence passes the shop's matcher (RUN_FINISHED.usable).
   async function draft(chat: string) {
     setDrafts((d) => ({ ...d, [chat]: { text: '', busy: true } }));
     const set = (patch: any) => setDrafts((d) => ({ ...d, [chat]: { ...(d[chat] || { text: '', busy: true }), ...patch } }));
     try {
       const r = await fetch('/api/maker/agent_misses/draft_stream', { method: 'POST', headers: headers(), body: JSON.stringify({ chat }) });
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
-      const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = '', text = '';
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let i;
-        while ((i = buf.indexOf('\n\n')) >= 0) {
-          const line = buf.slice(0, i); buf = buf.slice(i + 2);
-          if (!line.startsWith('data: ')) continue;
-          const ev = JSON.parse(line.slice(6));
-          if (ev.type === 'TEXT_MESSAGE_CONTENT') { text += ev.delta; }
-          else if (ev.type === 'RUN_FINISHED') {
-            // pace the finished stream at ~28 chars/s so the writing is visible (the model often delivers it in 1 s)
-            const full: string = ev.lesson; const usable = ev.usable;
-            for (let n = 0; n <= full.length; n += 2) { set({ text: full.slice(0, n) }); await new Promise((r) => setTimeout(r, 70)); }
-            set({ text: full, busy: false, err: usable ? undefined : "This draft isn't in the 'If someone asks about…, say…' form the shop can match. Edit it before accepting." });
-          }
-          else if (ev.type === 'RUN_ERROR') set({ busy: false, err: ev.message });
-        }
-      }
+      await readLessonStream(r.body, {
+        text: (soFar) => set({ text: soFar }),
+        done: (lesson, usable) => set({ text: lesson, busy: false, unusable: !usable }),
+        error: (message) => set({ busy: false, err: message }),
+      });
     } catch (e: any) {
       set({ busy: false, err: 'No lesson drafted: ' + (e?.message || e) });
     }
@@ -81,7 +68,13 @@ export default function StuckWidget(props: any) {
   async function accept(chat: string) {
     const note = drafts[chat]?.text;
     if (!note) return;
-    await fetch('/api/maker/coach', { method: 'POST', headers: headers(), body: JSON.stringify({ chat_id: chat, note }) });
+    const r = await fetch('/api/maker/coach', { method: 'POST', headers: headers(), body: JSON.stringify({ chat_id: chat, note }) });
+    if (!r.ok) {
+      const why = await r.json().then((j) => j.detail).catch(() => '');
+      setDrafts((d) => ({ ...d, [chat]: { ...d[chat], unusable: true, busy: false, err: undefined } }));
+      if (why) alert(why);
+      return;
+    }
     setDrafts((d) => { const n = { ...d }; delete n[chat]; return n; });
     load();
   }
@@ -120,12 +113,14 @@ export default function StuckWidget(props: any) {
                 <td>{o.asked}</td>
                 <td><span className={"sw-struck" + (animateStrike ? " draw" : "")}>{o.said}</span></td>
                 <td>{!d ? <button className="sw-primary" onClick={() => draft(o.chat)}>Draft a lesson</button>
-                  : d.busy ? <em className="sw-draft">{d.text ? <>{d.text}<span className="sw-caret" /></> : "Lena's shop analyst is writing…"}</em>
+                  : d.busy ? <em className="sw-draft">{d.text ? <>{d.text}<span className="sw-caret" /></> : "Lena's assistant is writing…"}</em>
                   : d.err ? <span className="sw-err">{d.err}</span>
                   : (<>
                       <em className="sw-draft">{d.text}</em>
-                      <div className="sw-actions"><button className="sw-primary" onClick={() => accept(o.chat)}>Accept</button>
-                        <button className="sw-secondary" onClick={() => setDrafts((x) => ({ ...x, [o.chat]: { ...d, text: prompt('Edit the lesson', d.text) || d.text } }))}>Edit</button></div>
+                      {d.unusable && <span className="sw-err">Not yet in the "If someone asks about…, say…" form the shop can match: edit it first.</span>}
+                      <div className="sw-actions">{!d.unusable && <button className="sw-primary" onClick={() => accept(o.chat)}>Accept</button>}
+                        <button className="sw-secondary" onClick={() => setDrafts((x) => { const t = prompt('Edit the lesson', d.text) || d.text;
+                          return { ...x, [o.chat]: { ...d, text: t, unusable: false } }; })}>Edit</button></div>
                     </>)}
                 </td>
                 <td />
