@@ -211,7 +211,9 @@ def test_chats_and_customers_are_kept_and_consent_is_explicit(monkeypatch):
     assert not counter.marketing_consent("nobody@example.com", True, "yes")["ok"]
     from opencounter import web
     m = web._mask(shop.customers()[0])
-    assert m["name"] == "S. R." and "Lavaca" not in str(m) and "415" not in str(m) and m["email"].startswith("S•••")
+    # the phone is checked on its own field: a timestamp in the record can contain "415" (08.11: 1794157380.7)
+    assert m["name"] == "S. R." and "Lavaca" not in str(m) and "415" not in m["phone"] and m["email"].startswith("S•••")
+    assert not any("415" in str(v) for k, v in m.items() if k not in ("first_seen", "last_seen", "consent_at"))
 
 
 def test_made_to_order_goes_to_a_deposit_invoice(monkeypatch):
