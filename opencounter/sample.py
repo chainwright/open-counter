@@ -243,7 +243,7 @@ def build(now: float | None = None):
         return len(orders), len(convs)
 
 
-DATA_VERSION = "12"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
+DATA_VERSION = "13"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
 # 12 (08.11): a clean demo before judging: the 02-03.11 probes and the 08.11 judge-path check go, the sample comes back
 # dated from today (with the open "stuck" row the studio needs).
 

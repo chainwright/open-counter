@@ -61,3 +61,10 @@ def test_ordinary_questions_are_not_taken_for_safety():
               "How long does a custom one take?", "Is the red one a real metal model?", "A gift for my dad",
               "Is shipping safe for a fragile car?", "Is it safe to pay with PayPal?", "Is the box safe in transit?"):
         assert not shopper._safety_q(q), q
+
+
+def test_tool_running_note_never_reaches_shopper():
+    # live check 08.11b: a reply ended with "I'll run the tools", an agent-facing note
+    from opencounter.shopper import _for_shopper
+    out = _for_shopper("The red convertible is $65.50. I'll run the tools to check stock.")
+    assert "run the tools" not in out.lower() and "$65.50" in out

@@ -1023,7 +1023,7 @@ _FOR_SHOPPER = [
 ]
 INTERNAL = re.compile(r"before quoting|ask the person|ask them (first|for)|don.?t change it yourself|tool results|"
                       r"notes? (for|to) (you|yourself)|done in code|computed in code|already done for you|lena's notes from|"
-                      r"use only what they type|don.?t name tools|i missed asking|\b[a-z]+_[a-z0-9_]+\b|"
+                      r"use only what they type|don.?t name tools|i missed asking|i.?ll (now )?(run|call|use) the tools?|\b[a-z]+_[a-z0-9_]+\b|"
                       r"^(now )?let'?s (create|get|make|call|run|prepare|finali[sz]e|include|proceed)\b", re.I)
 
 

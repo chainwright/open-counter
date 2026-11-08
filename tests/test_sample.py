@@ -148,5 +148,5 @@ def test_the_new_data_version_wipes_the_live_check_and_probe_data_but_not_the_bu
     assert not any("judge" in c["email"] for c in shop.customers()), [c for c in shop.customers() if "judge" in c["email"]]
     assert all(o.get("sample") for o in shop.orders()) and all(c.get("sample") for c in shop.conversations())
     assert shop._json("spend.json", {}) == {"2026-11-08": 0.42}         # the day's AI budget is not demo data
-    assert shop._path("data_version").read_text() == sample.DATA_VERSION == "12"
+    assert shop._path("data_version").read_text() == sample.DATA_VERSION == "13"
     assert any("credit card instead of PayPal" in r["asked"] for r in open_rows(time.time()))
