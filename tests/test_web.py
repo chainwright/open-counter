@@ -152,3 +152,14 @@ def test_daily_counts_chats_and_live_orders_per_day(monkeypatch):
     rows = web.maker_daily(days=14)
     assert len(rows) == 14 and rows[-1]["chats"] == 2 and rows[-1]["orders"] == 1
     assert sum(r["chats"] for r in rows) == 2
+
+
+def test_the_studio_is_linked_and_the_sandbox_buyer_is_in_plain_sight(c):
+    # final judges 08.11: /studio was an orphan, and the test buyer sat in a 15 px disclosure
+    home, maker, open_ = c.get("/").text, c.get("/maker").text, c.get("/open").text
+    assert all('href="/studio/"' in p for p in (home, maker, open_))
+    assert '<p class="sandbox">' in home and "<details class=\"sandbox\">" not in home and "2dt_AD6W" in home
+    studio = shop.ROOT / "studio"
+    idx, loop = (studio / "index.html").read_text(), (studio / "public" / "loop.html").read_text()
+    assert 'href="/maker"' in idx and "Best on a laptop" in idx and 'href="/studio/loop.html"' in idx
+    assert 'name="viewport"' in loop and "Draft a lesson" in loop and "max-width:900px" in loop

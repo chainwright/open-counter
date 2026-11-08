@@ -84,7 +84,7 @@ export default function StuckWidget(props: any) {
   const stop = (e: any) => { if ((e.target as HTMLElement).closest('button')) e.stopPropagation(); };
   return (
     <div className="sw" onMouseDown={stop} onClick={stop} onPointerDown={stop}>
-      <h2 className="sw-title">Where my agent got stuck — this week</h2>
+      <h2 className="sw-title">Where my agent got stuck — {days === 7 ? 'this week' : `last ${days} days`}</h2>
       <table className="sw-table">
         <thead><tr><th>Shopper asked</th><th>Agent said <span>(original reply)</span></th><th>Lesson</th><th>Later chats</th></tr></thead>
         <tbody>
@@ -93,7 +93,7 @@ export default function StuckWidget(props: any) {
             return (
               <tr key={t.lesson}>
                 <td>{t.asked}</td>
-                <td><span className={"sw-struck" + (animateStrike ? " draw" : "")}>{t.said}</span></td>
+                <td><span className={"sw-struck" + (animateStrike ? " draw" : "")} title={t.said}>{t.said}</span></td>
                 <td>{t.note}</td>
                 <td>{total === 0 ? <span className="sw-watch">watching…</span> : (
                   <>
@@ -111,7 +111,7 @@ export default function StuckWidget(props: any) {
             return (
               <tr key={o.chat}>
                 <td>{o.asked}</td>
-                <td><span className={"sw-struck" + (animateStrike ? " draw" : "")}>{o.said}</span></td>
+                <td><span className={"sw-struck" + (animateStrike ? " draw" : "")} title={o.said}>{o.said}</span></td>
                 <td>{!d ? <button className="sw-primary" onClick={() => draft(o.chat)}>Draft a lesson</button>
                   : d.busy ? <em className="sw-draft">{d.text ? <>{d.text}<span className="sw-caret" /></> : "Lena's assistant is writing…"}</em>
                   : d.err ? <span className="sw-err">{d.err}</span>

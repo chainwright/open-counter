@@ -158,3 +158,6 @@ h1{font:900 46px/.9 "Big Shoulders Display";text-transform:uppercase;margin-top:
 .mini{background:none;border:1px solid var(--lamp);color:var(--lamp);border-radius:6px;padding:2px 8px;font:11.5px "Geist Mono";cursor:pointer;margin-left:4px}
 .badge.deposit_paid{color:var(--lamp);border-color:var(--lamp)}
 .m.err{color:#FF8A7A}
+.hdr-r{display:flex;align-items:center;gap:14px}
+.studio-pill{white-space:nowrap;font:500 12px "Geist Mono",monospace;color:inherit;text-decoration:none;border:1px solid currentColor;border-radius:999px;padding:4px 10px;opacity:.85}
+.studio-pill:hover{opacity:1}

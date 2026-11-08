@@ -16,10 +16,12 @@ type Order = { id: string; created: number; status: string; channel: string; shi
   lines?: { title: string; qty: number; unit_usd: number }[]; shipping_usd: number };
 
 function rows(orders: Order[]) {
-  return orders.flatMap((o) => (o.lines?.length ? o.lines : [{ title: (o as any).title || 'Made to order', qty: (o as any).qty || 1, unit_usd: (o as any).unit_usd || 0 }]).map((l) => ({
-    order: o.id, date: new Date(o.created * 1000).toISOString().slice(0, 10), status: o.status,
+  return [...orders].sort((a, b) => b.created - a.created).flatMap((o) => (o.lines?.length ? o.lines : [{ title: (o as any).title || 'Made to order', qty: (o as any).qty || 1, unit_usd: (o as any).unit_usd || 0 }]).map((l) => ({
+    order: o.id, date: new Date(o.created * 1000).toISOString().slice(0, 10), status: o.status, order_at: o.created,
+    day: new Date(o.created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     via: o.channel === 'mcp' ? 'outside AI agent (MCP)' : "Lena's sales agent", state: o.ship_state,
     car: l.title, colour: l.title.split(' ')[0], qty: l.qty, revenue: Math.round(l.qty * l.unit_usd * 100) / 100,
+    record: (o as any).sample ? 'SAMPLE' : 'live',
   })));
 }
 
@@ -87,15 +89,26 @@ function App() {
     } as any],
     menu: [{ label: "Lena's shop", widgetIds: ['agent-stuck', 'agent-sold'] }, ...cfg.menu],
   }), []);
+  // Laid out for a judge's laptop (1280–1440 wide, final judges 08.11): the ledger and its payoff above the fold, the
+  // chart's title whole, and under the chart a stock AG Grid widget on the orders source.
+  // the ledger's height follows the window (one grid track is about 16-17 px), so its payoff line is in view at 720 px too
+  const tall = Math.max(28, Math.min(42, Math.floor((innerHeight - 215) / 17)));
+  const chartH = Math.round(tall * 0.45);
   const initialState = useMemo(() => ({
     pages: [{ id: 'week', name: 'This week',
       widgets: { sold: { type: 'agent-sold', format: { days: 7 } }, stuck: { type: 'agent-stuck', format: { days: 7 } },
-        funnel: { type: 'column-chart-grouped', format: { title: { enabled: true, text: 'Chats vs orders · last 14 days' },
+        funnel: { type: 'column-chart-grouped', format: { title: { enabled: true, text: 'Chats vs orders' },
+          subtitle: { enabled: true, text: 'Last 14 days, by day' },
           style: { theme: { common: { legend: { enabled: true, position: 'bottom' } } } } },
-          dataMapping: { categoryKey: [{ id: 'daily.day' }], valueKey: [{ id: 'daily.Chats', aggregation: 'sum' }, { id: 'daily.Orders', aggregation: 'sum' }] } } },
-      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 11 }, stuck: { xTrack: 0, yTrack: 11, xSpan: 16, ySpan: 53 }, funnel: { xTrack: 16, yTrack: 11, xSpan: 8, ySpan: 53 } } }],
+          dataMapping: { categoryKey: [{ id: 'daily.day' }], valueKey: [{ id: 'daily.Chats', aggregation: 'sum' }, { id: 'daily.Orders', aggregation: 'sum' }] } },
+        orders: { type: 'grid', format: { title: { enabled: true, text: 'Orders · newest first' }, style: { columnAutoSize: true } },
+          sort: [{ field: { id: 'sales.order_at' }, direction: 'desc' }],
+          dataMapping: { cols: [{ id: 'sales.day' }, { id: 'sales.car' }, { id: 'sales.qty' }, { id: 'sales.revenue' },
+            { id: 'sales.status' }, { id: 'sales.via' }, { id: 'sales.record' }] } } },
+      widgetLayout: { sold: { xTrack: 0, yTrack: 0, xSpan: 24, ySpan: 8 }, stuck: { xTrack: 0, yTrack: 8, xSpan: 15, ySpan: tall },
+        funnel: { xTrack: 15, yTrack: 8, xSpan: 9, ySpan: chartH }, orders: { xTrack: 15, yTrack: 8 + chartH, xSpan: 9, ySpan: tall - chartH } } }],
     selectedPageId: 'week',
-    panels: { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true } },
+    panels: { filters: { collapsed: true }, edit: { collapsed: true }, data: { collapsed: true }, ai: { width: 300 } },
   }), []);
   const q = new URLSearchParams(location.search);
   const focus = q.get('focus') === 'loop';
@@ -110,6 +123,19 @@ function App() {
     widgets={widgets as any} initialState={(focus ? loopState : initialState) as any} />;
 }
 
-createRoot(document.getElementById('root')!).render(
+// A phone (or the loop page's pane on a phone) gets the two widgets on their own, one under the other: Studio's
+// editor needs about 600 px and would scroll sideways (final judges 08.11). The widgets are the same components, so
+// Draft a lesson, Accept and the live ticks work here too; the top bar says Studio is best on a laptop.
+function PhoneView() {
+  return (
+    <div className="oc-phone-view">
+      <div className="oc-phone-card"><SoldStrip format={{ days: 7 }} /></div>
+      <div className="oc-phone-card"><StuckWidget format={{ days: 7 }} /></div>
+    </div>
+  );
+}
+
+const narrow = matchMedia('(max-width: 900px)').matches;
+createRoot(document.getElementById('root')!).render(narrow ? <StrictMode><PhoneView /></StrictMode> :
   <StrictMode><AgStudioProvider licenseKey={(window as any).__AG_STUDIO_LICENSE__ || import.meta.env.VITE_AG_STUDIO_LICENSE} modules={[AgStudioAiModule]}><App /></AgStudioProvider></StrictMode>,
 );

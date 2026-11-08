@@ -1,18 +1,37 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Open Counter · the loop: a lesson lands</title>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Counter · the loop: a lesson lands</title>
 <style>
-  html,body{margin:0;height:100%;background:#E9E3D6;font-family:"Geist",system-ui,sans-serif}
-  .wrap{display:grid;grid-template-columns:38fr 62fr;gap:10px;height:100%;padding:10px;box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#E9E3D6;font-family:"Geist",system-ui,sans-serif;color:#2B2620}
+  .how{display:flex;align-items:center;gap:20px;height:40px;box-sizing:border-box;padding:0 14px;border-bottom:1px solid #D8CDB4;
+    background:#F2F0EA;font-size:13px;white-space:nowrap;overflow-x:auto}
+  .how b{font:600 12px "Geist Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+  .how span{color:#4A4238}.how em{font-style:normal;font-weight:600;color:#2B2620}
+  .how a{color:#8A6D2E;text-decoration:none;margin-left:auto}
+  .wrap{display:grid;grid-template-columns:38fr 62fr;gap:10px;height:calc(100% - 40px);padding:10px;box-sizing:border-box}
   .pane{display:flex;flex-direction:column;min-width:0;border:1px solid #D8CDB4;border-radius:6px;overflow:hidden;background:#F2F0EA}
   .cap{font:500 12px "Geist Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:#4A4238;padding:8px 12px;border-bottom:1px solid #D8CDB4}
   iframe{flex:1;border:0;width:100%}
+  @media (max-width:900px){
+    .how{height:auto;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 14px;white-space:normal}
+    .how a{margin-left:0}
+    .wrap{grid-template-columns:1fr;height:auto}
+    .pane{height:85vh}
+  }
 </style></head>
 <body>
 <!-- One take, real time: a shopper asks on the left; Lena's lesson (accepted in the studio on the right seconds ago)
      shapes the agent's answer, and the studio row draws its tick. Same origin, so both panes share the visitor id. -->
+<div class="how">
+  <b>The loop</b>
+  <span>1 · On the right, press <em>Draft a lesson</em>, then <em>Accept</em>.</span>
+  <span>2 · On the left, ask <em>Can I pay with a credit card?</em></span>
+  <span>3 · Watch the ✓ draw itself on the right.</span>
+  <a href="/studio/">Full studio →</a>
+</div>
 <div class="wrap">
-  <div class="pane"><div class="cap">A shopper, on Lena's shop</div><iframe src="/#try"></iframe></div>
-  <div class="pane"><div class="cap">Lena's studio (AG Studio)</div><iframe src="/studio/?focus=loop"></iframe></div>
+  <div class="pane"><div class="cap">A shopper, on Lena's shop</div><iframe src="/#try" title="Lena's shop"></iframe></div>
+  <div class="pane"><div class="cap">Lena's studio (AG Studio)</div><iframe src="/studio/?focus=loop" title="Lena's studio"></iframe></div>
 </div>
 </body></html>

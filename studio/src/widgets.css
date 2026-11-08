@@ -5,7 +5,9 @@
 .sw-table th { text-align: left; font-weight: 600; padding: 8px 10px; border-bottom: 1px solid #A8873F; vertical-align: bottom; }
 .sw-table th span { font-weight: 400; color: #7A7062; }
 .sw-table td { padding: 10px; border-bottom: 1px solid #D8CDB4; vertical-align: top; line-height: 1.35; }
-.sw-table td:nth-child(1) { width: 20%; } .sw-table td:nth-child(2) { width: 20%; } .sw-table td:nth-child(4) { width: 18%; }
+.sw-table { table-layout: fixed; }
+.sw-table th:nth-child(1), .sw-table td:nth-child(1) { width: 18%; } .sw-table th:nth-child(2), .sw-table td:nth-child(2) { width: 22%; }
+.sw-table th:nth-child(3), .sw-table td:nth-child(3) { width: 40%; } .sw-table th:nth-child(4), .sw-table td:nth-child(4) { width: 20%; }
 .sw-struck { text-decoration: line-through; text-decoration-color: #A3262B; text-decoration-thickness: 2px; color: #6E6457; }
 .sw-draft { font-family: "Newsreader", Georgia, serif; font-style: italic; font-size: 15px; display: block; }
 .sw-actions { display: flex; gap: 8px; margin-top: 8px; }
@@ -14,7 +16,7 @@
 .sw-watch { color: #7A7062; font-style: italic; }
 .sw-watch::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #A8873F; margin-right: 6px; animation: sw-pulse 1.6s ease-in-out infinite; }
 .sw-err { color: #A3262B; font-size: 13px; }
-.sw-ticks { display: flex; gap: 6px; }
+.sw-ticks { display: flex; gap: 6px; flex-wrap: wrap; }
 .sw-tick { width: 24px; height: 24px; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 .sw-tick.ok { stroke: #2F7A47; } .sw-tick.no { stroke: #A3262B; }
 .sw-tick path { stroke-dasharray: 40; stroke-dashoffset: 0; }
@@ -61,3 +63,24 @@
 .sw-pay { margin-top: auto; padding-top: 18px; border-top: 1px solid #D8CDB4; align-items: baseline; }
 .ss-note { text-transform: none; letter-spacing: 0; color: #7A7062; }
 .ss-chip.sample { background: transparent; border: 1px dashed #A8873F; color: #4A4238; }
+/* laptop widths (final judges 08.11): the struck reply is clamped to 3 lines (full text on hover), the title is smaller,
+   and the payoff stays pinned in view at the bottom of the widget even when the ledger scrolls */
+.sw-struck { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sw-title { font-size: clamp(22px, 2.2vw, 34px); }
+.sw-pay { position: sticky; bottom: -18px; background: #F2F0EA; padding-bottom: 6px; z-index: 1; }
+.sw-pay strong { font-size: clamp(28px, 2.6vw, 40px); }
+.ss-v { font-size: clamp(36px, 3.6vw, 60px); }
+/* the AI panel's empty state says who answers (Studio has no empty-state option, so it rides on the starters list) */
+.ag-studio-ai-prompt-starters::before { content: "Ask about your shop. Studio's lead agent hands shop questions to Lena's shop analyst, which can ask Studio's page and widget agents to build a panel.";
+  display: block; margin: 0 4px 10px; font: italic 14px/1.4 "Newsreader", Georgia, serif; color: #4A4238; white-space: normal; }
+@media (max-width: 900px) {
+  .sw { padding: 12px 12px; } .sw-table { font-size: 13px; } .sw-table th:nth-child(1), .sw-table td:nth-child(1) { width: 24%; } .sw-table th:nth-child(2), .sw-table td:nth-child(2) { width: 22%; }
+  .sw-table th:nth-child(3), .sw-table td:nth-child(3) { width: 32%; } .sw-table th:nth-child(4), .sw-table td:nth-child(4) { width: 22%; }
+  .sw-tick { width: 18px; height: 18px; } .sw-ticks { flex-wrap: wrap; gap: 3px; }
+  .ss { padding: 10px 12px; } .ss-k { font-size: 12px; } .ss-head { flex-wrap: wrap; }
+}
+/* phone: the two widgets without Studio's editor */
+.oc-phone-view { display: flex; flex-direction: column; gap: 10px; }
+.oc-phone-card { background: #F2F0EA; border: 1px solid #D8CDB4; border-radius: 6px; }
+.oc-phone-card .sw { height: auto; overflow: visible; } .oc-phone-card .ss { height: auto; }
+.oc-phone-card .sw-pay { position: static; }

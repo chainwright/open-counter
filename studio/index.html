@@ -4,6 +4,25 @@
     <title>Lena's Studio · Open Counter</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=Big+Shoulders+Display:wght@700;800&display=swap" rel="stylesheet">
-    <style>html,body,#root{height:100%;margin:0;background:#E9E3D6}#root{box-sizing:border-box;padding:10px}</style></head>
-  <body><div id="root"></div><script src="/api/studio/config.js"></script><script type="module" src="/src/main.tsx"></script></body>
+    <style>
+      html,body{height:100%;margin:0;background:#E9E3D6}
+      #root{box-sizing:border-box;padding:10px;height:calc(100% - 36px)}
+      .oc-bar{height:36px;box-sizing:border-box;display:flex;align-items:center;gap:18px;padding:0 16px;border-bottom:1px solid #D8CDB4;
+        font:500 13px "Geist",system-ui,sans-serif;color:#4A4238;background:#F2F0EA;white-space:nowrap;overflow:hidden}
+      .oc-bar a{color:#8A6D2E;text-decoration:none}.oc-bar a:hover{text-decoration:underline}
+      .oc-bar .oc-name{font:600 12px "Geist Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:#2B2620}
+      .oc-bar .oc-by{color:#7A7062}.oc-bar .oc-right{margin-left:auto;display:flex;gap:18px}
+      .oc-bar .oc-phone{display:none;color:#7A7062}
+      @media (max-width:900px){#root{height:auto;min-height:calc(100% - 36px)}.oc-bar{gap:12px;padding:0 12px}.oc-bar .oc-by,.oc-bar .oc-right,.oc-bar .oc-shop{display:none}.oc-bar .oc-phone{display:inline;overflow:hidden;text-overflow:ellipsis}}
+      body.oc-focus .oc-bar{display:none} body.oc-focus #root{height:100%}
+    </style></head>
+  <body>
+    <header class="oc-bar">
+      <a href="/maker">← Lena's back office</a><a class="oc-shop" href="/">Shop</a>
+      <span class="oc-name">Lena's studio</span><span class="oc-by">built on AG Studio · the counts include SAMPLE history</span>
+      <span class="oc-phone">Best on a laptop</span>
+      <span class="oc-right"><a href="/studio/loop.html">The loop on one screen →</a></span>
+    </header>
+    <script>if (/[?&]focus=loop/.test(location.search)) document.body.classList.add('oc-focus');</script>
+    <div id="root"></div><script src="/api/studio/config.js"></script><script type="module" src="/src/main.tsx"></script></body>
 </html>
