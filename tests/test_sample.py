@@ -106,6 +106,9 @@ def test_a_refresh_keeps_every_live_record(monkeypatch):
                   visitor="9f2c4e1a7b3d5f6e8a0c2b4d")
     lesson = shop.add_coaching("anon-1a2b3c4d", "If someone asks about rush, say there's one shipping speed.",
                                visitor="9f2c4e1a7b3d5f6e8a0c2b4d")
+    cs = shop._json("counters.json", {})
+    cs["clay-kiln-s1"]["listing"]["paypal_catalog_product"] = "OC-CLAY-KILN-S1-1"   # registered by catalog.sync
+    shop._save_json("counters.json", cs)
     before = counts()
     sample_dates = sorted(o["created"] for o in shop.orders() if o.get("sample"))
     assert sample.refresh(now=time.time() + 3 * 86400)
@@ -113,6 +116,7 @@ def test_a_refresh_keeps_every_live_record(monkeypatch):
     assert real["id"] in {o["id"] for o in shop.orders()} and lesson["id"] in {n["id"] for n in shop.coaching()}
     assert any(c["id"] == "anon-1a2b3c4d" for c in shop.conversations())
     assert next(c for c in shop.customers() if c["email"] == "real.buyer@example.org")["orders"] == [real["id"]]
+    assert shop._json("counters.json", {})["clay-kiln-s1"]["listing"]["paypal_catalog_product"] == "OC-CLAY-KILN-S1-1"
     moved = sorted(o["created"] for o in shop.orders() if o.get("sample"))
     assert min(moved) > min(sample_dates) + 2 * 86400   # the sample moved with the clock
 

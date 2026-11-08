@@ -336,7 +336,8 @@ def refresh(now: float | None = None, max_age: float = SAMPLE_MAX_AGE_S) -> bool
         live_custs = {k: c for k, c in shop._json("customers.json", {}).items()
                       if any(x in live_ids for x in c.get("orders", []))}
         live_lessons = [n for n in shop.coaching() if not n.get("sample")]
-        live_counters = {k: c for k, c in shop._json("counters.json", {}).items() if not c.get("sample")}
+        old_counters = shop._json("counters.json", {})
+        live_counters = {k: c for k, c in old_counters.items() if not c.get("sample")}
         build(now)
         shop._save_orders(shop.orders() + live_orders)
         convs = shop._json("conversations.json", {})
@@ -352,6 +353,10 @@ def refresh(now: float | None = None, max_age: float = SAMPLE_MAX_AGE_S) -> bool
         shop._save_json("customers.json", custs)
         shop._save_json("coaching.json", shop.coaching() + live_lessons)
         counters = shop._json("counters.json", {})
+        for k, c in counters.items():   # the sample counters keep the PayPal Catalog product ids they were given
+            pid = ((old_counters.get(k) or {}).get("listing") or {}).get("paypal_catalog_product")
+            if pid:
+                c["listing"]["paypal_catalog_product"] = pid
         counters.update(live_counters)
         shop._save_json("counters.json", counters)
         af.write_text(str(now))
