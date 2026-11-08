@@ -803,6 +803,71 @@ def _outside_us(text: str) -> bool:
                 and not _state_said(text) and not re.search(r"\b\d{5}\b", text))
 
 
+# Product safety is answered only from the listing text (live check 08.11: "lead-free? It's for my 5 year old" got
+# "Our paints are non-toxic and safe", while the listing says "Not a toy, not for children under 14").
+SAFETY_Q = re.compile(r"toxic|lead[- ]?(free|based)|\blead\b.{0,25}\bpaint|\bpaint\b.{0,25}\blead\b|contains? lead|"
+                      r"\bsafe(ty|ly)?\b.{0,30}\b(for|to|with|around)\b|\b(child|children|kids?|toddlers?|bab(y|ies)|"
+                      r"son|daughter|grandson|granddaughter)\b.{0,40}\b(safe|play|toy|age|old)\b|\b\d{1,2}[- ]?(years?|yrs?|y\.?o\.?)[- ]?old\b|"
+                      r"\b(age|ages)\b.{0,20}\b(limit|range|for|\d)|choking|small parts|swallow|allerg|chew|\bbpa\b|phthalat|"
+                      r"chemical|is it a toy|for (a |my )?(child|kid|toddler|baby)|"
+                      r"токсич|безопас|свин[ец]|ребён|ребен|детск|для дет|лет\b.{0,10}(сын|доч|ребён|ребен)|игрушк", re.I)
+# A safety claim in a reply that isn't in the listing text is never sent.
+_H = r"[\s\-‑–]?"   # "non-toxic", "non‑toxic" (U+2011, as the model wrote it on 08.11), "non toxic"
+_KID = r"(children|kids?|toddlers?|bab(y|ies)|a child|an? \d+[\s\-‑–]?years?[\s\-‑–]?old|your (son|daughter|child|kid|little one)|young)"
+SAFETY_CLAIM = re.compile(rf"non{_H}toxic|lead{_H}free|safety{_H}tested|child{_H}(safe|friendly|proof)|kid{_H}(safe|friendly)|"
+                          rf"safe (for|around|with) {_KID}|safe to (play|chew|touch|handle|mouth)|"
+                          rf"(suitable|fine|ok|okay|great|perfect) for {_KID}|hypoallergenic|bpa{_H}free|"
+                          r"нетоксич|без свинца|подходит (для )?дет|безопасн\w* для дет", re.I)
+# inside an answer to a safety question, any "safe" is a claim
+SAFE_WORD = re.compile(r"\bsafe\b|\bsafely\b|безопасн", re.I)
+
+
+def _listing_text() -> str:
+    return " ".join(" ".join(str(x.get(k, "")) for k in ("title", "materials", "paint", "notes"))
+                    for x in shop.shop()["listings"]).lower()
+
+
+def _safety_q(text: str) -> bool:
+    return bool(SAFETY_Q.search(text or ""))
+
+
+def _safety_answer(text: str, ru: bool) -> str:
+    """What the listings say about materials, paint and age, quoted, and an honest "I don't know" for the rest.
+    Never a safety fact of its own."""
+    listings = shop.shop()["listings"]
+    car = _one_car_meant(text)
+    m = re.search(r"item_id (\S+),", car)
+    meant = [x for x in listings if m and x["id"] == m.group(1)]
+    warn = [x for x in listings if re.search(r"not a toy|not for children|under \d+|age", x.get("notes", ""), re.I)]
+    said = []
+    for x in meant:
+        said.append(f"В описании {x['title']}: {x['materials']}, краска {x['paint']}. Там же: «{x['notes']}»" if ru else
+                    f"The {x['title']} is listed as {x['materials']}, painted {x['paint']}. Its listing says: \"{x['notes']}\"")
+    for x in warn:
+        if x in meant:
+            continue
+        note = next((s.strip() for s in re.split(r"(?<=\.)\s+", x["notes"]) if re.search(r"not a toy|children|under \d+", s, re.I)),
+                    x["notes"])
+        said.append(f"В описании {x['title']} сказано: «{note}»" if ru else f"The {x['title']} listing says: \"{note}\"")
+    if not meant:
+        said.append("Все машинки в описаниях — коллекционные модели на подставке (display model)." if ru else
+                    "Every car is listed as a display model on a plinth.")
+    if ru:
+        return ("Скажу только то, что написано в описаниях: гадать о безопасности не буду. " + " ".join(said) + " "
+                "Про свинец, токсичность или возраст больше там ничего нет, так что этого я не знаю. " + PHONE_OFFER_RU)
+    return ("I can only tell you what Lena's listings say, and I won't guess about safety. " + " ".join(said) + " "
+            "They don't say anything more about lead, toxicity or age, so I don't know that. " + PHONE_OFFER)
+
+
+def _scrub_safety(reply: str, asked_safety: bool = False) -> str:
+    """Sentences with a safety claim the listings don't make are dropped (the model is never the source of one)."""
+    facts = _listing_text()
+    claims = [SAFETY_CLAIM] + ([SAFE_WORD] if asked_safety else [])
+    keep = [x for x in re.split(r"(?<=[.!?])\s+", reply or "")
+            if not any(c.group(0).lower() not in facts for rx in claims for c in rx.finditer(x))]
+    return " ".join(keep).strip()
+
+
 def _code_answer(reply: str, steps: list[dict], lessons: list[dict], ru: bool) -> dict:
     """An answer written by code from the shop's rules (no model call), with Lena's matching lessons applied."""
     reply = _apply_lessons(reply, lessons, ru)
@@ -991,6 +1056,13 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
         return _code_answer("Пока нет: Лена отправляет только по США, во все штаты, включая Аляску и Гавайи." if ru else
                             "Not yet: Lena ships inside the US only for now, to every state including Alaska and Hawaii.",
                             [step], taught_now, ru)
+    if _safety_q(last_user) and not (parse_made_to_order(last_user) or _qty_in(last_user) or PHONE.search(last_user)
+                                     or EMAIL_IN.search(last_user)):
+        # safety, age, materials: only the listing's own words, answered in code, never a model's guess
+        ru = bool(re.search(r"[а-яё]", last_user, re.I))
+        step = {"tool": "item_details", "label": LABELS["item_details"], "args": {},
+                "result": "safety and age: quoted from the listings only", "ms": 0}
+        return _code_answer(_safety_answer(last_user, ru), [step], taught_now, ru)
     check_budget(who)   # the day's cap, and this visitor's share of it
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
     shelf = "; ".join(f"{x['id']} = {x['title']}, ${x['price_usd']:.0f}, {x['stock']} in stock"
@@ -1342,6 +1414,11 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
     if taught_now:   # her lesson holds whatever path wrote the reply: model, code or out-of-time
         reply = _apply_lessons(reply, taught_now, bool(re.search(r"[а-яё]", lang_text, re.I)))
         steps += _lesson_steps(taught_now)
+    # Output boundary: no safety claim the listings don't make; a safety question always gets the listing's words
+    asked_safety = _safety_q(last_user)
+    reply = _scrub_safety(reply, asked_safety)
+    if asked_safety:
+        reply = _safety_answer(last_user, bool(re.search(r"[а-яё]", lang_text, re.I))) + (" " + reply if reply else "")
     # What the tools returned this turn, so the next turn still knows it (the browser sends it back with the reply).
     memo = "; ".join(f"{st['label']}: {st['result']}" for st in steps)
     # after the first order with an email, the shop asks about news once (the model is told not to ask itself)
