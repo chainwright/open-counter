@@ -1,7 +1,8 @@
 """Sample history for the public demo (Roma 14540): two weeks of chats and orders so Lena's back office isn't empty.
 
 Everything here is marked "sample": True and shown with a SAMPLE tag; live chats and orders are added on top.
-The free host wipes its disk on every deploy, so this is re-created on start whenever the data folder is empty.
+It is laid down on an empty data folder or a new DATA_VERSION, and dated again from today whenever it is older than
+SAMPLE_MAX_AGE_S (on start and once an hour), with every live record kept.
 Totals over the 14 days: green 4, blue 3, orange 5, yellow 10, red 9 cars from stock, plus 12 made-to-order builds;
 about 40 chats, 5 of them today. Names, emails and phones are invented (example.com, 555 numbers).
 """
@@ -196,6 +197,11 @@ def build(now: float | None = None):
              name=cust["full_name"], order_id=bought(t + 120, "OC-L001", cust))
         t = now - 1.4 * 86400
         chat(t, [("Shipping to Mexico City?", "I couldn't finish that in a few steps. Could you tell me a bit more?", [])])
+        # A question no lesson covers yet, inside this week whatever day the demo is opened: the studio's ledger always
+        # has an open row with a "Draft a lesson" button (live check 08.11: the dated rows had aged out of the week).
+        t = now - 0.9 * 86400
+        chat(t, [("Can I pay with a credit card instead of PayPal?",
+                  "I'm not sure about that, sorry. I can only help with the cars themselves.", [])])
         t = now - 0.5 * 86400
         cust = person(42)
         chat(t, [("Can I return it if it arrives chipped?",
@@ -237,14 +243,22 @@ def build(now: float | None = None):
         return len(orders), len(convs)
 
 
-DATA_VERSION = "11"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
+DATA_VERSION = "12"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
+# 12 (08.11): a clean demo before judging: the 02-03.11 probes and the 08.11 judge-path check go, the sample comes back
+# dated from today (with the open "stuck" row the studio needs).
+
+# The sample history is dated from the moment it's laid down; it is laid down again (live records kept) when it's
+# older than this, so "today", "this week" and the studio's open row stay true on a demo that runs for weeks.
+SAMPLE_MAX_AGE_S = 12 * 3600
 
 # QA and judge runs on the public demo use visitor ids and chat ids starting with "qa" (qa-e0147409, qa5-canada-7409);
 # a real browser's ids are random hex ("anon-…", 24 hex digits) and never do. Orders from the judge rounds that were
 # placed before the convention are listed by id. They're removed on every start (purge_test_data); real orders,
 # chats and customers stay, and the sample history is never touched.
 TEST_ID = re.compile(r"^(qa|test|judge)", re.I)
-KNOWN_TEST_ORDERS = {"OC-24754B6E",                                                       # judge round 5
+KNOWN_TEST_ORDERS = {"OC-2C9A66AA", "OC-AA30F65F",                                        # live check 08.11
+                     "OC-4E5718CA", "OC-DE08FDC7", "OC-D04CBAF7", "OC-0CC5F855", "OC-A42E2AB8", "OC-814E688A",  # 02-03.11
+                     "OC-24754B6E",                                                       # judge round 5
                      "OC-D3BC6995", "OC-F64CAFF8", "OC-C4CAB985", "OC-80212819", "OC-FA099F18",   # round 4
                      "OC-A4F2CD96", "OC-C88BA7F6", "OC-831EE13B", "OC-FF085841"}               # round 1
 
@@ -302,20 +316,66 @@ def purge_test_data() -> dict:
     return gone
 
 
+def refresh(now: float | None = None, max_age: float = SAMPLE_MAX_AGE_S) -> bool:
+    """Lay the sample history down again, dated from now, when it is older than max_age. Every live record (orders,
+    chats, buyers, lessons, counters, call-backs) stays as it is. True if it was refreshed."""
+    if not shop.DEMO:
+        return False
+    now = now or time.time()
+    af = shop._path("sample_anchor")
+    try:
+        at = float(af.read_text())
+    except (OSError, ValueError):
+        at = 0.0
+    if now - at < max_age:
+        return False
+    with shop._lock:
+        live_orders = [o for o in shop.orders() if not o.get("sample")]
+        live_ids = {o["id"] for o in live_orders}
+        live_convs = {k: c for k, c in shop._json("conversations.json", {}).items() if not c.get("sample")}
+        live_custs = {k: c for k, c in shop._json("customers.json", {}).items()
+                      if any(x in live_ids for x in c.get("orders", []))}
+        live_lessons = [n for n in shop.coaching() if not n.get("sample")]
+        live_counters = {k: c for k, c in shop._json("counters.json", {}).items() if not c.get("sample")}
+        build(now)
+        shop._save_orders(shop.orders() + live_orders)
+        convs = shop._json("conversations.json", {})
+        convs.update(live_convs)
+        shop._save_json("conversations.json", convs)
+        custs = shop._json("customers.json", {})
+        for k, c in live_custs.items():
+            mine = [x for x in c.get("orders", []) if x in live_ids]
+            if k in custs:    # the same email as a sample buyer: one record, both histories
+                custs[k]["orders"] += [x for x in mine if x not in custs[k]["orders"]]
+            else:
+                custs[k] = {**c, "orders": mine}
+        shop._save_json("customers.json", custs)
+        shop._save_json("coaching.json", shop.coaching() + live_lessons)
+        counters = shop._json("counters.json", {})
+        counters.update(live_counters)
+        shop._save_json("counters.json", counters)
+        af.write_text(str(now))
+    return True
+
+
 def ensure():
-    """On an empty data folder, or when DATA_VERSION changes, lay down the sample history; on every start, take
-    test traffic out (real records stay)."""
+    """On an empty data folder, or when DATA_VERSION changes, lay down the sample history; otherwise re-date it when
+    it has aged; on every start, take test traffic out (real records stay)."""
     if not shop.DEMO:
         return
     vf = shop._path("data_version")
     if not (vf.exists() and vf.read_text().strip() == DATA_VERSION):
         import shutil
-        for f in ("orders.json", "conversations.json", "customers.json", "coaching.json", "counters.json", "requests.json"):
+        for f in ("orders.json", "conversations.json", "customers.json", "coaching.json", "counters.json", "requests.json",
+                  "sample_anchor"):
             p = shop._path(f)
             if p.exists():
                 p.unlink()
         shutil.rmtree(shop._path("counters"), ignore_errors=True)
         shop.seed(force=True)
         build()
+        shop._path("sample_anchor").write_text(str(time.time()))
         vf.write_text(DATA_VERSION)
+    else:
+        refresh()
     purge_test_data()

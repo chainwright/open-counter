@@ -45,11 +45,23 @@ async def lifespan(_app):
     # Lena's listings and the sample counters in PayPal Catalog Products, in the background (a slow PayPal never
     # holds up the start); already registered products are looked up, never created twice
     threading.Thread(target=catalog.sync, daemon=True).start()
+    threading.Thread(target=_keep_sample_fresh, daemon=True).start()
     async with contextlib.AsyncExitStack() as stack:
         lc = getattr(mcp_app.router, "lifespan_context", None)
         if lc:
             await stack.enter_async_context(lc(mcp_app))
         yield
+
+
+def _keep_sample_fresh():
+    """The demo runs for weeks without a restart: once an hour, a sample history that has aged is dated from today
+    again (live records untouched), so the back office's "today" and the studio's "this week" stay true."""
+    while True:
+        time.sleep(3600)
+        try:
+            sample.refresh()
+        except Exception:   # never takes the app down; the next hour tries again
+            pass
 
 
 app = FastAPI(title="Open Counter", lifespan=lifespan)
