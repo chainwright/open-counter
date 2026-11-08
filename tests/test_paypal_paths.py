@@ -1,6 +1,7 @@
-"""The money paths besides the webhook capture (which has a logged sandbox run in the README): the automatic refund
-when the last car sold during approval, and invoice payments moving a made-to-order build to 'deposit in' and
-'paid'. PayPal's answers are faked here; no network."""
+"""The money paths besides the webhook capture: the automatic refund when the last car sold during approval, and
+invoice payments moving a made-to-order build to 'deposit in' and 'paid'. The webhook capture and the invoice deposit
+have logged sandbox runs in the README (28 Oct, 8 Nov); the refund is tested only here. PayPal's answers are faked
+here; no network."""
 import pytest
 from fastapi.testclient import TestClient
 

@@ -38,10 +38,19 @@ was approved by a person while the return page was told to stay out of it (a `we
 (capture `9Y869986895732623`, 20:18 UTC); the order showed as paid on Lena's side without the buyer's browser doing
 anything. Same code path as the return page, so the two can never charge twice.
 
+The made-to-order invoice, run on the live sandbox on 8 Nov 2026: order `OC-84F49F07` (2 × fastback, 1967, $184.50),
+PayPal invoice `INV2-VV7G-JLS2-JXCV-3QTR`. The buyer chose *Partial amount* on PayPal's invoice page and paid the
+$92.25 deposit with the sandbox buyer; the invoice read "Partially paid", the order moved to `deposit_paid` within
+seconds, and the balance reminder went out through PayPal from Lena's back office. (An earlier run the same day:
+`OC-2C9A66AA`, invoice `INV2-2WXK-33LT-AN9D-FKRN`.) The automatic refund (last car sold during approval) is covered by
+tests with PayPal stubbed; it has no sandbox run.
+
 ## Try it in two minutes
 - **Shop:** https://open-counter.onrender.com · chat with the shop's sales agent in section 01, turn any car in 3D.
 - **Lena's back office (open, no login):** https://open-counter.onrender.com/maker
 - **Open your own counter:** https://open-counter.onrender.com/open
+- **Lena's studio (AG Studio), best on a laptop:** https://open-counter.onrender.com/studio/ · the lesson loop on one
+  screen: https://open-counter.onrender.com/studio/loop.html
 - When the agent gives you a PayPal button, log in with the **sandbox** test buyer:
   `sb-yi0xc53507798@personal.example.com` / `2dt_AD6W`. This is PayPal's test environment; no real money moves.
 - The back office starts with two weeks of sample history (marked SAMPLE) so the charts aren't empty. Your own chat
@@ -110,15 +119,19 @@ flowchart LR
 | Invoicing v2: create, send, partial payment, remind | made-to-order: 50% deposit now, balance before shipping | `paypal.create_deposit_invoice`, `remind_invoice` |
 | Orders v2: shipment tracking | Lena adds a USPS number, PayPal tells the buyer | `paypal.add_tracking` |
 | Payments v2: refund | automatic full refund if the last one sold during approval | `paypal.refund` |
-| Catalog Products v1 | Lena's five listings and the sample counters, registered on start under fixed ids (`OC-SG-014`…, looked up, never duplicated) and shown on every card; products of makers who open a counter at `/open` | `catalog.sync`, `onboard.publish` |
+| Catalog Products v1 | Lena's five listings and the sample counters, registered on start under fixed ids (`OC-SG-014`…, looked up, never duplicated) and shown on every card; products of makers who open a counter at `/open` (registered when the counter opens, under the id PayPal assigns) | `catalog.sync`, `onboard.publish` |
 | Webhooks + signature verification | `CHECKOUT.ORDER.APPROVED` (captured even if the buyer never returns), capture completed/denied/reversed/refunded, invoice paid/updated | `web.webhook` |
 | `PayPal-Request-Id` | a retried create, capture, invoice or refund never doubles money | `paypal._call` |
 
 ## What uses AI, and where
 - **Sales agent** (`opencounter/shopper.py`): NVIDIA Nemotron 3 Super on Nebius, native tool calls, answers in the
-  shopper's language, a daily spend cap shared by the whole demo, and inside it a share per browser and per network
-  (`SHOPPER_VISITOR_CAP_USD`, `SHOPPER_IP_CAP_USD`), so one burst can't use up the day for everyone. It reads Lena's
-  lessons in every chat.
+  shopper's language, and reads Lena's lessons in every chat.
+- **AI budget.** One daily cap for the whole demo (`SHOPPER_DAILY_CAP_USD`, default $1.00/day), and inside it a share
+  per browser (`SHOPPER_VISITOR_CAP_USD`, $0.15) and per network (`SHOPPER_IP_CAP_USD`, $0.30). The network is the
+  address Render's proxy saw (the last `X-Forwarded-For` hop, `OPENCOUNTER_PROXY_HOPS`), which a client can't set.
+  The budget is checked only when a turn needs the model: answers written in code (the made-to-order year question,
+  quote and invoice, a cart made in code, safety answers) work even when the day is spent. The studio has its own pool
+  (`STUDIO_DAILY_CAP_USD`).
 - **What the model is not trusted with:** prices, totals, discounts, stock, delivery dates and build times are computed
   in `opencounter/shop.py`. The code refuses an order unless the phone, email and ZIP were typed by the person; lines
   with contact details the person never typed are removed from replies; a promised link without a real order is caught.
@@ -129,13 +142,74 @@ flowchart LR
   never inventing a price or a date. Two things keep it honest: every guard has an offline test with the model faked
   (`tests/`), and `evals/run_evals.py` replays 33 real conversations with checks in code, including a global ban on
   non-answers. Moving the guards into their own module is on the list.
-- **Lena's assistant** (`opencounter/assistant.py`): reviews chats against the shop's facts and proposes lessons;
-  answers questions from a facts object computed in code.
+- **Lena's assistant** (`opencounter/assistant.py`): the same model without tools: it reviews chats against the shop's
+  facts and proposes lessons (streamed into the studio's cell), and answers questions from a facts object computed in
+  code.
 - **Listing writer** (`opencounter/onboard.py`): NVIDIA Nemotron VL turns a photo and a sentence into listing words.
+
+## Lena's studio (AG Studio)
+`/studio/` is Lena's dashboard on [AG Studio](https://www.ag-grid.com/) 3.0 (React), served by the shop itself. It
+answers one question: *where did my agent get stuck, did my lesson fix it, and what did that earn?*
+
+**What's on the page** (`studio/src/main.tsx`)
+- **Where my agent got stuck** (custom widget, `studio/src/StuckWidget.tsx`): what the shopper asked, the agent's
+  original reply struck through in red pencil, Lena's lesson, and a ✓ or ✗ for every later chat the lesson applied to,
+  with the paid value of orders from those chats. Rows with no lesson yet have **Draft a lesson**: the server streams
+  the model's tokens as AG-UI events (`TEXT_MESSAGE_START / _CONTENT / _END`, then `RUN_FINISHED` with whether the
+  shop's matcher understands it), and the cell draws each token as it arrives (`studio/src/lessonStream.ts`).
+  **Accept** saves it as a lesson; the next matching chat draws its ✓ live. All numbers come from
+  `/api/maker/agent_misses` (`opencounter/misses.py`), computed in code. On the public demo a visitor sees the sample
+  history and their own chats, never other visitors'.
+- **Sold to an agent** (custom widget, `studio/src/SoldStrip.tsx`): orders this week by who sold them (an outside AI
+  agent over MCP, Lena's sales chat, made to order), and the newest MCP sale with its PayPal status (marked SAMPLE for
+  sample orders).
+- Studio's own widgets: a column chart (chats vs orders, `daily` source) and an AG Grid table of orders (`sales` source).
+  Both custom widgets are registered with `createWidgets`, each with `ai` metadata and a `formatShape`, so Studio's
+  agents can place and configure them.
+- One theme, `studioTheme.withParams` (`studio/src/theme.ts`), across Studio's panels, chat, grid and chart.
+
+**The agents** (`studio/src/harness.ts`)
+- AG's five built-in agents (Lead, Planning, Data, Page, Widget) all run through our own model adapter
+  (`directLlmRunner({... adapter})`), plus a sixth, **Lena's shop analyst** (`id: 'shop'`), with two tools defined by
+  `api.defineAiTool`: `agent_misses` and `agent_sales`, which call the shop's endpoints.
+- The Lead hands shop questions to the analyst through Studio's own `delegate_to`. The analyst hands widget work to
+  Studio's Page agent (to add a panel) or Widget agent (to change one). So the chat shows Lead → Lena's shop analyst
+  for a question, and Lead → analyst → Page/Widget agent when Lena asks for a panel.
+
+**How the adapter works**
+```mermaid
+flowchart LR
+  L[Lead · Planning · Data · Page · Widget<br/>+ Lena's shop analyst] -->|AgLlmRequest| AD[studio/src/adapter.ts]
+  AD -->|POST /api/studio/llm| SV[opencounter/studio_llm.py]
+  SV -->|chat completions + tools| N[NVIDIA Nemotron 3 Super on Nebius]
+  N --> SV -->|text + tool calls| AD -->|AG-UI events: TEXT_MESSAGE_* / TOOL_CALL_*| L
+```
+`studio_llm.py` turns Studio's Responses-style items into chat messages (consecutive tool calls in one assistant
+message, Studio-provided tools dropped) and back. The model key stays on the server. A turn that only announces its
+next step ("Now I'll place the widget:") without a tool call is asked once more with a tool call required. A whole
+turn is answered at once and replayed by the adapter as AG-UI events; "Draft a lesson" is the one place that streams
+token by token.
+
+**Build and run**
+```bash
+cd studio && npm ci && npm run build      # Vite → ../web/studio (git-ignored); the shop serves it at /studio
+# development: run the shop on :8811, then
+cd studio && npm ci && VITE_AG_STUDIO_LICENSE=... npm run dev   # :5199, /api proxied to :8811
+```
+The Dockerfile's first stage (`node:22-slim`) does the same build. The licence comes from the server's environment,
+`AG_STUDIO_LICENSE`, served at `/api/studio/config.js` (never in the repo or the bundle); without one Studio shows its
+watermark. The demo uses an AG Studio Pro + AI **trial licence that expires 16 Dec 2026, 00:00 UTC**.
+
+**AI budget.** The studio's model turns share the demo's daily AI cap (`SHOPPER_DAILY_CAP_USD`, default $1.00) with
+the shop chat, inside their own pool (`STUDIO_DAILY_CAP_USD`, default half the day), so studio use can never switch
+off the shop's chat. A question about the shop costs about $0.005, a new panel about $0.035 (measured 8 Nov).
 
 ## For agents
 - MCP (streamable HTTP) at `/mcp/`: `about_counter`, `search_counter`, `item_details`, `delivery_estimate`,
   `start_checkout` (one or several cars), `quote_commission`, `start_commission_checkout`, `leave_contact`, `order_status`.
+  Arguments are typed: `tools/list` shows the `customer` fields (`full_name`, `phone`, `email`, `address_line_1`,
+  `city`, `state`, `postal_code`), `items` (`item_id`, `quantity`) and `cars` (`model`, `year`, `body_colour`,
+  `interior_colour`, `quantity`); every quantity is a whole number of at least 1, checked again in code.
 - JSON card: `/c/small-garage.json`; every counter: `/c/<slug>.json`; discovery: `/.well-known/open-counter.json`.
 - One search across every counter on the host: `/api/directory?q=green&max_price=60` returns matching items from
   Lena's shop and every counter opened at `/open`, each with its card and its checkout.
@@ -151,12 +225,15 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
 export PAYPAL_CLIENT_ID=... PAYPAL_CLIENT_SECRET=...   # sandbox app
 export NEBIUS_API_KEY=...                              # sales agent, assistant, listing writer
 export OPENCOUNTER_PUBLIC_URL=http://127.0.0.1:8800
+(cd studio && npm ci && npm run build)                  # Lena's studio at /studio (optional; needs node 22)
 .venv/bin/uvicorn opencounter.web:app --port 8800
-.venv/bin/python -m pytest -q tests
+.venv/bin/python -m pytest -q tests                     # a few tests run studio/web JS in node
 ```
 Optional: `PAYPAL_WEBHOOK_ID` (webhook verification), `OPENCOUNTER_DATA` (data folder; on Render it points at a
 mounted persistent disk, `/var/data`, so data survives deploys), `MAKER_KEY` (Lena's key: global lessons, news-list export, marking call-backs done), `OPEN_COUNTER_SAMPLE_PAYEE`
-(a second sandbox business account that the sample counters pay, so the demo shows money reaching a maker).
+(a second sandbox business account that the sample counters pay, so the demo shows money reaching a maker),
+`AG_STUDIO_LICENSE` (Lena's studio), `SHOPPER_DAILY_CAP_USD` / `SHOPPER_VISITOR_CAP_USD` / `SHOPPER_IP_CAP_USD` /
+`STUDIO_DAILY_CAP_USD` (AI budget, see above).
 
 On the public demo every browser gets its own visitor id: lessons it writes, orders it can ship and counters it opens
 stay with that browser. Sample history (marked SAMPLE) is read-only. Test runs against the live demo use visitor and
