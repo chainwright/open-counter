@@ -52,9 +52,10 @@ anything. Same code path as the return page, so the two can never charge twice.
 - Ask in English or Russian (tested; other languages work as the model allows). The agent finds the car, checks stock and delivery, gives the total and dates, asks once for
   name, phone, email and address, and puts a receipt under its message: one line per car, quantity × price, shipping,
   total, and PayPal's own button: the buyer approves in PayPal's window without leaving the chat. Several different cars go into one PayPal order.
-- Something not on the shelf? Describe it. The agent asks the year, body and interior colours and the quantity, and
-  quotes the build time and volume discount from Lena's rules. It's paid with a **PayPal invoice: 50% deposit now,
-  the balance before shipping.**
+- Something not on the shelf? Describe it. The agent asks the year of the real car first (and the body and interior
+  colours and the quantity if they're missing), then quotes the total, the build time and the ship date from Lena's
+  rules (ten or more cars also get a volume discount). It's paid with a **PayPal invoice: 50% deposit now, the balance
+  before shipping.** On PayPal's invoice page, *Partial amount* pays just the deposit.
 - Any outside agent gets the same nine tools through the MCP server, with the same rules.
 
 **For the maker**
