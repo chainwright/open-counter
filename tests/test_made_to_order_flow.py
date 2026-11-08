@@ -135,3 +135,9 @@ def test_a_build_for_another_state_waits_for_that_address(monkeypatch):
                                      "12 of them, to California"}]
     r = shopper.run(h, "v-judge")
     assert not r["checkout"] and "$961.20" in r["reply"] and "Where in California should it go?" in r["reply"]
+
+
+def test_a_build_described_as_a_shelf_car_in_another_colour_is_read_in_that_colour():
+    f = shopper.mto_fields("Can Lena make the green fastback in grey with two black stripes, brown inside, 2 of them, 1968?")
+    assert f["body_colour"] == "grey" and f["year"] == "1968" and f["interior_colour"] == "brown"
+    assert shopper.parse_made_to_order("A grey fastback, 1968, brown interior, two black stripes, 2 of them")["body_colour"] == "grey"

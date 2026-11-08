@@ -21,7 +21,7 @@ def ask(text, history=()):
 
 @pytest.mark.parametrize("q", ["Is the paint lead-free? It's for my 5 year old.",
                                "Is it safe for kids?", "Is the green fastback non-toxic?",
-                               "Can my 3-year-old play with it?"])
+                               "Can my 3-year-old play with it?", "Is the paint safe?"])
 def test_a_safety_question_is_answered_from_the_listing_in_code(monkeypatch, q):
     monkeypatch.setattr(shopper, "_client_", lambda: NoModel())
     r = ask(q)
@@ -58,5 +58,6 @@ def test_a_model_safety_claim_never_reaches_the_shopper(monkeypatch):
 
 def test_ordinary_questions_are_not_taken_for_safety():
     for q in ("What scale are your cars?", "2 red convertibles to Chicago", "Do you ship to Hawaii?",
-              "How long does a custom one take?", "Is the red one a real metal model?", "A gift for my dad"):
+              "How long does a custom one take?", "Is the red one a real metal model?", "A gift for my dad",
+              "Is shipping safe for a fragile car?", "Is it safe to pay with PayPal?", "Is the box safe in transit?"):
         assert not shopper._safety_q(q), q

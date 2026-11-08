@@ -546,6 +546,11 @@ def mto_fields(text: str) -> dict:
     if bm:
         w = bm.group(1) or bm.group(2) or ""
         body = next((v for k, v in _COLOURS.items() if w.startswith(k)), None)
+    if not body:   # "the green fastback in grey": the colour it's painted in, not the shelf car it's like
+        for m in re.finditer(r"\b(?:in|painted)\s+([a-zа-яё]+)", t):
+            body = next((v for k, v in _COLOURS.items() if m.group(1).startswith(k)), None)
+            if body:
+                break
     for m in ([] if body else re.finditer(r"[a-zа-яё]+", t)):
         w = m.group(0)
         if inner and inner.start() <= m.start() <= inner.end():
@@ -939,7 +944,9 @@ def _outside_us(text: str) -> bool:
 # Product safety is answered only from the listing text (live check 08.11: "lead-free? It's for my 5 year old" got
 # "Our paints are non-toxic and safe", while the listing says "Not a toy, not for children under 14").
 SAFETY_Q = re.compile(r"toxic|lead[- ]?(free|based)|\blead\b.{0,25}\bpaint|\bpaint\b.{0,25}\blead\b|contains? lead|"
-                      r"\bsafe(ty|ly)?\b.{0,30}\b(for|to|with|around)\b|\b(child|children|kids?|toddlers?|bab(y|ies)|"
+                      r"\bsafe(ty)?\b.{0,40}\b(kids?|child|children|toddlers?|bab(y|ies)|son|daughter|grand\w+|\d+[- ]?(years?|yrs?))\b|"
+                      r"\bis (it|the paint|the car|this|that) safe\b(?!.{0,40}(ship|deliver|pay|card|checkout|mail|transit|package|box))|"
+                      r"\b(child|children|kids?|toddlers?|bab(y|ies)|"
                       r"son|daughter|grandson|granddaughter)\b.{0,40}\b(safe|play|toy|age|old)\b|\b\d{1,2}[- ]?(years?|yrs?|y\.?o\.?)[- ]?old\b|"
                       r"\b(age|ages)\b.{0,20}\b(limit|range|for|\d)|choking|small parts|swallow|allerg|chew|\bbpa\b|phthalat|"
                       r"chemical|is it a toy|for (a |my )?(child|kid|toddler|baby)|"
