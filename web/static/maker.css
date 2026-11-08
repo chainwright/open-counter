@@ -16,7 +16,7 @@ h1{font:900 46px/.9 "Big Shoulders Display";text-transform:uppercase;margin-top:
 .o{display:grid;grid-template-columns:70px 1fr;gap:12px;background:var(--soot);border:1px solid var(--hair);border-radius:16px;padding:10px;position:relative}
 .o img{width:70px;height:70px;object-fit:cover;border-radius:10px}
 .o h3{font:800 19px/1 "Big Shoulders Display";text-transform:uppercase}
-.o .m{font:12px/1.55 "Geist Mono";color:#A9AEB4;margin-top:5px}
+.o .m{font:12px/1.55 "Geist Mono";color:#A9AEB4;margin-top:5px}.o .m a{color:inherit;text-decoration:none;border-bottom:1px dotted currentColor}
 .o .asked{font-size:12.5px;color:#C9CDD1;margin-top:6px;font-style:italic}
 .badge{display:inline-block;margin-bottom:6px;font:600 10.5px "Geist Mono";letter-spacing:.1em;padding:4px 7px;border-radius:6px;border:1px solid var(--hair);color:var(--mute)}
 .badge.paid{color:#041214;background:var(--cyan);border-color:var(--cyan)}

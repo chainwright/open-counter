@@ -27,11 +27,20 @@ window.OC = (() => {
 (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const photos = {};
+  let listings = [];
   let orders = [];
+  // a made-to-order build has no listing of its own: show the shelf car of the same body style (never an empty <img>)
+  const photoOf = (o) => photos[o.listing_id] || (() => {
+    const model = String(o.quote?.cars?.[0]?.model || o.title || "").toLowerCase();
+    const style = ["convertible", "fastback", "rear-engine", "muscle", "coupe"].find((w) => model.includes(w));
+    const hit = style && listings.find((l) => l.title.toLowerCase().includes(style === "muscle" ? "muscle" : style));
+    return hit ? hit.photo_url : "/media/hero.jpg";
+  })();
 
   async function load() {
     const [o, c] = await Promise.all([fetch("/api/maker/orders").then((r) => r.json()), fetch("/c/small-garage.json").then((r) => r.json())]);
     c.listings.forEach((l) => (photos[l.id] = l.photo_url));
+    listings = c.listings;
     orders = o;
     renderStock(c);
     render();
@@ -53,9 +62,9 @@ window.OC = (() => {
         ? (o.mine ? `<div class="acts"><button class="p" data-note="${esc(o.id)}">Packing note</button><input placeholder="USPS tracking number" data-trk="${esc(o.id)}"><button data-ship="${esc(o.id)}">Shipped</button></div><div class="note" id="n-${esc(o.id)}" hidden></div><div class="m err" id="e-${esc(o.id)}"></div>`
           : `<div class="m">Lena packs and ships this one. (On the demo you can ship the orders you placed yourself, and the sample ones.)</div>`)
         : o.status === "shipped" ? `<div class="m">USPS ${esc(o.tracking?.number)}${o.tracking?.note ? " · " + esc(o.tracking.note) : ""}</div>` : "";
-      const inv = o.has_invoice ? `<div class="m">PayPal invoice · paid $${(o.paid_usd || 0).toFixed(2)} of $${o.total_usd.toFixed(2)}${o.status === "deposit_paid" && o.mine ? ` · <button class="mini" data-balance="${esc(o.id)}">${o.balance_requested ? "Remind again" : "Cars ready: request the balance"}</button>` : ""}</div>` : "";
+      const inv = o.has_invoice ? `<div class="m">PayPal invoice · paid $${(o.paid_usd || 0).toFixed(2)} of $${o.total_usd.toFixed(2)}${o.status === "deposit_paid" && o.mine ? ` · ${o.balance_requested && Date.now() / 1000 - o.balance_requested < 3600 ? `<button class="mini" disabled>Reminder sent · again in an hour</button>` : `<button class="mini" data-balance="${esc(o.id)}">${o.balance_requested ? "Remind again" : "Cars ready: request the balance"}</button>`}` : ""}</div>` : "";
       const mto = o.kind === "commission" ? inv + `<div class="m">MADE TO ORDER · build ${o.quote?.build_weeks} wk · ready ${esc((o.quote?.ready_to_ship_by || "").split(" ").pop())}${o.contact ? ` · ${esc(o.contact.name)} <a href="tel:${esc(o.contact.phone)}">${esc(o.contact.phone)}</a>` : ""}</div>` : "";
-      return `<div class="o"><img src="${esc(photos[o.listing_id] || "")}" alt=""><div>${mto}
+      return `<div class="o"><img src="${esc(photoOf(o))}" alt=""><div>${mto}
         <span class="badge ${esc(o.status)}">${st}</span>${o.sample ? ` <span class="badge smpb">SAMPLE</span>` : ""}
         <h3>${esc(o.title)}</h3>
         <div class="m">$${o.total_usd.toFixed(2)} · ${esc(where)} · via ${o.channel === "web" ? "shop page (human)" : o.channel === "mcp" ? "AI agent (MCP)" : o.channel === "demo-shopper" || o.channel === "web-agent" ? "AI agent" : esc(o.channel)}</div>
@@ -86,7 +95,14 @@ window.OC = (() => {
 
   document.addEventListener("click", async (e) => {
     const bal = e.target.dataset.balance;
-    if (bal) { e.target.disabled = true; const r = await fetch(`/api/maker/orders/${bal}/balance`, { method: "POST" }); e.target.textContent = r.ok ? "Reminder sent via PayPal" : "Couldn't send"; return; }
+    if (bal) {
+      e.target.disabled = true;
+      const r = await fetch(`/api/maker/orders/${bal}/balance`, { method: "POST" });
+      // a second click within the hour is PayPal's reminder already on its way, not a failure: say so
+      e.target.textContent = r.ok ? "Reminder sent via PayPal" : r.status === 429 ? "Already reminded within the last hour"
+        : ((await r.json().catch(() => ({}))).detail || "Couldn't send");
+      return;
+    }
     const n = e.target.dataset.note, s = e.target.dataset.ship;
     if (n) {
       const o = orders.find((x) => x.id === n), box = document.getElementById("n-" + n);
