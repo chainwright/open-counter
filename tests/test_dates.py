@@ -30,7 +30,20 @@ def test_ship_and_arrival_dates_count_from_the_shops_day():
     assert est["need_by"] == "Friday 2026-10-30"           # "by Friday" is tomorrow, not a week away
     q = shop.commission_quote([{"model": "fastback", "year": "1968", "body_colour": "grey",
                                 "interior_colour": "brown", "quantity": 1}])
-    assert q["ready_to_ship_by"] == "Thursday 2026-11-05"
+    assert q["ready_to_ship_by"] == "Friday 2026-11-06"     # built Thu 5 Nov, it ships on the next shipping day
+
+
+def test_the_quotes_ready_date_and_the_cards_ship_date_are_one_date(monkeypatch):
+    # live check 08.11 (a Sunday): the quote said "ready to ship 2026-11-15" (Sunday), the card "ships Monday 2026-11-16"
+    monkeypatch.setattr(shop, "_clock", lambda: datetime(2026, 11, 8, 16, 46, tzinfo=timezone.utc))
+    car = [{"model": "fastback", "year": "1967", "body_colour": "grey", "interior_colour": "brown", "quantity": 2}]
+    q, qs = shop.commission_quote(car), shop.commission_quote(car, "TX")
+    assert q["ready_to_ship_by"] == qs["ready_to_ship_by"] == qs["delivery"]["ships_on"] == "Monday 2026-11-16"
+    assert "ready 2026-11-16" in shopper._summary("quote_commission", q)
+    for weeks_from in ("2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07"):
+        d = date.fromisoformat(weeks_from)
+        a = shop.commission_quote(car, "OH", today=d)
+        assert a["ready_to_ship_by"] == a["delivery"]["ships_on"] and a["ready_to_ship_by"].split()[0] not in ("Saturday", "Sunday")
 
 
 def test_the_daily_ai_budget_and_lenas_numbers_use_her_day(monkeypatch):

@@ -260,20 +260,24 @@ def commission_quote(lines: list[dict], state: str = "", today: date | None = No
     shipping = 0.0 if qty >= r["commission_free_shipping_from"] else r["shipping_usd"]
     weeks = commission_weeks(qty)
     today = today or now().date()
-    ready = today + timedelta(weeks=weeks)
+    built = today + timedelta(weeks=weeks)
+    # One date for "ready" and "ships": the shipping day after the build is done, the same day the delivery
+    # estimate (and the receipt card) gives. Live check 08.11: the quote said "ready Sunday 15", the card "ships Monday 16".
+    ships = next_ship_day(built)
     out = {"ok": True, "cars": clean, "total_cars": qty, "unit_usd": unit, "subtotal_usd": subtotal,
            "volume_discount_percent": pct, "discount_usd": discount, "shipping_usd": round(shipping, 2),
            "total_usd": round(subtotal - discount + shipping, 2), "build_weeks": weeks,
-           "ready_to_ship_by": f"{ready.strftime('%A')} {ready.isoformat()}",
+           "ready_to_ship_by": f"{ships.strftime('%A')} {ships.isoformat()}",
            "lead_times": "; ".join(f"up to {t['up_to']} cars: {t['weeks']} week{'s' if t['weeks'] > 1 else ''}"
                                    for t in r["commission_lead_tiers"]),
            "discounts": "; ".join(f"{t['percent']}% off from {t['min_cars']} cars" for t in r["commission_volume_discounts"])
                         + f"; free shipping from {r['commission_free_shipping_from']} cars"}
     if state:
-        est = delivery_estimate(state, today=ready)
+        est = delivery_estimate(state, today=built)
         if not est["ok"]:
             raise ValueError(est["reason"])
         out["delivery"] = {k: est[k] for k in ("ships_on", "arrives_earliest", "arrives_latest", "carrier")}
+        out["ready_to_ship_by"] = est["ships_on"]   # same function, same day; said once so the two can't drift
     return out
 
 

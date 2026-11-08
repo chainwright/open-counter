@@ -139,7 +139,7 @@ def test_made_to_order_lead_time_price_and_discount():
     assert weeks == {1: 1, 2: 1, 3: 2, 10: 2, 11: 3, 20: 3, 21: 4, 30: 4}
     q = shop.commission_quote(spec(25), "CA", today=d)
     assert q["unit_usd"] == 89 and q["volume_discount_percent"] == 15 and q["shipping_usd"] == 0
-    assert q["total_usd"] == round(25 * 89 * 0.85, 2) and q["ready_to_ship_by"].endswith("2026-11-24")
+    assert q["total_usd"] == round(25 * 89 * 0.85, 2) and q["ready_to_ship_by"] == q["delivery"]["ships_on"] == "Wednesday 2026-11-25"   # built Tue 24, ships Wed
     assert q["delivery"]["ships_on"]
 
 
