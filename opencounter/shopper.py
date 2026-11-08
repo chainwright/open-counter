@@ -868,6 +868,40 @@ def _scrub_safety(reply: str, asked_safety: bool = False) -> str:
     return " ".join(keep).strip()
 
 
+# Words written for the agent (tool reasons, nudges, raw field names) never reach the shopper: they are rewritten for
+# the person in the step list, and cut from the reply (live check 08.11: the step line "Before quoting, ask for the
+# year…" and a reply with "us_state TX" were shown to the shopper).
+_FOR_SHOPPER = [
+    (re.compile(r"Before quoting, ask for (.+?)\.?$", re.I), r"still needed: \1"),
+    (re.compile(r"Ask which car, the year of the real car, the body and interior colours, and how many\.?", re.I),
+     "still needed: which car, the year of the real car, the body and interior colours, how many"),
+    (re.compile(r"Ask for the person's name and a phone number, so Lena can call about the details\.?", re.I),
+     "still needed: your name and a phone number"),
+    (re.compile(r"\s*Ask the person which address is right; don.?t change it yourself\.?", re.I), " Which address is right?"),
+    (re.compile(r";\s*ask the person which is right\.?", re.I), "; which one is right?"),
+    (re.compile(r"Ask them first and wait for their own yes or no\.?", re.I), "waiting for your own yes or no"),
+]
+INTERNAL = re.compile(r"before quoting|ask the person|ask them (first|for)|don.?t change it yourself|tool results|"
+                      r"notes? (for|to) (you|yourself)|done in code|computed in code|already done for you|lena's notes from|"
+                      r"use only what they type|don.?t name tools|i missed asking|\b[a-z]+_[a-z0-9_]+\b|"
+                      r"^(now )?let'?s (create|get|make|call|run|prepare|finali[sz]e|include|proceed)\b", re.I)
+
+
+def _note_for_shopper(text: str) -> str:
+    for rx, to in _FOR_SHOPPER:
+        text = rx.sub(to, text)
+    return text
+
+
+def _for_shopper(reply: str) -> str:
+    """The reply as the shopper sees it: agent-facing sentences rewritten or cut. '' if nothing is left."""
+    out = []
+    for x in re.split(r"(?<=[.!?])\s+", _note_for_shopper(reply or "").strip()):
+        if not INTERNAL.search(EMAIL_IN.sub(" ", x).strip()):
+            out.append(x)
+    return " ".join(out).strip()
+
+
 def _code_answer(reply: str, steps: list[dict], lessons: list[dict], ru: bool) -> dict:
     """An answer written by code from the shop's rules (no model call), with Lena's matching lessons applied."""
     reply = _apply_lessons(reply, lessons, ru)
@@ -1419,8 +1453,14 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
     reply = _scrub_safety(reply, asked_safety)
     if asked_safety:
         reply = _safety_answer(last_user, bool(re.search(r"[а-яё]", lang_text, re.I))) + (" " + reply if reply else "")
+    # ...and no words written for the agent: a note to itself, a tool's instruction, a raw field name
+    reply = _for_shopper(reply) or _for_shopper(_fallback_reply(
+        steps or ([] if taught_now else _earlier_steps(messages)), bool(re.search(r"[а-яё]", lang_text, re.I)),
+        last_user, taught_now)) or _shelf_answer(bool(re.search(r"[а-яё]", lang_text, re.I)))
     # What the tools returned this turn, so the next turn still knows it (the browser sends it back with the reply).
     memo = "; ".join(f"{st['label']}: {st['result']}" for st in steps)
+    # the agent keeps the tools' own words in its memo; the step list the shopper sees speaks to the person
+    steps = [st if st["tool"] == "lesson" else {**st, "result": _note_for_shopper(st["result"])} for st in steps]
     # after the first order with an email, the shop asks about news once (the model is told not to ask itself)
     asked_before = any(NEWS_Q in m.get("content", "") or NEWS_Q_RU in m.get("content", "") for m in messages
                        if m["role"] == "assistant")
