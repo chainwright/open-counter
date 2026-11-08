@@ -221,6 +221,28 @@ SPEC = {"model": "the car: body style or one of the listings (e.g. fastback, cou
         "interior_colour": "the interior colour", "quantity": "how many"}
 
 
+def whole_qty(v, what: str = "this car") -> int:
+    """A quantity as a whole number of at least 1, or a ValueError an agent can relay. Every order line goes through
+    this, so a negative, zero, fractional or non-numeric quantity can never offset another line or reach PayPal
+    (final judge 08.11 P0-1: 3 fastbacks + (-2) coupes quoted as one car)."""
+    if isinstance(v, bool):
+        raise ValueError(f"Say how many of {what}, as a whole number.")
+    if isinstance(v, float):
+        if not v.is_integer():
+            raise ValueError(f"Say how many of {what}, as a whole number.")
+        v = int(v)
+    if isinstance(v, str):
+        t = v.strip()
+        if not re.fullmatch(r"[+-]?\d+", t):
+            raise ValueError(f"Say how many of {what}, as a whole number.")
+        v = int(t)
+    if not isinstance(v, int):
+        raise ValueError(f"Say how many of {what}, as a whole number.")
+    if v < 1:
+        raise ValueError(f"Each car needs a quantity of at least 1 ({what}: {v}).")
+    return v
+
+
 def commission_weeks(qty: int) -> int:
     r = shop()["rules"]
     for t in r["commission_lead_tiers"]:
@@ -242,11 +264,12 @@ def commission_quote(lines: list[dict], state: str = "", today: date | None = No
         item = listing(ln.get("item_id", "")) if ln.get("item_id") else None
         spec = {"model": (ln.get("model") or (item["title"].rsplit(",", 1)[0] if item else "")).strip(),
                 "year": str(ln.get("year") or "").strip(), "body_colour": (ln.get("body_colour") or ln.get("colour") or "").strip().lower(),
-                "interior_colour": (ln.get("interior_colour") or "").strip().lower(), "quantity": int(ln.get("quantity") or 0),
+                "interior_colour": (ln.get("interior_colour") or "").strip().lower(), "quantity": ln.get("quantity"),
                 "details": re.sub(r"\s+", " ", str(ln.get("details") or "")).strip()[:120]}
-        missing = [SPEC[k] for k, v in spec.items() if not v and k in SPEC]
+        missing = [SPEC[k] for k, v in spec.items() if (v is None or v == "") and k in SPEC]
         if missing:
             raise ValueError("Before quoting, ask for " + ", ".join(missing) + ".")
+        spec["quantity"] = whole_qty(spec["quantity"], spec["model"] or "this car")
         clean.append(spec)
         qty += spec["quantity"]
     if not clean:
@@ -406,7 +429,7 @@ def order_lines(lid: str, qty: int, items: list[dict] | None = None) -> list[dic
     want: dict[str, int] = {}
     for it in (items or [{"item_id": lid, "quantity": qty}]):
         k = str(it.get("item_id", ""))
-        want[k] = want.get(k, 0) + int(it.get("quantity") or 0)
+        want[k] = want.get(k, 0) + whole_qty(it.get("quantity"), "this car")
     lines = []
     for k, q in want.items():
         item = listing(k)

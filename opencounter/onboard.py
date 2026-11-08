@@ -161,7 +161,7 @@ def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
     if not c:
         raise ValueError("No such counter.")
     l = c["listing"]
-    qty, st = int(qty), (state or "").strip().upper()
+    qty, st = shop.whole_qty(qty, l["title"]), (state or "").strip().upper()
     if not 1 <= qty <= l["stock"]:
         raise ValueError(f"Choose 1 to {l['stock']}.")
     est = shop.delivery_estimate(st)

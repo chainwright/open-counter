@@ -288,7 +288,7 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
                           "Use only what they type; never fill anything in. Don't name tools."}
             try:
                 if name == "start_checkout":
-                    lines = shop.order_lines(args.get("item_id", ""), int(args.get("quantity") or 0), args.get("items") or None)
+                    lines = shop.order_lines(args.get("item_id", ""), args.get("quantity"), args.get("items") or None)
                     est = shop.delivery_estimate(args.get("us_state", ""))
                     total = sum(ln["unit_usd"] * ln["qty"] for ln in lines) + shop.shop()["rules"]["shipping_usd"]
                     out["order_would_be"] = (" + ".join(f"{ln['qty']} × {ln['title']} at ${ln['unit_usd']:.2f} = "
@@ -306,7 +306,7 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
         if name == "start_checkout":
             # Same cars and same person as an order already waiting in this chat: hand that one back, don't duplicate.
             try:
-                lines = shop.order_lines(args.get("item_id", ""), int(args.get("quantity") or 0), args.get("items") or None)
+                lines = shop.order_lines(args.get("item_id", ""), args.get("quantity"), args.get("items") or None)
             except (ValueError, TypeError):
                 lines = None
             for o in shop.orders():

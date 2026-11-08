@@ -198,7 +198,7 @@ def start_checkout(item_id: str, quantity: int, us_state: str, what_the_shopper_
     if not paypal.configured():
         return {"ok": False, "reason": "Checkout is offline right now; nothing was created or charged."}
     try:
-        o = shop.new_order(item_id, int(quantity or 0), us_state, what_the_shopper_asked, channel, items=items,
+        o = shop.new_order(item_id, quantity, us_state, what_the_shopper_asked, channel, items=items,
                            customer=customer)
     except ValueError as e:
         return {"ok": False, "reason": str(e)}

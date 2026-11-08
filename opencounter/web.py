@@ -282,7 +282,7 @@ async def counter_checkout(slug: str, req: Request):
     if not paypal.configured():
         raise HTTPException(503, "Checkout is offline right now.")
     try:
-        out = await asyncio.to_thread(onboard.checkout, slug, int(b.get("quantity") or 1), str(b.get("us_state") or ""),
+        out = await asyncio.to_thread(onboard.checkout, slug, b.get("quantity", 1), str(b.get("us_state") or ""),
                                       _who(req)[0])
     except (ValueError, TypeError) as e:
         raise HTTPException(400, str(e))
