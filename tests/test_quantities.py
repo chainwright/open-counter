@@ -63,9 +63,9 @@ def test_a_stock_order_line_must_be_a_whole_number_too(monkeypatch, bad):
     sent = []
     monkeypatch.setattr(paypal, "configured", lambda: True)
     monkeypatch.setattr(paypal, "_call", lambda *a, **k: sent.append((a, k)) or {"id": "X", "links": []})
-    out = mcp_server.start_checkout("sg-014", bad, "TX", "x")
+    out = mcp_server.start_checkout("TX", "x", item_id="sg-014", quantity=bad)
     assert out["ok"] is False and ("whole number" in out["reason"] or "at least 1" in out["reason"])
-    out = mcp_server.start_checkout("", 0, "TX", "x", items=[{"item_id": "sg-014", "quantity": 3},
+    out = mcp_server.start_checkout("TX", "x", items=[{"item_id": "sg-014", "quantity": 3},
                                                               {"item_id": "sg-014", "quantity": -2}])
     assert out["ok"] is False and "at least 1" in out["reason"]
     assert sent == [] and shop.orders() == []
