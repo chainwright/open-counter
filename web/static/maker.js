@@ -78,7 +78,9 @@ window.OC = (() => {
   }
 
   function toast(o) {
-    document.querySelector(".t-k").innerHTML = o.channel === "web" ? "SOLD ON<br>YOUR COUNTER" : "SOLD TO AN<br>AI AGENT";
+    // "to an AI agent" only for an order an outside agent placed over MCP; her own shop chat is her agent (judges 09.11)
+    document.querySelector(".t-k").innerHTML = o.channel === "web" ? "SOLD ON<br>YOUR COUNTER"
+      : o.channel === "mcp" ? "SOLD TO AN<br>AI AGENT" : "SOLD THROUGH<br>HER AI AGENT";
     document.getElementById("t-a").textContent = "$" + o.total_usd.toFixed(2);
     document.getElementById("t-l").textContent = `${o.title} · ${o.ship_to?.city || o.ship_state} · ship by ${o.estimate?.ships_on || ""}`;
     const t = document.getElementById("toast");

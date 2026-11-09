@@ -309,7 +309,7 @@
   const t = document.getElementById("ls-t"), sub = document.getElementById("ls-s");
   const mine = new Set();
   const says = { awaiting_approval: ["New order on Lena's phone", "Waiting for your OK in PayPal; nothing is charged yet."],
-    paid: ["SOLD TO AN AI AGENT", "Paid in PayPal. Lena packs it and adds the tracking number."],
+    paid: ["SOLD THROUGH HER AI AGENT", "Paid in PayPal. Lena packs it and adds the tracking number."],
     deposit_paid: ["Deposit in: Lena starts building", "The rest is due before it ships."],
     shipped: ["Shipped", "The tracking number went to PayPal; the buyer is told."],
     replaced: ["Replaced by your newer order", "Only the newest order can be paid."],

@@ -163,3 +163,15 @@ def test_the_studio_is_linked_and_the_sandbox_buyer_is_in_plain_sight(c):
     idx, loop = (studio / "index.html").read_text(), (studio / "public" / "loop.html").read_text()
     assert 'href="/maker"' in idx and "Best on a laptop" in idx and 'href="/studio/loop.html"' in idx
     assert 'name="viewport"' in loop and "Draft a lesson" in loop and "max-width:900px" in loop
+
+
+def test_a_sale_through_lenas_own_chat_is_not_called_a_sale_to_an_ai_agent(c):
+    """Judge panel 09.11: "SOLD TO AN AI AGENT" showed on a person's own chat order. Only an outside agent's order
+    (over MCP) is "sold to an AI agent"; her own shop chat is "sold through her AI agent"."""
+    from pathlib import Path
+    web_dir = Path(web.__file__).resolve().parent.parent / "web"
+    assert "SOLD TO AN AI AGENT" not in c.get("/").text and "SOLD THROUGH HER AI AGENT" in c.get("/").text
+    assert "SOLD THROUGH HER AI AGENT" in (web_dir / "static/app.js").read_text()
+    assert "SOLD TO AN AI AGENT" not in (web_dir / "static/app.js").read_text()
+    toast = (web_dir / "static/maker.js").read_text()
+    assert 'o.channel === "mcp" ? "SOLD TO AN<br>AI AGENT" : "SOLD THROUGH<br>HER AI AGENT"' in toast
