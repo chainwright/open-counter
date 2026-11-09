@@ -24,6 +24,7 @@ def fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(paypal, "configured", lambda: True)
     monkeypatch.delenv(onboard.SAMPLE_PAYEE_ENV, raising=False)
     web._open_hits.clear()
+    web._publish_hits.clear()
     shop.seed(force=True)
 
 
@@ -138,7 +139,7 @@ def test_rules_take_over_when_the_model_is_down_or_over_budget(monkeypatch):
 # ---- opening the counter ----
 def photo():
     buf = io.BytesIO()
-    Image.new("RGB", (8, 8), "teal").save(buf, "PNG")
+    Image.new("RGB", (32, 32), "teal").save(buf, "PNG")
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
@@ -377,3 +378,35 @@ def test_instagram_screenshots_up_to_six_read_together_without_usernames_or_inst
     assert not list(tmp_path.rglob("*.jp*g"))
     page = TestClient(web.app).get("/open").text
     assert 'data-src="instagram"' in page and 'id="r_shots"' in page and "/static/open_range.js" in page
+
+
+# ---- final judges 09.11: opening a counter is rate-limited, and its photo gets the readers' image caps ----
+def test_opening_counters_is_rate_limited_per_network_and_per_browser(pp, monkeypatch):
+    web._publish_hits.clear()
+    cl = TestClient(web.app)
+    body = {"items": ITEMS, "ships_from": "OR", "maker": "Mae", "shop_name": "B"}
+    per_min = web.PUBLISH_LIMITS[0][1]
+    codes = [cl.post("/api/open/publish_many", headers={"x-visitor": f"qa-pub{i}"}, json=body).status_code
+             for i in range(per_min + 1)]   # a new browser id each time: the network's count still holds
+    assert codes == [200] * per_min + [429]
+    n_products = len([x for x in pp if x["path"] == "/v1/catalogs/products"])
+    assert n_products == per_min * len(ITEMS)   # the refused call registered nothing
+    single = {"listing": {"title": "Mug"}, "price_usd": 9, "stock": 1, "ships_from": "TX", "image": photo()}
+    assert cl.post("/api/open/publish", json=single).status_code == 429   # the one-product path shares the limit
+    # another network has its own minute; the hour cap holds even when each minute is under its cap
+    web._publish_hits.clear()
+    t = [1000.0]
+    monkeypatch.setattr(web.time, "time", lambda: t[0])
+    ok = 0
+    for i in range(40):
+        t[0] += 61
+        ok += web._publish_rate_ok("ip:203.0.113.9")
+    assert ok == web.PUBLISH_LIMITS[1][1]   # 40 tries, one a minute (all within the hour): only 20 get through
+    assert web._publish_rate_ok("ip:198.51.100.7")
+
+
+def test_a_counter_photo_gets_the_image_caps(pp):
+    for bad in (img("GIF"), "data:image/png;base64,bm90IGFuIGltYWdl", "x" * (pricelist.MAX_IMAGE_B64 + 1)):
+        with pytest.raises(ValueError):
+            onboard.publish_many(ITEMS, "OR", "Mae", "B", bad, "qa-range")
+    assert not [x for x in pp if x["path"] == "/v1/catalogs/products"]   # refused before any PayPal call

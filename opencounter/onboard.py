@@ -186,9 +186,8 @@ def publish_many(rows: list, ships_from: str, maker: str, shop_name: str, image_
         raise ValueError("Ships from: a US state code, like OH.")
     slug = re.sub(r"[^a-z0-9]+", "-", (shop_name or maker or "maker").lower()).strip("-")[:30] + "-" + uuid.uuid4().hex[:4]
     has_photo = False
-    if image_b64:
-        raw = base64.b64decode(image_b64.split(",", 1)[-1])
-        im = Image.open(io.BytesIO(raw)).convert("RGB")
+    if image_b64:   # the readers' image checks: type, size and pixel caps before decoding
+        im = Image.open(io.BytesIO(pricelist.image_jpeg(image_b64))).convert("RGB")
         im.thumbnail((1200, 1200))
         pdir = shop._path("counters")
         pdir.mkdir(exist_ok=True)

@@ -309,6 +309,9 @@ async def open_draft(req: Request):
 
 @app.post("/api/open/publish")
 async def open_publish(req: Request):
+    stop = _publish_guard(req)
+    if stop:
+        return stop
     b = await req.json()
     try:
         c = await asyncio.to_thread(onboard.publish, b.get("listing") or {}, float(b.get("price_usd") or 0),
@@ -353,6 +356,38 @@ def _open_rate_ok(key: str, now: float | None = None) -> bool:
             return False
         _open_hits[key] = hits + [now]
         return True
+
+
+# Opening a counter registers up to 12 PayPal Catalog Products, so it has its own, tighter limits, per network and per
+# browser, over a minute and over an hour (final judges 09.11: a script could fill the sandbox catalog otherwise).
+PUBLISH_LIMITS = ((60, 3), (3600, 20))   # (window in seconds, counters opened in it)
+_publish_hits: dict[str, list[float]] = {}
+
+
+def _publish_rate_ok(key: str, now: float | None = None) -> bool:
+    now = time.time() if now is None else now
+    longest = max(w for w, _ in PUBLISH_LIMITS)
+    with _studio_hits_lock:
+        if len(_publish_hits) > 5000:
+            for k in [k for k, v in _publish_hits.items() if not v or now - v[-1] > longest]:
+                _publish_hits.pop(k)
+        hits = [t for t in _publish_hits.get(key, []) if now - t < longest]
+        if any(sum(now - t < w for t in hits) >= n for w, n in PUBLISH_LIMITS):
+            _publish_hits[key] = hits
+            return False
+        _publish_hits[key] = hits + [now]
+        return True
+
+
+def _publish_guard(req: Request) -> JSONResponse | None:
+    """Both ways of opening a counter (/api/open/publish and /api/open/publish_many): per network and, when the page
+    sends one, per browser id. The network's count can't be reset by changing the browser id."""
+    v = _who(req)[0]
+    keys = ["ip:" + (_client_ip(req) or "?")] + (["v:" + v] if v else [])
+    if not all([_publish_rate_ok(k) for k in keys]):
+        return JSONResponse({"detail": "That's a lot of counters opened from here. Try again later."}, status_code=429,
+                            headers={"Retry-After": "60"})
+    return None
 
 
 def _open_guard(req: Request) -> JSONResponse | None:
@@ -437,6 +472,9 @@ async def open_publish_many(req: Request):
     """Open a counter with the items the maker confirmed. Every value is checked again in onboard.publish_many."""
     if not _who(req)[0]:
         raise HTTPException(400, "Open this from the /open page.")
+    stop = _publish_guard(req)
+    if stop:
+        return stop
     body = await req.body()
     if len(body) > 8_200_000:
         raise HTTPException(413, "The photo is too big (up to about 6 MB).")

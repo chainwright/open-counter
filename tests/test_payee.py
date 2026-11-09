@@ -15,6 +15,7 @@ def fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(shop, "DATA", tmp_path)
     monkeypatch.setattr(paypal, "configured", lambda: True)
     monkeypatch.delenv(onboard.SAMPLE_PAYEE_ENV, raising=False)
+    web._publish_hits.clear()
     shop.seed(force=True)
 
 
