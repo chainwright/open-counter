@@ -69,3 +69,30 @@ def test_a_stock_order_line_must_be_a_whole_number_too(monkeypatch, bad):
                                                               {"item_id": "sg-014", "quantity": -2}])
     assert out["ok"] is False and "at least 1" in out["reason"]
     assert sent == [] and shop.orders() == []
+
+
+# ---- the shop chat: a zero, negative or fractional quantity is answered in code (judge panel 09.11, seat 04 F-12:
+# "I want -2 green fastbacks" was handed to the model, which called the tool with 2 and priced it) ----
+from opencounter import shopper   # noqa: E402
+from tests.test_lessons import NoModel   # noqa: E402
+
+
+@pytest.mark.parametrize("said,typed", [
+    ("I want -2 green fastbacks and 3 yellow ones shipped to Denver", "-2"),
+    ("minus 3 cars to Austin please", "minus 3"),
+    ("0 cars, the green one", "0"),
+    ("1.5 fastbacks to Chicago", "1.5"),
+    ("хочу −2 зелёных в Денвер", "−2")])
+def test_the_chat_refuses_a_quantity_below_one_in_code_and_never_calls_the_model(monkeypatch, said, typed):
+    monkeypatch.setattr(shopper, "_client_", lambda: NoModel())   # any model call fails the test
+    r = shopper.run([{"role": "user", "content": said}], "v-qty")
+    assert r["model"] == "rule" and r["checkout"] is None and r["usd"] == 0.0
+    assert typed in r["reply"] and ("at 1" in r["reply"] or "от 1" in r["reply"])
+    assert "$" not in r["reply"]   # nothing priced
+
+
+@pytest.mark.parametrize("said", ["2 green and 3 yellow to Chicago", "2-3 cars to Texas", "I need 40 green fastbacks",
+                                  "call 512-555-0142 about 2 green ones", "20% off 2 red ones?", "a 1967 fastback, 1 car",
+                                  "ZIP 78701, 1 green"])
+def test_ordinary_quantities_phones_ranges_and_years_are_not_mistaken_for_a_bad_quantity(said):
+    assert shopper.bad_qty(said) == ""

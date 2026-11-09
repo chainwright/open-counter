@@ -1256,6 +1256,21 @@ def _qty_in(text: str):
     return now
 
 
+# A quantity that can't be ordered: "-2 green ones", "minus 3 cars", "0 cars", "1.5 fastbacks". Answered in code, never
+# handed to the model, which silently turned "-2" into 2 and priced it (judge panel 09.11, seat 04, F-12). Only a
+# number right before a car word counts, so a phone number, a ZIP, a date or a range like "2-3 cars" never trips it.
+_CAR_WORD = (r"(?:of the\s+)?(?:[a-zа-яё-]+\s+){0,2}?(?:cars?|ones?|red|green|blue|yellow|orange|grey|gray|black|white|"
+             r"convertibles?|fastbacks?|coupes?|машин\w*|штук\w*|красн\w*|зелен\w*|зелён\w*|син\w*|жёлт\w*|желт\w*|оранж\w*)\b")
+BAD_QTY = re.compile(r"(?<![\w.,$-])(?P<q>(?:[-−–]|minus\s+|negative\s+|минус\s+)\s?\d{1,3}(?:[.,]\d+)?|0+(?:[.,]0+)?|"
+                     r"\d{1,3}[.,]\d*[1-9])\s+" + _CAR_WORD, re.I)
+
+
+def bad_qty(text: str) -> str:
+    """The quantity as typed when it is zero, negative or not whole ("-2", "minus 3", "0", "1.5"); '' otherwise."""
+    m = BAD_QTY.search(text or "")
+    return m.group("q") if m else ""
+
+
 def run(messages: list[dict], visitor: str = "", who=()) -> dict:
     """messages: the visible conversation [{role: user|assistant, content}]. Returns the reply, the tool steps,
     and a checkout (if one was created)."""
@@ -1274,6 +1289,14 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
         return _code_answer("Пока нет: Лена отправляет только по США, во все штаты, включая Аляску и Гавайи." if ru else
                             "Not yet: Lena ships inside the US only for now, to every state including Alaska and Hawaii.",
                             [step], taught_now, ru)
+    wrong = bad_qty(last_user)
+    if wrong:
+        ru = bool(re.search(r"[а-яё]", last_user, re.I))
+        step = {"tool": "about_counter", "label": "checking the quantity", "args": {},
+                "result": f"'{wrong}' is not a quantity that can be ordered; quantities are whole numbers from 1", "ms": 0}
+        return _code_answer(f"Сколько машин вы имели в виду? Вы написали «{wrong}», а количество — целое число, от 1."
+                            if ru else f"How many did you mean? You wrote \"{wrong}\", and a quantity is a whole number "
+                            "of cars, starting at 1. Tell me how many of each and I'll price it.", [step], taught_now, ru)
     if _safety_q(last_user) and not (parse_made_to_order(last_user) or _qty_in(last_user) or PHONE.search(last_user)
                                      or EMAIL_IN.search(last_user)):
         # safety, age, materials: only the listing's own words, answered in code, never a model's guess
