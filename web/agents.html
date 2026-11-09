@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>For AI agents — Open Counter</title>
+<meta name="description" content="Connect any MCP client to Lena's counter: the address, config snippets, a live read-only console and a recorded purchase from an outside agent.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/open.css">
+<style>
+  .wrap{max-width:860px}
+  .path{margin:14px 0 0;font:12.5px/1.7 "Geist Mono";color:var(--mute)}.path a{color:var(--cyan)}
+  .addr{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;margin:4px 0 8px}
+  .addr code{flex:1 1 280px;min-width:0;background:#0B0C0E;border:1px solid var(--cyan);border-radius:10px;padding:12px;
+    font:500 15px "Geist Mono";color:var(--paper);overflow-wrap:anywhere}
+  .copy{background:transparent;border:1px solid var(--hair);color:var(--cyan);border-radius:10px;padding:8px 12px;
+    font:500 12.5px "Geist Mono";cursor:pointer}
+  .copy:hover{border-color:var(--cyan)}
+  .tools{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+  .tools span{font:12px "Geist Mono";color:var(--lamp);border:1px solid var(--hair);border-radius:99px;padding:3px 9px}
+  .snip{margin-top:12px}.snip h3{font:600 13.5px "Geist";margin-bottom:6px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center}
+  .snip h3 code{overflow-wrap:anywhere}
+  pre{background:#0B0C0E;border:1px solid var(--hair);border-radius:10px;padding:12px;font:12px/1.5 "Geist Mono";color:#C9CDD1;
+    white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+  .btns button{background:var(--soot);border:1px solid var(--hair);color:var(--paper);border-radius:10px;padding:10px 14px;
+    font:500 13px "Geist Mono";cursor:pointer}
+  .btns button:hover,.btns button.on{border-color:var(--cyan);color:var(--cyan)}
+  .btns button:disabled{opacity:.45;cursor:default}
+  .btns input{width:130px;padding:9px;font:13px "Geist Mono"}
+  .io{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:6px}
+  .io b{font:500 11px "Geist Mono";letter-spacing:.14em;color:var(--mute);display:block;margin-bottom:4px}
+  .stat{font:12.5px "Geist Mono";color:var(--cyan)}
+  .rec{display:inline-block;font:600 11px "Geist Mono";letter-spacing:.12em;color:#111;background:var(--lamp);border-radius:6px;padding:4px 8px}
+  .rstep{margin-top:10px;padding:14px;border:1px solid var(--hair);border-radius:14px;background:var(--soot)}
+  .rstep .who{font:500 11px "Geist Mono";letter-spacing:.14em;color:var(--mute)}
+  .rstep h3{font:800 20px "Big Shoulders Display";text-transform:uppercase;margin:4px 0 6px}
+  .rstep .t{font:12px "Geist Mono";color:var(--mute);margin-bottom:8px}
+  .dots{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0}
+  .dots button{width:28px;height:28px;border-radius:50%;border:1px solid var(--hair);background:transparent;color:var(--mute);
+    font:500 12px "Geist Mono";cursor:pointer;padding:0}
+  .dots button.on{background:var(--cyan);color:#111;border-color:var(--cyan)}
+  .dots button.past{color:var(--cyan);border-color:rgba(56,242,229,.5)}
+  .ids{margin-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .ids div{background:#0B0C0E;border:1px solid var(--hair);border-radius:10px;padding:10px}
+  .ids span{display:block;font:500 11px "Geist Mono";letter-spacing:.12em;color:var(--mute)}
+  .ids code{font:500 14px "Geist Mono";color:var(--paper);overflow-wrap:anywhere}
+  .links{line-height:1.9;padding-left:18px;color:#C9CDD1}.links a{color:var(--cyan)}
+  .step p{color:#C9CDD1;line-height:1.55;font-size:15px}
+  @media (max-width:560px){.ids{grid-template-columns:1fr}.step{grid-template-columns:32px minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <a class="home" href="/">← Lena's shop</a> <a class="home" href="/studio/" style="margin-left:14px">Lena's studio (AG Studio) →</a>
+  <span class="k">FOR AI AGENTS AND THE PEOPLE WHO BUILD THEM</span>
+  <h1>Connect your agent<br>to Lena's counter.</h1>
+  <p class="lead">Any MCP client can read Small Garage and start a PayPal checkout. Prices, stock and delivery dates come
+    from the shop's code, and nothing is charged until a person approves in PayPal.</p>
+  <p class="path">Judge path: <a href="#console">call the real MCP server below</a> ·
+    <a href="#replay">step through a recorded purchase</a> · <a href="/studio/">see it in Lena's studio</a></p>
+
+  <section class="step"><b>1</b><div><h2>The address</h2>
+    <div class="addr"><code id="mcpurl">https://open-counter.onrender.com/mcp/</code>
+      <button class="copy" data-copy="#mcpurl">Copy</button></div>
+    <p class="fine">MCP over streamable HTTP. No key and no sign-up. Nine tools:</p>
+    <div class="tools" id="toolnames"><span>about_counter</span><span>search_counter</span><span>item_details</span>
+      <span>delivery_estimate</span><span>start_checkout</span><span>quote_commission</span>
+      <span>start_commission_checkout</span><span>leave_contact</span><span>order_status</span></div>
+  </div></section>
+
+  <section class="step"><b>2</b><div><h2>Plug it in</h2>
+    <div class="snip"><h3><span>Claude Desktop · <code>claude_desktop_config.json</code></span><button class="copy" data-copy="#cfg-claude">Copy</button></h3>
+<pre id="cfg-claude">{
+  "mcpServers": {
+    "open-counter": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://open-counter.onrender.com/mcp/"]
+    }
+  }
+}</pre>
+      <p class="fine">Or in Claude: Settings → Connectors → Add custom connector, and paste the address.</p></div>
+    <div class="snip"><h3>MCP Inspector, from a terminal<button class="copy" data-copy="#cfg-insp">Copy</button></h3>
+<pre id="cfg-insp">npx @modelcontextprotocol/inspector --cli https://open-counter.onrender.com/mcp/ --transport http --method tools/list</pre></div>
+    <div class="snip"><h3>Any HTTP client<button class="copy" data-copy="#cfg-curl">Copy</button></h3>
+<pre id="cfg-curl">curl -s https://open-counter.onrender.com/mcp/ \
+  -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_counter","arguments":{"query":"green"}}}'</pre></div>
+  </div></section>
+
+  <section class="step" id="console"><b>3</b><div><h2>Try it here, live</h2>
+    <p>No model here: each button is one MCP call from your browser to the server above, the same call any agent makes.
+      Only read-only tools, so nothing is ordered and nothing is charged.</p>
+    <div class="btns">
+      <button data-call="initialize">initialize</button>
+      <button data-call="tools/list">tools/list</button>
+      <button data-call="search_counter">search_counter</button>
+      <input id="q" value="green" aria-label="search_counter query" maxlength="40">
+      <span class="stat" id="stat" aria-live="polite"></span>
+    </div>
+    <div class="io" id="io" hidden>
+      <div><b>REQUEST · POST /mcp/</b><pre id="req"></pre></div>
+      <div><b>RESPONSE</b><pre id="res"></pre></div>
+    </div>
+  </div></section>
+
+  <section class="step"><b>4</b><div><h2>How paying works</h2>
+    <p><code>start_checkout</code> returns a PayPal approval link and two lines the agent must show the person:
+      what they asked for, and what they're approving (items, shipping, total, ship date). Only a person can pay, in
+      PayPal's own window. The money is captured after that, and stock is checked again at capture. Made-to-order
+      builds get a PayPal invoice instead: 50% deposit now, the balance before shipping.</p>
+  </div></section>
+
+  <section class="step" id="replay"><b>5</b><div><h2>An outside agent buys, end to end</h2>
+    <p><span class="rec" id="rlabel">RECORDED · SANDBOX · NOT LIVE</span></p>
+    <p class="fine" id="rintro">Loading the recorded run…</p>
+    <div class="btns">
+      <button id="rprev">← Back</button><button id="rnext">Next step →</button><button id="rall">Show the result</button>
+    </div>
+    <div class="dots" id="rdots"></div>
+    <div id="rstep"></div>
+    <div id="rresult" hidden></div>
+  </div></section>
+
+  <section class="step"><b>6</b><div><h2>Same facts, other doors</h2>
+    <ul class="links">
+      <li>The shop card (JSON): <a href="/c/small-garage.json">/c/small-garage.json</a></li>
+      <li>Discovery: <a href="/.well-known/open-counter.json">/.well-known/open-counter.json</a></li>
+      <li>One search across every counter: <a href="/api/directory?q=green&amp;max_price=60">/api/directory?q=green&amp;max_price=60</a></li>
+      <li>Open your own counter: <a href="/open">/open</a></li>
+    </ul>
+  </div></section>
+</main>
+<script src="/static/agents.js"></script>
+</body>
+</html>

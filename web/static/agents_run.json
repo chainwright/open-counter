@@ -1,0 +1,663 @@
+{
+ "title": "An outside MCP client buys one car, end to end",
+ "label": "Recorded on 9 Nov 2026 · sandbox · not live",
+ "recorded_on": "2026-11-09",
+ "environment": "PayPal sandbox (no real money)",
+ "endpoint": "https://open-counter.onrender.com/mcp/",
+ "client": "MCP Inspector CLI 0.17.2 (npx @modelcontextprotocol/inspector)",
+ "steps": [
+  {
+   "kind": "mcp",
+   "step": "tools/list",
+   "client": "MCP Inspector CLI 0.17.2",
+   "command": "npx @modelcontextprotocol/inspector@0.17.2 --cli https://open-counter.onrender.com/mcp/ --transport http --method tools/list",
+   "method": "tools/list",
+   "started_utc": "2026-11-09T20:55:25Z",
+   "answered_utc": "2026-11-09T20:55:27Z",
+   "response": {
+    "tools": [
+     {
+      "name": "about_counter",
+      "description": "Who the maker is, what she ships where, shipping cost, commissions and how payment works.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {},
+       "title": "about_counterArguments"
+      }
+     },
+     {
+      "name": "search_counter",
+      "description": "Search the maker's listings by words (colour, year, body style, occasion) and max price.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "query": {
+         "default": "",
+         "title": "Query",
+         "type": "string"
+        },
+        "max_price_usd": {
+         "anyOf": [
+          {
+           "type": "number"
+          },
+          {
+           "type": "null"
+          }
+         ],
+         "default": null,
+         "title": "Max Price Usd"
+        }
+       },
+       "title": "search_counterArguments"
+      }
+     },
+     {
+      "name": "item_details",
+      "description": "Full listing: scale, size in mm, materials, paint, build hours, stock, photo and page URL.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "item_id": {
+         "title": "Item Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "item_id"
+       ],
+       "title": "item_detailsArguments"
+      }
+     },
+     {
+      "name": "delivery_estimate",
+      "description": "Ship date and estimated delivery window to a US state (two-letter code). Pass need_by (a date or a weekday like Friday) to get a verdict: on time, possible, or too late.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "us_state": {
+         "title": "Us State",
+         "type": "string"
+        },
+        "need_by": {
+         "default": "",
+         "title": "Need By",
+         "type": "string"
+        }
+       },
+       "required": [
+        "us_state"
+       ],
+       "title": "delivery_estimateArguments"
+      }
+     },
+     {
+      "name": "start_checkout",
+      "description": "Create an order awaiting the person's approval and get a PayPal approval link. One car: item_id + quantity (a whole number ≥ 1). Several different cars: items = [{item_id, quantity}] (then item_id/quantity are ignored). customer (optional) = {full_name, phone, email, address_line_1, address_line_2?, city, state, postal_code}; without it PayPal uses the address on the buyer's PayPal account. Pass the person's request in their own words as what_the_shopper_asked.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "us_state": {
+         "title": "Us State",
+         "type": "string"
+        },
+        "what_the_shopper_asked": {
+         "title": "What The Shopper Asked",
+         "type": "string"
+        },
+        "item_id": {
+         "default": "",
+         "title": "Item Id",
+         "type": "string"
+        },
+        "quantity": {
+         "default": 1,
+         "title": "Quantity",
+         "type": "integer"
+        },
+        "items": {
+         "anyOf": [
+          {
+           "items": {
+            "$ref": "#/$defs/Item"
+           },
+           "type": "array"
+          },
+          {
+           "type": "null"
+          }
+         ],
+         "default": null,
+         "title": "Items"
+        },
+        "customer": {
+         "anyOf": [
+          {
+           "$ref": "#/$defs/Customer"
+          },
+          {
+           "type": "null"
+          }
+         ],
+         "default": null
+        }
+       },
+       "required": [
+        "us_state",
+        "what_the_shopper_asked"
+       ],
+       "$defs": {
+        "Customer": {
+         "description": "Who the order ships to, exactly as the person typed it.",
+         "properties": {
+          "full_name": {
+           "description": "First and last name.",
+           "title": "Full Name",
+           "type": "string"
+          },
+          "phone": {
+           "description": "Phone number, as typed.",
+           "title": "Phone",
+           "type": "string"
+          },
+          "email": {
+           "description": "Email for the PayPal receipt or invoice and tracking.",
+           "title": "Email",
+           "type": "string"
+          },
+          "address_line_1": {
+           "description": "Street address with the house number.",
+           "title": "Address Line 1",
+           "type": "string"
+          },
+          "address_line_2": {
+           "anyOf": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "null"
+            }
+           ],
+           "default": null,
+           "description": "Apartment, suite (optional).",
+           "title": "Address Line 2"
+          },
+          "city": {
+           "title": "City",
+           "type": "string"
+          },
+          "state": {
+           "description": "Two-letter US state code, e.g. TX. Must match the ZIP.",
+           "title": "State",
+           "type": "string"
+          },
+          "postal_code": {
+           "description": "5-digit US ZIP code.",
+           "title": "Postal Code",
+           "type": "string"
+          }
+         },
+         "required": [
+          "full_name",
+          "phone",
+          "email",
+          "address_line_1",
+          "city",
+          "state",
+          "postal_code"
+         ],
+         "title": "Customer",
+         "type": "object"
+        },
+        "Item": {
+         "description": "One shelf car in a multi-car order.",
+         "properties": {
+          "item_id": {
+           "description": "A listing id from search_counter, e.g. sg-014.",
+           "title": "Item Id",
+           "type": "string"
+          },
+          "quantity": {
+           "description": "How many, a whole number of at least 1 (up to the stock).",
+           "minimum": 1,
+           "title": "Quantity",
+           "type": "integer"
+          }
+         },
+         "required": [
+          "item_id",
+          "quantity"
+         ],
+         "title": "Item",
+         "type": "object"
+        }
+       },
+       "title": "start_checkoutArguments"
+      }
+     },
+     {
+      "name": "quote_commission",
+      "description": "Exact price, volume discount, shipping, build time and delivery for made-to-order cars. cars = [{model, year (of the real car), body_colour, interior_colour, quantity (whole number ≥ 1), details?}].",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "cars": {
+         "items": {
+          "$ref": "#/$defs/Car"
+         },
+         "title": "Cars",
+         "type": "array"
+        },
+        "us_state": {
+         "default": "",
+         "title": "Us State",
+         "type": "string"
+        }
+       },
+       "required": [
+        "cars"
+       ],
+       "$defs": {
+        "Car": {
+         "description": "One made-to-order build.",
+         "properties": {
+          "model": {
+           "description": "Body style or a listing it's based on: fastback, coupe, convertible…",
+           "title": "Model",
+           "type": "string"
+          },
+          "year": {
+           "description": "The year of the real car it's modelled on, as the person said it (e.g. 1967).",
+           "title": "Year",
+           "type": "string"
+          },
+          "body_colour": {
+           "title": "Body Colour",
+           "type": "string"
+          },
+          "interior_colour": {
+           "title": "Interior Colour",
+           "type": "string"
+          },
+          "quantity": {
+           "description": "How many of this build, a whole number of at least 1.",
+           "minimum": 1,
+           "title": "Quantity",
+           "type": "integer"
+          },
+          "details": {
+           "anyOf": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "null"
+            }
+           ],
+           "default": null,
+           "description": "Anything extra: stripes, wheels, a plate (optional).",
+           "title": "Details"
+          }
+         },
+         "required": [
+          "model",
+          "year",
+          "body_colour",
+          "interior_colour",
+          "quantity"
+         ],
+         "title": "Car",
+         "type": "object"
+        }
+       },
+       "title": "quote_commissionArguments"
+      }
+     },
+     {
+      "name": "start_commission_checkout",
+      "description": "Create the made-to-order order after the person agreed to the quote. cars as in quote_commission. With customer = {full_name, phone, email, address_line_1, address_line_2?, city, state, postal_code} it becomes a PayPal invoice sent to their email: 50% deposit now, the balance before shipping. Without it, a one-time PayPal approval link for the full amount.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "cars": {
+         "items": {
+          "$ref": "#/$defs/Car"
+         },
+         "title": "Cars",
+         "type": "array"
+        },
+        "us_state": {
+         "title": "Us State",
+         "type": "string"
+        },
+        "name": {
+         "title": "Name",
+         "type": "string"
+        },
+        "phone": {
+         "title": "Phone",
+         "type": "string"
+        },
+        "what_the_shopper_asked": {
+         "title": "What The Shopper Asked",
+         "type": "string"
+        },
+        "customer": {
+         "anyOf": [
+          {
+           "$ref": "#/$defs/Customer"
+          },
+          {
+           "type": "null"
+          }
+         ],
+         "default": null
+        }
+       },
+       "required": [
+        "cars",
+        "us_state",
+        "name",
+        "phone",
+        "what_the_shopper_asked"
+       ],
+       "$defs": {
+        "Car": {
+         "description": "One made-to-order build.",
+         "properties": {
+          "model": {
+           "description": "Body style or a listing it's based on: fastback, coupe, convertible…",
+           "title": "Model",
+           "type": "string"
+          },
+          "year": {
+           "description": "The year of the real car it's modelled on, as the person said it (e.g. 1967).",
+           "title": "Year",
+           "type": "string"
+          },
+          "body_colour": {
+           "title": "Body Colour",
+           "type": "string"
+          },
+          "interior_colour": {
+           "title": "Interior Colour",
+           "type": "string"
+          },
+          "quantity": {
+           "description": "How many of this build, a whole number of at least 1.",
+           "minimum": 1,
+           "title": "Quantity",
+           "type": "integer"
+          },
+          "details": {
+           "anyOf": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "null"
+            }
+           ],
+           "default": null,
+           "description": "Anything extra: stripes, wheels, a plate (optional).",
+           "title": "Details"
+          }
+         },
+         "required": [
+          "model",
+          "year",
+          "body_colour",
+          "interior_colour",
+          "quantity"
+         ],
+         "title": "Car",
+         "type": "object"
+        },
+        "Customer": {
+         "description": "Who the order ships to, exactly as the person typed it.",
+         "properties": {
+          "full_name": {
+           "description": "First and last name.",
+           "title": "Full Name",
+           "type": "string"
+          },
+          "phone": {
+           "description": "Phone number, as typed.",
+           "title": "Phone",
+           "type": "string"
+          },
+          "email": {
+           "description": "Email for the PayPal receipt or invoice and tracking.",
+           "title": "Email",
+           "type": "string"
+          },
+          "address_line_1": {
+           "description": "Street address with the house number.",
+           "title": "Address Line 1",
+           "type": "string"
+          },
+          "address_line_2": {
+           "anyOf": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "null"
+            }
+           ],
+           "default": null,
+           "description": "Apartment, suite (optional).",
+           "title": "Address Line 2"
+          },
+          "city": {
+           "title": "City",
+           "type": "string"
+          },
+          "state": {
+           "description": "Two-letter US state code, e.g. TX. Must match the ZIP.",
+           "title": "State",
+           "type": "string"
+          },
+          "postal_code": {
+           "description": "5-digit US ZIP code.",
+           "title": "Postal Code",
+           "type": "string"
+          }
+         },
+         "required": [
+          "full_name",
+          "phone",
+          "email",
+          "address_line_1",
+          "city",
+          "state",
+          "postal_code"
+         ],
+         "title": "Customer",
+         "type": "object"
+        }
+       },
+       "title": "start_commission_checkoutArguments"
+      }
+     },
+     {
+      "name": "leave_contact",
+      "description": "Pass the person's phone number and question to the maker; she calls them back.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "phone": {
+         "title": "Phone",
+         "type": "string"
+        },
+        "name": {
+         "default": "",
+         "title": "Name",
+         "type": "string"
+        },
+        "message": {
+         "default": "",
+         "title": "Message",
+         "type": "string"
+        },
+        "what_the_shopper_asked": {
+         "default": "",
+         "title": "What The Shopper Asked",
+         "type": "string"
+        }
+       },
+       "required": [
+        "phone"
+       ],
+       "title": "leave_contactArguments"
+      }
+     },
+     {
+      "name": "order_status",
+      "description": "Status of an order: awaiting_approval, paid, shipped (with tracking), cancelled.",
+      "inputSchema": {
+       "type": "object",
+       "properties": {
+        "order_id": {
+         "title": "Order Id",
+         "type": "string"
+        }
+       },
+       "required": [
+        "order_id"
+       ],
+       "title": "order_statusArguments"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "kind": "mcp",
+   "step": "search_counter",
+   "client": "MCP Inspector CLI 0.17.2",
+   "command": "npx @modelcontextprotocol/inspector@0.17.2 --cli https://open-counter.onrender.com/mcp/ --transport http --method tools/call --tool-name search_counter --tool-arg query=green",
+   "method": "tools/call",
+   "started_utc": "2026-11-09T20:55:27Z",
+   "answered_utc": "2026-11-09T20:55:29Z",
+   "response": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n  \"shop\": \"Small Garage\",\n  \"results\": [\n    {\n      \"id\": \"sg-014\",\n      \"title\": \"Green American Fastback, 1968\",\n      \"price_usd\": 59.0,\n      \"stock\": 3,\n      \"scale\": \"1:43\",\n      \"length_mm\": 108,\n      \"materials\": \"resin body, photo-etched brass trim, turned aluminium wheels\",\n      \"paint\": \"deep highland green, mixed by hand (our code 68-G)\",\n      \"build_hours\": 26,\n      \"edition\": \"No. 14\",\n      \"notes\": \"Opening-free display model. Comes on a black wood plinth with a dust cover. Not a toy, not for children under 14.\",\n      \"photo_url\": \"https://open-counter.onrender.com/media/green_fastback.jpg?v=372626af23225\",\n      \"model_url\": \"https://open-counter.onrender.com/media/green_fastback.glb?v=2509786af23225\",\n      \"paypal_catalog_product\": \"OC-SG-014\",\n      \"page_url\": \"https://open-counter.onrender.com/c/small-garage#sg-014\",\n      \"availability\": \"3 in stock; any car can also be made to order (use quote_commission)\",\n      \"matched\": [\n        \"green\"\n      ]\n    }\n  ],\n  \"note\": \"Only items listed here exist. Anything not in a listing is unknown: ask the maker.\"\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  {
+   "kind": "mcp",
+   "step": "delivery_estimate",
+   "client": "MCP Inspector CLI 0.17.2",
+   "command": "npx @modelcontextprotocol/inspector@0.17.2 --cli https://open-counter.onrender.com/mcp/ --transport http --method tools/call --tool-name delivery_estimate --tool-arg us_state=CO",
+   "method": "tools/call",
+   "started_utc": "2026-11-09T20:55:29Z",
+   "answered_utc": "2026-11-09T20:55:30Z",
+   "response": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n  \"ok\": true,\n  \"today\": \"Monday 2026-11-09\",\n  \"ships_on\": \"Tuesday 2026-11-10\",\n  \"arrives_earliest\": \"Friday 2026-11-13\",\n  \"arrives_latest\": \"Tuesday 2026-11-17\",\n  \"carrier\": \"USPS Ground Advantage\",\n  \"note\": \"Estimate from the carrier's published ranges, not a guarantee.\",\n  \"shipping_policy\": \"Paid orders from stock ship 1 business day after payment, on the next shipping day (Mon, Tue, Wed, Thu, Fri); the tracking number comes by email when it ships. ships_on assumes payment today.\"\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  {
+   "kind": "mcp",
+   "step": "start_checkout",
+   "client": "MCP Inspector CLI 0.17.2",
+   "command": "npx @modelcontextprotocol/inspector@0.17.2 --cli https://open-counter.onrender.com/mcp/ --transport http --method tools/call --tool-name start_checkout --tool-arg item_id=sg-014 --tool-arg quantity=1 --tool-arg us_state=CO --tool-arg 'what_the_shopper_asked=One green fastback, shipped to Colorado'",
+   "method": "tools/call",
+   "started_utc": "2026-11-09T20:55:30Z",
+   "answered_utc": "2026-11-09T20:55:33Z",
+   "response": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n  \"ok\": true,\n  \"order_id\": \"OC-DDAED237\",\n  \"approve_url\": \"https://www.sandbox.paypal.com/checkoutnow?token=7CH35233YB660681A\",\n  \"you_asked_for\": \"One green fastback, shipped to Colorado\",\n  \"you_are_approving\": \"1 × Green American Fastback, 1968 at $59.00 + $6.50 shipping = $65.50, from Small Garage (Lena Morris, Columbus, OH)\",\n  \"delivery\": \"ships 2026-11-10, estimated arrival 2026-11-13 to 2026-11-17 (USPS Ground Advantage; estimate, not a guarantee)\",\n  \"ship_to\": \"\",\n  \"receipt\": {\n    \"rows\": [\n      {\n        \"name\": \"Green American Fastback, 1968\",\n        \"qty\": 1,\n        \"unit\": 59.0,\n        \"sum\": 59.0\n      }\n    ],\n    \"extra\": [\n      {\n        \"name\": \"Shipping\",\n        \"sum\": 6.5\n      }\n    ],\n    \"total\": 65.5,\n    \"lock\": \"37c31bdf\"\n  },\n  \"next_step\": \"Show both lines to the person, then open approve_url. Nothing is charged until they approve in PayPal.\"\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  {
+   "kind": "person",
+   "step": "Buyer approves in PayPal",
+   "who": "the PayPal sandbox test buyer, in a browser",
+   "url": "https://www.sandbox.paypal.com/checkoutnow?token=7CH35233YB660681A",
+   "started_utc": "2026-11-09T20:55:52Z",
+   "answered_utc": "2026-11-09T20:56:00Z",
+   "response": {
+    "note": "Logged in as the sandbox buyer and pressed PayPal's pay button. Nothing is charged before this."
+   }
+  },
+  {
+   "kind": "app",
+   "step": "Return page captures",
+   "url": "https://open-counter.onrender.com/thanks/OC-DDAED237",
+   "started_utc": "2026-11-09T20:56:00Z",
+   "answered_utc": "2026-11-09T20:56:04Z",
+   "response": {
+    "page_said": [
+     "SMALL GARAGE · ORDER OC-DDAED237",
+     "It's yours. Congratulations!",
+     "",
+     "Paid $65.50 through PayPal. Lena has your order."
+    ]
+   }
+  },
+  {
+   "kind": "paypal",
+   "step": "PayPal's own record (GET /v2/checkout/orders/{id})",
+   "started_utc": null,
+   "answered_utc": null,
+   "response": {
+    "paypal_order_id": "7CH35233YB660681A",
+    "paypal_order_status": "COMPLETED",
+    "capture_id": "1YL21413K6318972K",
+    "capture_status": "COMPLETED",
+    "amount": {
+     "currency_code": "USD",
+     "value": "65.50"
+    },
+    "capture_create_time": "2026-11-09T20:56:02Z",
+    "custom_id": "OC-DDAED237"
+   },
+   "note": "Read from PayPal after the run, to show the capture id"
+  },
+  {
+   "kind": "mcp",
+   "step": "order_status",
+   "client": "MCP Inspector CLI 0.17.2",
+   "method": "tools/call",
+   "command": "npx @modelcontextprotocol/inspector@0.17.2 --cli https://open-counter.onrender.com/mcp/ --transport http --method tools/call --tool-name order_status --tool-arg order_id=OC-DDAED237",
+   "started_utc": "2026-11-09T20:56:18Z",
+   "answered_utc": "2026-11-09T20:56:18Z",
+   "response": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n  \"id\": \"OC-DDAED237\",\n  \"title\": \"Green American Fastback, 1968\",\n  \"qty\": 1,\n  \"total_usd\": 65.5,\n  \"status\": \"paid\",\n  \"tracking\": null,\n  \"estimate\": {\n    \"ok\": true,\n    \"today\": \"Monday 2026-11-09\",\n    \"ships_on\": \"Tuesday 2026-11-10\",\n    \"arrives_earliest\": \"Friday 2026-11-13\",\n    \"arrives_latest\": \"Tuesday 2026-11-17\",\n    \"carrier\": \"USPS Ground Advantage\",\n    \"note\": \"Estimate from the carrier's published ranges, not a guarantee.\",\n    \"shipping_policy\": \"Paid orders from stock ship 1 business day after payment, on the next shipping day (Mon, Tue, Wed, Thu, Fri); the tracking number comes by email when it ships. ships_on assumes payment today.\"\n  }\n}"
+     }
+    ],
+    "isError": false
+   }
+  }
+ ],
+ "result": {
+  "order_id": "OC-DDAED237",
+  "paypal_order_id": "7CH35233YB660681A",
+  "capture_id": "1YL21413K6318972K",
+  "amount_usd": "65.50",
+  "checkout_started_utc": "2026-11-09T20:55:33Z",
+  "captured_utc": "2026-11-09T20:56:02Z",
+  "status": "paid"
+ }
+}

@@ -1184,3 +1184,9 @@ def index():
 @app.get("/maker")
 def maker():
     return _stamped("maker.html")
+
+
+@app.get("/agents")
+def agents_page():
+    """For AI agents: the MCP address, config snippets, a read-only live console and a recorded purchase replay."""
+    return _stamped("agents.html")

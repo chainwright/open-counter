@@ -47,10 +47,22 @@ seconds, and the balance reminder went out through PayPal from Lena's back offic
 `OC-2C9A66AA`, invoice `INV2-2WXK-33LT-AN9D-FKRN`.) The automatic refund (last car sold during approval) is covered by
 tests with PayPal stubbed; it has no sandbox run.
 
+**Logged run: outside MCP client → paid** (live sandbox, 9 Nov 2026, UTC). An outside client, MCP Inspector CLI 0.17.2
+(`npx @modelcontextprotocol/inspector --cli https://open-counter.onrender.com/mcp/ --transport http`), called
+`tools/list`, `search_counter` ("green"), `delivery_estimate` (CO) and `start_checkout` (`sg-014`, quantity 1) at
+20:55:25–20:55:33. That made order `OC-DDAED237` ($59.00 + $6.50 shipping = $65.50) and PayPal order
+`7CH35233YB660681A`. The sandbox buyer approved in PayPal at 20:56:00, the return page captured it (capture
+`1YL21413K6318972K`, `COMPLETED`, 20:56:02), `order_status` over MCP then said `paid`, and Lena's studio shows it as the
+newest MCP checkout, paid. PayPal's address on file for the test buyer is in CA, so the order follows CA, not the CO
+the agent asked about. Every call and answer: [`web/static/agents_run.json`](web/static/agents_run.json), replayed at
+[`/agents`](https://open-counter.onrender.com/agents).
+
 ## Try it in two minutes
 - **Shop:** https://open-counter.onrender.com · chat with the shop's sales agent in section 01, turn any car in 3D.
 - **Lena's back office (open, no login):** https://open-counter.onrender.com/maker
 - **Open your own counter:** https://open-counter.onrender.com/open
+- **For AI agents (MCP):** https://open-counter.onrender.com/agents · call the real MCP server from the page, and
+  replay an outside agent's purchase through to capture
 - **Lena's studio (AG Studio), best on a laptop:** https://open-counter.onrender.com/studio/ · the lesson loop on one
   screen: https://open-counter.onrender.com/studio/loop.html
 - When the agent gives you a PayPal button, log in with the **sandbox** test buyer:
@@ -224,6 +236,10 @@ the shop chat, inside their own pool (`STUDIO_DAILY_CAP_USD`, default half the d
 off the shop's chat. A question about the shop costs about $0.005, a new panel about $0.035 (measured 8 Nov).
 
 ## For agents
+- **Start here: [`/agents`](https://open-counter.onrender.com/agents)**: the MCP address with a copy button, Claude
+  Desktop and MCP Inspector snippets, a live console that makes real read-only MCP calls from the browser
+  (`initialize`, `tools/list`, `search_counter`; no model, no orders), and a step-by-step replay of the logged outside-agent
+  purchase above (recorded, not live).
 - MCP (streamable HTTP) at `/mcp/`: `about_counter`, `search_counter`, `item_details`, `delivery_estimate`,
   `start_checkout` (one or several cars), `quote_commission`, `start_commission_checkout`, `leave_contact`, `order_status`.
   Arguments are typed: `tools/list` shows the `customer` fields (`full_name`, `phone`, `email`, `address_line_1`,

@@ -49,3 +49,10 @@ def test_an_outside_agent_lists_nine_typed_tools_and_gets_a_quote(c):
     out = rpc(c, "tools/call", {"name": "quote_commission", "arguments": {"cars": [car, bad]}}, 4)
     assert out.get("isError") is True or '"ok": false' in out["content"][0]["text"].replace("False", "false")
     assert [o for o in shop.orders() if not o.get("sample")] == []
+    # the /agents page's live console sends these exact bodies, each a fresh request with no mcp-session-id
+    init = rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                 "clientInfo": {"name": "open-counter-agents-page", "version": "1"}}, 5)
+    assert init["serverInfo"]["name"] == "small-garage-counter"
+    found = json.loads(rpc(c, "tools/call", {"name": "search_counter", "arguments": {"query": "green"}}, 6)["content"][0]["text"])
+    assert found["results"] and found["results"][0]["id"] == "sg-014"
+    assert [o for o in shop.orders() if not o.get("sample")] == []
