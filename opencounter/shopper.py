@@ -1703,6 +1703,16 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
     if checkout and (checkout.get("payment") == "invoice" or "built in" in str(checkout.get("delivery", ""))) \
             and not re.search(r"\bbuil[dt]|made to order|под заказ|собер", reply, re.I):
         reply = _build_reply(checkout, bool(re.search(r"[а-яё]", lang_text, re.I)))
+    # a build the shop couldn't price because the year of the real car is missing: the reply asks for the year first,
+    # never for the contacts instead (live eval 08.11: "I need 40 green fastbacks to Texas" got "send the interior
+    # colour and your name, phone, email…" with no year and no word about building them to order; whichever path
+    # wrote the reply: the model, or code when the model ran out of steps)
+    if not checkout and not re.search(r"\byear\b|\bгод", reply or "", re.I) and any(
+            st["tool"] in ("quote_commission", "start_commission_checkout")
+            and SPEC_YEAR in str(st["result"]) for st in steps):
+        f = mto_fields(" / ".join(user_msgs))
+        if f["model"]:
+            reply = _ask_year(f, bool(re.search(r"[а-яё]", lang_text, re.I)))
     # ...and no words written for the agent: a note to itself, a tool's instruction, a raw field name
     reply = _for_shopper(reply) or _for_shopper(_fallback_reply(
         steps or ([] if taught_now else _earlier_steps(messages)), bool(re.search(r"[а-яё]", lang_text, re.I)),

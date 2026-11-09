@@ -75,3 +75,26 @@ def test_a_reply_made_only_of_notes_is_replaced_by_a_real_answer(monkeypatch):
     r = shopper.run([{"role": "user", "content": "what do you have?"}], "v-notes")
     assert r["reply"] and "us_state" not in r["reply"] and "item_id" not in r["reply"]
     assert "On the shelf right now" in r["reply"]
+
+
+def test_a_build_stopped_for_the_year_asks_the_year_not_the_contacts(monkeypatch):
+    # live eval 08.11 ("stock: over the stock goes to made to order"): the model priced 40 green fastbacks as a build
+    # without a year, the shop said "still needed: the year", and the model asked for the interior and the contacts
+    no_year = {"cars": [{"model": "fastback", "year": "", "body_colour": "green", "interior_colour": "", "quantity": 40}],
+               "us_state": "TX"}
+    model = ScriptedModel([tool_call("quote_commission", no_year)],
+                          "Please provide interior color, full name, phone, email, street address, city, and ZIP code "
+                          "in one message.")
+    monkeypatch.setattr(shopper, "_client_", lambda: model)
+    r = shopper.run([{"role": "user", "content": "I need 40 green fastbacks to Texas"}], "v-forty")
+    assert "Which year is the real car" in r["reply"] and "build that to order: 40 × fastback, green body" in r["reply"]
+    assert "phone" not in r["reply"] and not r["checkout"] and not [o for o in shop.orders() if not o.get("sample")]
+
+
+def test_when_the_model_runs_out_the_code_answer_still_asks_the_year_first(monkeypatch):
+    no_year = {"cars": [{"model": "fastback", "year": "", "body_colour": "green", "interior_colour": "", "quantity": 40}],
+               "us_state": "TX"}
+    model = ScriptedModel(*[[tool_call("quote_commission", no_year, i)] for i in range(1, 9)])   # never answers
+    monkeypatch.setattr(shopper, "_client_", lambda: model)
+    r = shopper.run([{"role": "user", "content": "I need 40 green fastbacks to Texas"}], "v-forty2")
+    assert "Which year is the real car" in r["reply"] and "phone" not in r["reply"]
