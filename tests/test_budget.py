@@ -83,6 +83,47 @@ def test_behind_renders_proxy_the_network_is_the_last_forwarded_hop(monkeypatch)
     assert seen[-1][-1] == "ip:testclient"                                    # no proxy: the header means nothing
 
 
+def _networks_seen(monkeypatch, *headers):
+    c = TestClient(web.app)
+    seen = []
+    monkeypatch.setattr(shopper, "check_budget", lambda who=(): seen.append(list(who)) or (_ for _ in ()).throw(
+        shopper.OverBudget(shopper.BUSY_YOU, mine=True)))
+    ask = {"messages": [{"role": "user", "content": "What scale are your cars?"}]}
+    for h in headers:
+        c.post("/api/shopper", json=ask, headers={"x-visitor": "bot", **h})
+    return [w[-1] for w in seen]
+
+
+# ---- round-2 judges 08.11 NEW-1: on Render, Cloudflare is in front; its edge is the last hop, not the visitor ----
+def test_behind_cloudflare_on_render_each_visitor_is_its_own_network(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    edge = "172.70.1.1"                         # the same Cloudflare edge for two unrelated visitors
+    assert _networks_seen(monkeypatch,
+                          {"cf-connecting-ip": "198.51.100.4", "x-forwarded-for": f"198.51.100.4, {edge}"},
+                          {"cf-connecting-ip": "203.0.113.9", "x-forwarded-for": f"203.0.113.9, {edge}"},
+                          {"cf-connecting-ip": "2001:db8::1", "x-forwarded-for": f"2001:db8::1, {edge}"}) == [
+        "ip:198.51.100.4", "ip:203.0.113.9", "ip:2001:db8::1"]
+
+
+def test_a_client_written_cf_header_is_trusted_only_behind_render(monkeypatch):
+    monkeypatch.delenv("RENDER", raising=False)
+    monkeypatch.delenv("OPENCOUNTER_PROXY_HOPS", raising=False)
+    # off Render nothing overwrites the header, so a client could type any address there: it means nothing
+    assert _networks_seen(monkeypatch, {"cf-connecting-ip": "1.1.1.1"}, {"cf-connecting-ip": "2.2.2.2"}) == [
+        "ip:testclient", "ip:testclient"]
+    monkeypatch.setenv("OPENCOUNTER_PROXY_HOPS", "1")   # another host with one proxy: still not Cloudflare's word
+    assert _networks_seen(monkeypatch, {"cf-connecting-ip": "1.1.1.1", "x-forwarded-for": "9.9.9.9, 203.0.113.7"}) == [
+        "ip:203.0.113.7"]
+
+
+def test_on_render_a_garbled_cf_header_or_true_client_ip_falls_back_to_the_last_hop(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    assert _networks_seen(monkeypatch,
+                          {"cf-connecting-ip": "not-an-ip, 1.1.1.1", "x-forwarded-for": "6.6.6.6, 203.0.113.7"},
+                          {"true-client-ip": "5.5.5.5", "x-forwarded-for": "5.5.5.5, 203.0.113.7"}) == [
+        "ip:203.0.113.7", "ip:203.0.113.7"]
+
+
 def test_with_the_day_spent_the_made_to_order_steps_written_in_code_still_answer(monkeypatch):
     shopper.add_spend(shopper.DAILY_CAP_USD)
     monkeypatch.setattr(shopper, "_client_", lambda: (_ for _ in ()).throw(AssertionError("no model call")))
