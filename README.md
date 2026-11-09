@@ -260,10 +260,9 @@ while real orders, chats and buyers stay.
 
 ## Tools used while building
 Claude Code wrote code and tests with us, using PayPal's developer docs. Product photos, the 3D models and the bench
-clips are AI-generated (Higgsfield); the shop, Lena and the sample history are fictional. No car brand names or real
-logos are used: the cars are generic AI renderings of period styles, and the badges the image generator drew (a hood
-crest, grille emblems, tyre lettering) were painted out of the live product photos and 3D textures on 9 Nov; the
-video and gallery were captured before that.
+clips are AI-generated (Higgsfield); the shop, Lena and the sample history are fictional. Voice-over and music:
+ElevenLabs. No car brand names are used; badges the generator drew were painted out of the live photos, posters, bench
+clips and 3D textures on 9 Nov (the demo video and gallery images 02, 03, 05 and 06 predate that).
 
 ## License
 MIT. See LICENSE.
