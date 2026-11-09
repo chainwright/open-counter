@@ -9,10 +9,12 @@
     text: "NVIDIA Nemotron (on Nebius) reads your list; if it's busy, simple rules read it instead. A price is kept only if you wrote that number. You check every line before anything opens.",
   };
   NOTES.photo = "NVIDIA Nemotron VL (on Nebius) reads the prices in your photo. The photo is read once and not kept. A photo has no typed text to check prices against, so check every price before you open.";
+  NOTES.url = "Our server opens that one page once (public https pages only, up to 2 MB, no cookies). Products come from the page's own product data when it has it; otherwise NVIDIA Nemotron reads the page's text, and a price is kept only if it's written on the page.";
   let board = "";
   const READERS = {
     text: () => ({ url: "/api/open/parse", body: { text: $("r_text").value } }),
     photo: () => { if (!board) throw new Error("Add a photo of your price list first."); return { url: "/api/open/parse_image", body: { kind: "photo", images: [board] } }; },
+    url: () => { const u = $("r_url").value.trim(); if (!u) throw new Error("Add your shop's address first."); return { url: "/api/open/parse_url", body: { url: u } }; },
   };
   window.ocRange = { NOTES, READERS };   // later sources register here
   let src = "text", photo = "", source = "price list";
@@ -68,7 +70,7 @@
   }
   window.ocRange.show = show;
 
-  const LABELS = { text: "price list", photo: "photo of a price list" };
+  const LABELS = { text: "price list", photo: "photo of a price list", url: "website" };
   window.ocRange.LABELS = LABELS;
   $("r_read").addEventListener("click", async () => {
     const make = READERS[src]; if (!make) return;
@@ -78,7 +80,7 @@
     const r = await fetch(req.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(req.body) })
       .then(async (x) => ({ ok: x.ok, ...(await x.json().catch(() => ({}))) })).catch(() => ({ ok: false, error: "Couldn't reach the server." }));
     $("r_read").disabled = false;
-    if (!r.ok) { $("r_hint").textContent = r.error || r.detail || "Couldn't read that."; return; }
+    if (!r.ok) { $("r_hint").textContent = r.error || r.detail || "Couldn't read that."; if (r.instagram && window.ocRange.onInstagram) window.ocRange.onInstagram(); return; }
     $("r_hint").textContent = r.seconds != null ? `Read in ${r.seconds} s` : "";
     show(r, LABELS[src] || "price list");
   });

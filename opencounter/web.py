@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from . import misses, assistant, catalog, counter, counter_door, onboard, paypal, pricelist, shop, shopper, sample, studio_llm
+from . import misses, assistant, catalog, counter, counter_door, onboard, paypal, pricelist, shop, shopper, sample, studio_llm, webfetch
 from .mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -408,6 +408,30 @@ async def open_parse_image(req: Request):
         return JSONResponse({"error": msg}, status_code=400)
 
 
+@app.post("/api/open/parse_url")
+async def open_parse_url(req: Request):
+    """The maker's own shop page → items for her to check. The fetch is guarded (opencounter/webfetch.py): https,
+    public addresses only (checked again after every redirect, connection pinned to the checked address), 8 s,
+    2 MB, HTML only, no cookies; rate-limited per network and per browser before anything is fetched."""
+    stop = _open_guard(req)
+    if stop:
+        return stop
+    body = await req.body()
+    if len(body) > 4000:
+        return JSONResponse({"error": "That address is too long."}, status_code=413)
+    try:
+        url = str(json.loads(body).get("url") or "")
+    except (ValueError, AttributeError):
+        return JSONResponse({"error": "Send the address as JSON."}, status_code=400)
+    try:
+        return await asyncio.to_thread(webfetch.from_url, url, _budget_keys(req))
+    except webfetch.Refused as e:
+        return JSONResponse({"error": str(e), **({"instagram": True} if str(e) == webfetch.INSTAGRAM_SAYS else {})},
+                            status_code=400)
+    except shopper.OverBudget as e:
+        return _busy(e)
+
+
 @app.post("/api/open/publish_many")
 async def open_publish_many(req: Request):
     """Open a counter with the items the maker confirmed. Every value is checked again in onboard.publish_many."""
@@ -490,8 +514,16 @@ def _range_page(c: dict) -> HTMLResponse:
     paid = (f"The order names {e(c['maker'])}'s own PayPal account as the payee, so the payment goes to her; Open Counter never holds it." if onboard.payee(c) else
             f"{e(c['maker'])} gave an email that isn't a PayPal sandbox account, so in this demo the payment goes to the Open Counter test merchant. On live PayPal it would go to her own account." if onboard.screened(c) else
             "This maker hasn't connected a PayPal account, so in this demo the payment goes to the Open Counter test merchant.")
+    # schema.org product data, so any agent or crawler (and our own website reader) gets the items without parsing HTML
+    ld = json.dumps({"@context": "https://schema.org", "@type": "ItemList", "name": c["name"], "itemListElement": [
+        {"@type": "Product", "sku": l["id"], "name": l["title"], **({"description": l["short_description"]} if l.get("short_description") else {}),
+         "offers": {"@type": "Offer", "price": f"{l['price_usd']:.2f}", "priceCurrency": "USD",
+                    "availability": "https://schema.org/" + ("InStock" if l["stock"] > 0 else "OutOfStock"),
+                    "url": f"{counter.PUBLIC_URL}/c/{slug}"}} for l in ls]}, ensure_ascii=False)
+    ld = ld.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{e(c['name'])} · Open Counter</title>{FONTS}<link rel="stylesheet" href="/static/open.css"></head><body><main class="cp">
+<title>{e(c['name'])} · Open Counter</title>{FONTS}<link rel="stylesheet" href="/static/open.css">
+<script type="application/ld+json">{ld}</script></head><body><main class="cp">
 <span class="k">OPEN COUNTER · A MAKER'S SHOP, READABLE BY ANY AI</span><h1>{e(c['name'])}</h1><p class="by">by {e(c['maker'])} · ships from {e(c['ships_from'])} · {len(ls)} items</p>
 {photo}<ul class="range">{rows}</ul>
 <form class="buy" id="buy"><label class="pick">Item<select id="it">{opts}</select></label><label>How many<input type="number" id="q" min="1" value="1"></label>

@@ -119,6 +119,17 @@ the agent asked about. Every call and answer: [`web/static/agents_run.json`](web
     30 MP at most (checked from the header before decoding), re-encoded in memory and never stored; it becomes the
     counter's photo only if she adds it as one. A photo has no typed text to hold prices against, so the page asks
     her to check each price. `/open` has a drawn sample board to try.
+  - **From her website:** the server reads the one page she gives. Products come from the page's schema.org JSON-LD
+    (Product / Offer, USD) when it has it, with no AI; otherwise only the page's priced lines (menus, country pickers
+    and footers dropped) go to the same list reader, so a price is kept only if it's written on the page. This is an
+    outbound call a visitor aims, so it is guarded (`opencounter/webfetch.py`): https on port 443 only, no
+    credentials in the URL; every address the host resolves to must be public (private, loopback, link-local, cloud
+    metadata, CGNAT, multicast and reserved ranges refused, IPv4-mapped IPv6 included) and the connection goes to the
+    checked address with the certificate checked against the host name, so a DNS answer that changes afterwards
+    (rebinding) is never used; at most 3 redirects, each checked from scratch; 8 s, 2 MB (also after gzip), HTML only,
+    no cookies; rate-limited per network and per browser. `tests/test_webfetch.py` covers 127.0.0.1,
+    169.254.169.254, `[::1]`, encoded IPs, a name with one private address, a rebinding name, redirects to private
+    addresses, `http://` and to Instagram, huge bodies and a gzip bomb. Our own range pages carry the same JSON-LD.
 
 ## How it works
 ```mermaid

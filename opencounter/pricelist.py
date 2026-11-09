@@ -56,7 +56,14 @@ def clean_name(v) -> str:
     if INSTRUCTION.search(t):
         return ""
     t = t.strip(_SEP)[:60].strip(_SEP)
+    if _NOT_A_PRODUCT.fullmatch(t):   # a shop page's price labels, not products
+        return ""
     return t if re.search(r"[^\W\d_]", t) else ""
+
+
+_NOT_A_PRODUCT = re.compile(r"(?:(?:sale|regular|unit|our|your|list|special|original)\s+)?price|save|sale|from|now|was|"
+                            r"only|each|subtotal|total|shipping|tax|free shipping|add to cart|buy now|sold out|"
+                            r"starting at|compare at|you save|reg\.?|msrp|usd|us", re.I)
 
 
 def price_value(v) -> float | None:
@@ -102,7 +109,8 @@ def parse_rules(text: str) -> list[dict]:
             else:
                 prev = m.end()
             lines = [x for x in re.split(r"[\n\r]+", seg) if x.strip(_SEP)]
-            name = lines[-1] if lines else ""
+            # the nearest line above the price that is a name ("Sale price" or "Save" in between is skipped)
+            name = next((x for x in reversed(lines) if clean_name(x)), "")
             if out and not re.search(r"[\n\r]", seg) and re.search(r"[,;]", seg):
                 name = re.split(r"[,;]", seg, maxsplit=1)[1]   # "…$24 each, Oak coaster $32": after the comma
             out.append({"name": name, "price": _num(m.group("a") or m.group("b"), m.group("ac") or m.group("bc")),
