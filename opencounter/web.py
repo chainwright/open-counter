@@ -928,8 +928,10 @@ def maker_daily(days: int = 14):
 
 @app.get("/api/maker/agent_sales")
 def maker_agent_sales(days: int = 7):
-    """The studio's "sold to an agent" strip: orders this period by who sold them — an outside AI agent over MCP,
-    Lena's own sales chat, or a made-to-order build — and the newest MCP sale with its PayPal status."""
+    """The studio's "agent checkouts" strip: checkouts started this period by who started them — an outside AI agent
+    over MCP, Lena's own sales chat, or a made-to-order build — and the newest MCP checkout with its PayPal status. A
+    checkout counts once it is started (paid, or still awaiting the buyer's approval in PayPal), so the strip says
+    "checkouts", not "sold" (judges v9 09.11); `paid` gives how many of each are paid."""
     days = max(1, min(int(days), 366))
     t0 = shop.now().timestamp() - days * 86400
     live = [o for o in shop.orders() if o.get("created", 0) >= t0
@@ -941,7 +943,10 @@ def maker_agent_sales(days: int = 7):
     paypal = {"paid": "CAPTURED", "shipped": "CAPTURED", "awaiting_approval": "APPROVAL PENDING",
               "deposit_paid": "DEPOSIT CAPTURED"}
     # sample orders never went through PayPal: the strip marks them SAMPLE, as /maker does (final judges 08.11)
-    return {"days": days, "via_mcp": len(mcp), "her_chat": len(chat), "made_to_order": len(made),
+    paid = lambda os_: sum(1 for o in os_ if o.get("status") in ("paid", "shipped", "deposit_paid"))
+    return {"days": days, "counts": "checkouts started (paid, or awaiting the buyer's approval in PayPal)",
+            "via_mcp": len(mcp), "her_chat": len(chat), "made_to_order": len(made),
+            "paid": {"via_mcp": paid(mcp), "her_chat": paid(chat), "made_to_order": paid(made)},
             "includes_sample": any(o.get("sample") for o in live),
             "last_mcp": ({"id": last["id"], "status": last.get("status"), "sample": bool(last.get("sample")),
                           "paypal": paypal.get(last.get("status"), "PENDING")} if last else None)}

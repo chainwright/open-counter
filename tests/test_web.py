@@ -136,6 +136,8 @@ def test_agent_sales_strip_counts_orders_by_who_sold_them(monkeypatch):
     monkeypatch.setattr(shop, "orders", lambda: orders)
     out = web.maker_agent_sales(days=7)
     assert (out["via_mcp"], out["her_chat"], out["made_to_order"]) == (2, 1, 1)
+    # a checkout awaiting approval is counted as a checkout, not as sold (judges v9 09.11); paid ones are told apart
+    assert out["paid"] == {"via_mcp": 1, "her_chat": 1, "made_to_order": 1} and "awaiting" in out["counts"]
     assert out["last_mcp"] == {"id": "B", "status": "awaiting_approval", "paypal": "APPROVAL PENDING", "sample": False}
     assert out["includes_sample"] is False
     orders[1]["sample"] = True      # a sample order never went through PayPal: the strip must be able to say so
@@ -191,3 +193,18 @@ def test_the_news_list_takes_lenas_key_only_in_a_header_compared_in_constant_tim
     assert seen
     monkeypatch.delenv("MAKER_KEY")
     assert c.get("/api/maker/news-list.csv", headers={"x-maker-key": ""}).status_code == 403   # no key set: nobody
+
+
+def test_the_studio_strip_says_checkouts_and_the_shop_says_one_thing_about_how_lena_builds(c):
+    """Judges v9 09.11: the strip said "Sold to an agent" over approval-pending orders; the hero said "one car at a
+    time" while the shop card said "small batches"; the hero said "open to every AI agent"."""
+    from pathlib import Path
+    root = Path(web.__file__).resolve().parent.parent
+    strip = (root / "studio/src/SoldStrip.tsx").read_text()
+    assert "Agent checkouts ·" in strip and "Sold to an agent ·" not in strip
+    page = c.get("/").text
+    assert "Any AI agent can now<br>buy at her shop." in page and "open to every AI agent" not in page.lower().replace("<br>", " ")
+    about = c.get("/c/small-garage.json").json()
+    about = about.get("about") or about.get("shop", {}).get("about", "")
+    assert "builds each car by hand" in about and "batch" not in about
+    assert "builds each 1:43 car by hand" in page and "one car at a time" not in page.lower() and "one 1:43 car at a time" not in page

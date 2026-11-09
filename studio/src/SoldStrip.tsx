@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-// "Sold to an agent · this week": the studio's KPI strip (custom widget, design B v2 + WOW judge #5).
+// "Agent checkouts · this week" (counts checkouts started, paid or still awaiting PayPal approval; judges v9 09.11): the studio's KPI strip (custom widget, design B v2 + WOW judge #5).
 // Who sold this week's orders: an outside AI agent over MCP (the accent), Lena's own sales chat, a made-to-order build.
 // When a new MCP sale lands, only that one digit rolls up (no odometer) and the PayPal chip flips to its new status.
 
@@ -45,7 +45,7 @@ export default function SoldStrip(props: any) {
   return (
     <div className="ss">
       <div className="ss-head">
-        <span className="ss-label">Sold to an agent · {days === 7 ? 'this week' : `last ${days} days`}
+        <span className="ss-label">Agent checkouts · {days === 7 ? 'this week' : `last ${days} days`}
           {s.includes_sample && <span className="ss-note"> · includes sample history</span>}</span>
         {s.last_mcp && <span className={'ss-chip' + (flip ? ' flip' : '') + (s.last_mcp.sample ? ' sample' : '')}>
           {s.last_mcp.sample ? 'SAMPLE · ' : 'PayPal · '}{s.last_mcp.id} · {s.last_mcp.sample ? 'sample, no PayPal call' : s.last_mcp.paypal}</span>}

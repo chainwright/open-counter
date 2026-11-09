@@ -41,7 +41,7 @@ function App() {
   }, []);
   const ai = useMemo<AgAiHarnessSetup>(() => studioAi([
     { label: 'Where did my agent go wrong?', prompt: "Ask Lena's shop analyst where my agent went wrong this week and whether her lessons worked." },
-    { label: 'Sold to AI agents', prompt: 'How many cars did outside AI agents buy this week?' },
+    { label: 'Agent checkouts', prompt: 'How many checkouts did outside AI agents start this week, and how many are paid?' },
     { label: 'Cars sold by model', prompt: 'Add a bar chart of cars sold (qty) by car.' },
   ]), []);
   const widgets = useMemo(() => (cfg: any) => createWidgets({
@@ -71,7 +71,7 @@ function App() {
       minSize: { width: 520, height: 300 },
     } as any, {
       id: 'agent-sold',
-      label: 'Sold to an agent',
+      label: 'Agent checkouts',
       formatShape: ({ api }: any) => {
         let shape: any;
         api.defineAiCommand((b: any) => {
@@ -81,9 +81,9 @@ function App() {
         return shape;
       },
       ai: {
-        label: 'Sold to an agent',
-        description: "A strip of three big numbers for the period: orders an outside AI agent placed over MCP (red accent), orders from Lena's own sales chat, and made-to-order builds, plus the newest MCP sale with its PayPal status.",
-        usage: 'Use when the user asks how many sales came from AI agents, MCP, or by channel. Not for revenue trends.',
+        label: 'Agent checkouts',
+        description: "A strip of three big numbers for the period: checkouts an outside AI agent started over MCP (red accent), checkouts from Lena's own sales chat, and made-to-order builds (each counted once started, paid or still awaiting the buyer's approval in PayPal), plus the newest MCP checkout with its PayPal status.",
+        usage: 'Use when the user asks how many checkouts or sales came from AI agents, MCP, or by channel. Not for revenue trends.',
         configuration: 'No data mapping. Full width, short (about 6 rows).',
       },
       form: (params: any) => params.createDefaults({ dataMappingItems: [] }),
