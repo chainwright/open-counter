@@ -119,3 +119,28 @@ def test_the_studio_endpoint_scopes_open_rows_to_the_viewer(tmp_path, monkeypatc
     c = TestClient(web.app)
     rows = lambda v: [r["chat"] for r in c.get("/api/maker/agent_misses", headers={"x-visitor": v}).json()["open"]]
     assert "chat-b1" in rows("judgeB") and "chat-b1" not in rows("judgeA")
+
+
+# ---- round-2 judges 08.11 N3: one open row per question, not per chat ----
+def test_the_same_question_in_two_chats_is_one_open_row_the_newest_with_a_count():
+    convs = [chat("c1", [turn(100, "Can I pay with a credit card instead of PayPal?", "I'm not sure about that.")]),
+             chat("c2", [turn(300, "Can I pay with a credit card?", "I'm not sure, sorry.")]),
+             chat("c3", [turn(200, "Do you do gift wrap?", "I don't know.")]),
+             chat("c4", [turn(250, "Is the red one a real Ferrari?", "Sorry, I can't help with that.")]),   # no topic
+             chat("c5", [turn(260, "Is the blue one a real Porsche?", "Sorry, I can't help with that.")])]  # no topic
+    out = misses.agent_misses(convs, [], [], since=0, matches=shop.lesson_matches, topics=shop.topics)
+    rows = [(r["chat"], r["also"]) for r in out["open"]]
+    assert rows == [("c2", 1), ("c5", 0), ("c4", 0), ("c3", 0)]       # credit card once (newest), each untopiced row kept
+    # without the topic reader every chat keeps its row, as before
+    assert len(misses.agent_misses(convs, [], [], since=0, matches=shop.lesson_matches)["open"]) == 5
+
+
+def test_the_studio_shows_the_samples_credit_card_question_once(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from opencounter import sample, web
+    monkeypatch.setattr(shop, "DATA", tmp_path)
+    shop.seed(force=True)
+    sample.build()
+    out = TestClient(web.app).get("/api/maker/agent_misses", headers={"x-visitor": "judgeA"}).json()
+    card = [r for r in out["open"] if "credit card" in r["asked"].lower()]
+    assert len(card) == 1 and card[0]["also"] >= 1

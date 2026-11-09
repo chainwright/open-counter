@@ -48,14 +48,17 @@ def _source_turn(chat: dict, note: str, matches) -> dict | None:
 
 
 def agent_misses(conversations: list[dict], lessons: list[dict], orders: list[dict], since: float, matches,
-                 viewer: str | None = None) -> dict:
+                 viewer: str | None = None, topics=None) -> dict:
     """Rows for the widget.
 
     taught rows: one per lesson — asked, said (the corrected answer), the lesson, and every later matching message
       with followed True/False, plus the paid value of orders from those chats.
     open rows: replies since `since` where the agent got stuck, in chats no lesson came from — a 'Draft a lesson' row.
     `matches(note, text)` is shop.lesson_matches (passed in so this stays a pure function for tests).
-    viewer: None for Lena (every chat); a visitor id on the public demo (sample chats and that visitor's own)."""
+    viewer: None for Lena (every chat); a visitor id on the public demo (sample chats and that visitor's own).
+    topics(text) is shop.topics: open rows asking about the same topics ("Can I pay with a credit card instead of
+    PayPal?" and "Can I pay with a credit card?") are one row, the newest, with `also` = how many other chats asked it
+    (round-2 judges 08.11: two near-identical rows read as a bug, and one lesson covers both anyway)."""
     chats = {c["id"]: c for c in conversations}
     by_order = {o["id"]: o for o in orders}
     taught_chats = {n.get("chat") for n in lessons}
@@ -92,6 +95,19 @@ def agent_misses(conversations: list[dict], lessons: list[dict], orders: list[di
                               "said": t.get("reply", "")[:240]})
                 break   # one row per chat: the first place it got stuck
     open_.sort(key=lambda x: -x["at"])
+    if topics:
+        first: dict[frozenset, dict] = {}
+        kept = []
+        for r in open_:
+            key = frozenset(topics(r["asked"]))
+            if key and key in first:
+                first[key]["also"] += 1
+                continue
+            r["also"] = 0
+            if key:
+                first[key] = r
+            kept.append(r)
+        open_ = kept
     return {"taught": taught, "open": open_[:12],
             "orders_usd": round(sum(by_order[oid].get("total_usd", 0) for cid in all_touched
                                     for oid in chats[cid].get("orders", [])

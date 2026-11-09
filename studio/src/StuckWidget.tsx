@@ -8,7 +8,7 @@ import { readLessonStream } from './lessonStream';
 type Later = { chat: string; no?: number; at: number; followed: boolean };
 type Taught = { lesson: string; note: string; chat: string; asked: string; said: string; later: Later[];
   followed: number; missed: number; orders_usd: number; at: number };
-type Open = { chat: string; no?: number; at: number; asked: string; said: string };
+type Open = { chat: string; no?: number; at: number; asked: string; said: string; also?: number };
 type Data = { taught: Taught[]; open: Open[]; orders_usd: number; days: number };
 
 const visitor = () => {
@@ -110,7 +110,7 @@ export default function StuckWidget(props: any) {
             const d = drafts[o.chat];
             return (
               <tr key={o.chat}>
-                <td>{o.asked}</td>
+                <td>{o.asked}{o.also ? <div className="sw-count">asked in {o.also + 1} chats</div> : null}</td>
                 <td><span className={"sw-struck" + (animateStrike ? " draw" : "")} title={o.said}>{o.said}</span></td>
                 <td>{!d ? <button className="sw-primary" onClick={() => draft(o.chat)}>Draft a lesson</button>
                   : d.busy ? <em className="sw-draft">{d.text ? <>{d.text}<span className="sw-caret" /></> : "Lena's assistant is writing…"}</em>
