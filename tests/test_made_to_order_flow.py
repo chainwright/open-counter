@@ -57,6 +57,10 @@ def test_the_year_is_asked_first_then_the_quote_then_the_invoice_all_in_code(mon
     assert "$92.25 deposit" in done["reply"] and "On the shelf right now" not in done["reply"]
     assert "ships Monday 2026-11-16" in done["reply"] and "ships Monday 2026-11-16" in done["checkout"]["delivery"]
     assert all(no_tool_text(r) for r in (ask, quote, done))
+    # one car-pair takes one week: "about 1 week", never "1 week(s)" (round-2 judges 08.11)
+    assert "about 1 week and" in quote["reply"] and "about 1 week and" in done["reply"]
+    assert "built in 1 week," in done["checkout"]["delivery"]
+    assert not any("(s)" in t for t in (quote["reply"], done["reply"], done["checkout"]["delivery"]))
     [o] = [o for o in shop.orders() if o.get("kind") == "commission" and not o.get("sample")]
     assert o["quote"]["ready_to_ship_by"] == o["estimate"]["ships_on"] == "Monday 2026-11-16"
 

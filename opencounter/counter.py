@@ -138,7 +138,7 @@ def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone:
         return {"ok": True, "order_id": o["id"], "approve_url": link, "you_asked_for": what_the_shopper_asked,
                 "you_are_approving": f"{o['title']} = ${o['total_usd']:.2f}; deposit now ${deposit:.2f}, "
                                      f"the balance before it ships",
-                "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}, arrives "
+                "delivery": f"built in {shop.weeks(q['build_weeks'])}, ships {q['delivery']['ships_on']}, arrives "
                             f"{q['delivery']['arrives_earliest']} to {q['delivery']['arrives_latest']} (estimate)",
                 "ship_to": _ship_to(o), "receipt": receipt(shop.order(o["id"])),
                 "deposit_usd": deposit, "payment": "invoice",
@@ -160,7 +160,7 @@ def start_commission_checkout(cars: list[dict], us_state: str, name: str, phone:
             "you_are_approving": f"{o['title']}: {q['total_cars']} × ${q['unit_usd']}"
                                  + (f" − {q['volume_discount_percent']}% (${q['discount_usd']:.2f})" if q["discount_usd"] else "")
                                  + f" + ${q['shipping_usd']:.2f} shipping = ${o['total_usd']:.2f}",
-            "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}, arrives "
+            "delivery": f"built in {shop.weeks(q['build_weeks'])}, ships {q['delivery']['ships_on']}, arrives "
                         f"{q['delivery']['arrives_earliest']} to {q['delivery']['arrives_latest']} (estimate)",
             "ship_to": _ship_to(o), "receipt": receipt(o),
             "next_step": "Show both lines, then open approve_url. Nothing is charged until they approve in PayPal."}

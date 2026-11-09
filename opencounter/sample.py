@@ -150,7 +150,7 @@ def build(now: float | None = None):
                 chat(t, [(f"Can Lena make {car} in {body} {extra}".strip() + "?",
                           f"Yes, to order. What interior colour, and how many?", []),
                          (f"{inside} inside, {q} of them", f"{q} × {car}, {body} with {inside} interior: ${quote['total_usd']:.2f}, "
-                          f"built in about {quote['build_weeks']} week(s). What name, phone, email and address should it go to?",
+                          f"built in about {shop.weeks(quote['build_weeks'])}. What name, phone, email and address should it go to?",
                           [f"pricing a made-to-order build · {q} cars · ${quote['total_usd']:,.2f}"]),
                          (f"{cust['full_name']}, {cust['phone']}, {cust['email']}, {cust['address_line_1']}, {cust['city']} "
                           f"{cust['state']} {cust['postal_code']}", "Done, the PayPal button is below. Lena starts building once it's paid.",

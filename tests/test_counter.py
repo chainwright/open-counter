@@ -321,3 +321,7 @@ def test_a_build_or_an_unshelved_colour_is_not_a_shelf_car():
     assert shopper._one_car_meant("Could Lena build 12 black convertibles, 1965, red interior") == ""
     assert shopper.parse_made_to_order("Could Lena build 12 black convertibles, 1965, red interior")["quantity"] == 12
     assert "Red American Convertible" in shopper._one_car_meant("2 red convertibles to Chicago")
+
+
+def test_a_build_time_is_written_in_the_singular_or_the_plural():
+    assert shop.weeks(1) == "1 week" and shop.weeks(2) == "2 weeks" and shop.weeks(4) == "4 weeks"

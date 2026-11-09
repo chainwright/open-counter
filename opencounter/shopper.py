@@ -344,7 +344,7 @@ def _call_tool(name: str, args: dict, asked: str = "", typed: str = "") -> dict:
                 q = o["quote"]
                 return {"ok": True, "order_id": o["id"], "approve_url": o["approve_url"], "you_asked_for": o["asked_for"],
                         "you_are_approving": f"{o['title']}: {q['total_cars']} × ${q['unit_usd']} = ${o['total_usd']:.2f}",
-                        "delivery": f"built in {q['build_weeks']} week(s), ships {q['delivery']['ships_on']}",
+                        "delivery": f"built in {shop.weeks(q['build_weeks'])}, ships {q['delivery']['ships_on']}",
                         "ship_to": counter._ship_to(o), "receipt": counter.receipt(o),
                         "next_step": "This order already exists; show it again."}
         return counter.start_commission_checkout(args.get("cars") or [], args.get("us_state", ""), args.get("name", ""),
@@ -659,7 +659,7 @@ def _quote_reply(q: dict, ru: bool, ask: bool = True) -> str:
             f". Volume discounts start at {tiers[0]['min_cars']} cars ({tiers[0]['percent']}% off; "
             f"{tiers[-1]['percent']}% from {tiers[-1]['min_cars']})")
     return (f"Made to order: {cars}. ${q['total_usd']:.2f} in total with shipping{disc}. The build takes about "
-            f"{q['build_weeks']} week(s) and it ships {q['ready_to_ship_by']}. It's paid with a PayPal invoice: half now, "
+            f"{shop.weeks(q['build_weeks'])} and it ships {q['ready_to_ship_by']}. It's paid with a PayPal invoice: half now, "
             "the rest before it ships." + (" Send your first and last name, phone, email and street address with city "
                                           "and ZIP in one message, and I'll make the invoice." if ask else ""))
 
@@ -690,7 +690,7 @@ def _build_reply(out: dict, ru: bool) -> str:
     pay = (f"${dep:.2f} deposit now through the PayPal invoice below, the rest before it ships" if dep
            else "paid with the PayPal button below")
     return (f"Thanks, that's everything. Lena will build {cars}: ${total:.2f}{disc} in total with shipping, {pay}. "
-            f"The build takes about {q.get('build_weeks')} week(s) and it ships {ships}.")
+            f"The build takes about {shop.weeks(q.get('build_weeks'))} and it ships {ships}.")
 
 
 US_STATE_NAMES = {n.lower() for n in (

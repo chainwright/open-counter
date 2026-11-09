@@ -610,7 +610,7 @@ def thanks(oc: str):
     if o.get("kind") == "commission" and status == "paid":
         q = o.get("quote") or {}
         head, lead = "It's yours. Congratulations!", f"Paid {total} through PayPal. Lena starts building your order."
-        steps = [("Lena builds it", f"{q.get('total_cars')} car(s), about {q.get('build_weeks')} week(s); she may call you about the details."),
+        steps = [("Lena builds it", f"{q.get('total_cars')} car{'' if q.get('total_cars') == 1 else 's'}, about {shop.weeks(q.get('build_weeks'))}; she may call you about the details."),
                  ("It ships", f"About {_day(est.get('ships_on', ''))}, and PayPal sends you the tracking."),
                  ("It arrives", f"Between {_day(est.get('arrives_earliest', ''))} and {_day(est.get('arrives_latest', ''))}.")]
     photo = f"/media/{e(item['photo'])}" if item.get("photo") else "/media/hero.jpg"
