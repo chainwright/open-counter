@@ -507,7 +507,8 @@ def _sync_invoice(oc: str) -> dict:
     paid = float(((inv.get("payments") or {}).get("paid_amount") or {}).get("value") or 0)
     st = {"PAID": "paid", "MARKED_AS_PAID": "paid", "PARTIALLY_PAID": "deposit_paid",
           "CANCELLED": "cancelled"}.get(inv.get("status"), o["status"])
-    fields = {"paid_usd": paid, "invoice_status": inv.get("status"), "invoice_checked": time.time()}
+    fields = {"paid_usd": paid, "invoice_status": inv.get("status"), "invoice_checked": time.time(),
+              "invoice_via": inv.get("_via")}   # PayPal Agent Toolkit, or the REST fallback
     if st != o["status"]:
         fields["status"] = st
         if st in ("paid", "deposit_paid") and not o.get("paid_at"):
@@ -1096,8 +1097,8 @@ def request_balance(oid: str, req: Request):
         raise HTTPException(403, "On the demo you can request the balance for orders you placed yourself.")
     if o.get("balance_requested") and time.time() - o["balance_requested"] < 3600:
         raise HTTPException(429, "A reminder already went out in the last hour.")
-    paypal.remind_invoice(o["invoice_id"], "Your hand-built cars are finished. Pay the balance and they ship the next day.")
-    return _mask_order(shop.update_order(oid, balance_requested=time.time()))
+    sent = paypal.remind_invoice(o["invoice_id"], "Your hand-built cars are finished. Pay the balance and they ship the next day.")
+    return _mask_order(shop.update_order(oid, balance_requested=time.time(), balance_via=(sent or {}).get("_via")))
 
 
 @app.get("/api/maker/requests")

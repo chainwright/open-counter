@@ -2,9 +2,12 @@
 webhook signature check. Server-side only: the client id and secret never reach the browser or an agent."""
 from __future__ import annotations
 
+import json
+import logging
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
 import httpx
@@ -222,10 +225,62 @@ def create_deposit_invoice(*, order_id: str, shop: dict, rows: list[dict], disco
             "deposit_usd": float(deposit)}
 
 
+# ---- PayPal Agent Toolkit (paypal-agent-toolkit, PayPal's official Python package) ----
+# The invoice status read and the balance reminder go through the Toolkit's own tools (`get_invoice`,
+# `send_invoice_reminder`), called directly through its framework-free core (`shared.api.PayPalAPI.run`), with no LLM
+# in the loop. If the Toolkit is missing, raises, or takes longer than TOOLKIT_TIMEOUT_S, the same call goes out
+# through our REST client below, so the maker's button never depends on the extra package.
+
+TOOLKIT_TIMEOUT_S = 20.0
+VIA_TOOLKIT, VIA_REST = "paypal-agent-toolkit", "rest-fallback"
+_toolkit_api = None
+_toolkit_pool = None
+log = logging.getLogger("opencounter.paypal")
+
+
+def _toolkit():
+    """The Toolkit's API object, imported and built on first use (lazy, so a broken install can't stop startup)."""
+    global _toolkit_api
+    if _toolkit_api is None:
+        from paypal_agent_toolkit.shared.api import PayPalAPI
+        from paypal_agent_toolkit.shared.configuration import Context
+        _toolkit_api = PayPalAPI(client_id=os.environ["PAYPAL_CLIENT_ID"], secret=os.environ["PAYPAL_CLIENT_SECRET"],
+                                 context=Context(sandbox=sandbox(), source="OPEN-COUNTER"))
+    return _toolkit_api
+
+
+def _via_toolkit(method: str, params: dict) -> dict:
+    """Run one Toolkit tool with a deadline (its HTTP calls have no timeout of their own); returns PayPal's JSON."""
+    global _toolkit_pool
+    if _toolkit_pool is None:
+        _toolkit_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="paypal-toolkit")
+    out = _toolkit_pool.submit(lambda: _toolkit().run(method, params)).result(timeout=TOOLKIT_TIMEOUT_S)
+    out = json.loads(out) if isinstance(out, str) else out
+    if not isinstance(out, dict):
+        raise ValueError(f"unexpected Toolkit answer for {method}: {type(out).__name__}")
+    return out
+
+
 def get_invoice(iid: str) -> dict:
-    return _call("GET", f"/v2/invoicing/invoices/{iid}")
+    """The invoice as PayPal holds it (status, payments). `_via` says which path answered."""
+    try:
+        inv = _via_toolkit("get_invoice", {"invoice_id": iid})
+        if not inv.get("status"):
+            raise ValueError("Toolkit get_invoice returned no status")
+        return {**inv, "_via": VIA_TOOLKIT}
+    except Exception as e:  # noqa: BLE001 - any Toolkit failure falls back to the direct call
+        log.warning("PayPal Agent Toolkit get_invoice failed (%s); using REST", type(e).__name__)
+        return {**_call("GET", f"/v2/invoicing/invoices/{iid}"), "_via": VIA_REST}
 
 
 def remind_invoice(iid: str, note: str) -> dict:
-    return _call("POST", f"/v2/invoicing/invoices/{iid}/remind",
-                 {"subject": "Your cars are ready", "note": note[:400], "send_to_invoicer": False})
+    """PayPal emails the buyer a reminder to pay the balance. `_via` says which path sent it. A Toolkit call that
+    times out but lands later could mean a second reminder email; it never moves money."""
+    subject, note = "Your cars are ready", note[:400]
+    try:
+        return {**_via_toolkit("send_invoice_reminder", {"invoice_id": iid, "subject": subject, "note": note}),
+                "_via": VIA_TOOLKIT}
+    except Exception as e:  # noqa: BLE001
+        log.warning("PayPal Agent Toolkit send_invoice_reminder failed (%s); using REST", type(e).__name__)
+        return {**_call("POST", f"/v2/invoicing/invoices/{iid}/remind",
+                        {"subject": subject, "note": note, "send_to_invoicer": False}), "_via": VIA_REST}

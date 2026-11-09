@@ -118,12 +118,25 @@ flowchart LR
 | OAuth 2.0 client credentials | server-side token, cached and refreshed on 401 | `opencounter/paypal.py` |
 | Orders v2: create (CAPTURE) | stock orders: one item per car, shipping, the buyer's address (`SET_PROVIDED_ADDRESS`); for a counter opened at `/open`, `payee` is the maker's own PayPal account | `paypal.create_order`, `onboard.checkout` |
 | Orders v2: approval link → capture | the human's yes; stock re-checked at capture | `web._settle` |
-| Invoicing v2: create, send, partial payment, remind | made-to-order: 50% deposit now, balance before shipping | `paypal.create_deposit_invoice`, `remind_invoice` |
+| Invoicing v2: create, send, partial payment | made-to-order: 50% deposit now, balance before shipping | `paypal.create_deposit_invoice` |
+| Invoicing v2: get invoice, send reminder, **through PayPal's Agent Toolkit** | the invoice status read (deposit in → Lena builds; fully paid → ships) and Lena's "Cars ready: request the balance" button | `paypal.get_invoice`, `paypal.remind_invoice` |
 | Orders v2: shipment tracking | Lena adds a USPS number, PayPal tells the buyer | `paypal.add_tracking` |
 | Payments v2: refund | automatic full refund if the last one sold during approval | `paypal.refund` |
 | Catalog Products v1 | Lena's five listings and the sample counters, registered on start under fixed ids (`OC-SG-014`…, looked up, never duplicated) and shown on every card; products of makers who open a counter at `/open` (registered when the counter opens, under the id PayPal assigns) | `catalog.sync`, `onboard.publish` |
 | Webhooks + signature verification | `CHECKOUT.ORDER.APPROVED` (captured even if the buyer never returns), capture completed/denied/reversed/refunded, invoice paid/updated | `web.webhook` |
 | `PayPal-Request-Id` | a retried create, capture, invoice or refund never doubles money | `paypal._call` |
+
+**PayPal Agent Toolkit, and where it isn't used.** Two calls go through PayPal's official Python
+[Agent Toolkit](https://pypi.org/project/paypal-agent-toolkit/) (`paypal-agent-toolkit==1.11.0`): its `get_invoice`
+and `send_invoice_reminder` tools, run directly through the Toolkit's framework-free core (`PayPalAPI.run`), with no
+LLM choosing them. If the Toolkit fails, is missing or takes over 20 s, the same call goes out through our own REST
+client, and the order records which path served it (`invoice_via`, `balance_via`: `paypal-agent-toolkit` or
+`rest-fallback`). Tests: `tests/test_paypal_toolkit.py` (Toolkit answers; Toolkit raises, hangs or is missing → REST).
+Checked against the sandbox on 9 Nov: invoice `INV2-VV7G-JLS2-JXCV-3QTR` read as `PARTIALLY_PAID` ($92.25) and a
+reminder sent, both through the Toolkit. Everything else in the table above (orders, capture, tracking, refunds,
+catalog, webhooks, invoice create and send) is our own REST client in `opencounter/paypal.py`. The Docker image installs
+the Toolkit with `--no-deps` (`requirements-paypal-toolkit.txt`): its core needs only `pydantic` and `requests`, and its
+declared LangChain/CrewAI/OpenAI Agents extras would add about 500 packages we never import.
 
 ## What uses AI, and where
 - **Sales agent** (`opencounter/shopper.py`): NVIDIA Nemotron 3 Super on Nebius, native tool calls, answers in the
@@ -240,6 +253,7 @@ Render asks for the keys (PayPal sandbox app, Nebius, AG Studio licence, webhook
 ## Run locally
 ```bash
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
+.venv/bin/pip install --no-deps -r requirements-paypal-toolkit.txt   # PayPal Agent Toolkit, core only
 export PAYPAL_CLIENT_ID=... PAYPAL_CLIENT_SECRET=...   # sandbox app
 export NEBIUS_API_KEY=...                              # sales agent, assistant, listing writer
 export OPENCOUNTER_PUBLIC_URL=http://127.0.0.1:8800

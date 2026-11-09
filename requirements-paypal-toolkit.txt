@@ -1,0 +1,2 @@
+# Installed with: pip install --no-deps -r requirements-paypal-toolkit.txt (see requirements.txt)
+paypal-agent-toolkit==1.11.0

@@ -6,3 +6,7 @@ openai
 python-multipart
 pillow==13.0.0
 tzdata
+requests==2.34.2
+# PayPal Agent Toolkit: the Dockerfile installs requirements-paypal-toolkit.txt with --no-deps. We call only its
+# framework-free core (pydantic + requests, both above); its declared extras (langchain, crewai-tools, openai-agents)
+# would add ~500 packages we never import.
