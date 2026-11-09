@@ -1,10 +1,10 @@
 {
- "version": 2,
+ "version": 3,
  "slug": "small-garage",
  "name": "Small Garage",
  "maker": "Lena Morris",
  "city": "Columbus, OH",
- "about": "Hand-built 1:43 replicas of classic American and European cars. Resin bodies, photo-etched brass trim, paint mixed to match the original colour. Lena builds in small batches and keeps a shelf of finished cars ready to ship; made-to-order builds go into the next batch.",
+ "about": "Hand-built 1:43 replicas of classic American and European cars. Resin bodies, photo-etched brass trim, paint mixed to match the original colour. Lena builds each car by hand and keeps a small shelf of finished cars ready to ship; made-to-order builds join her build queue.",
  "currency": "USD",
  "rules": {
   "ships_to": "US",

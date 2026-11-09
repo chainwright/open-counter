@@ -166,9 +166,9 @@ answers one question: *where did my agent get stuck, did my lesson fix it, and w
   **Accept** saves it as a lesson; the next matching chat draws its ✓ live. All numbers come from
   `/api/maker/agent_misses` (`opencounter/misses.py`), computed in code. On the public demo a visitor sees the sample
   history and their own chats, never other visitors'.
-- **Sold to an agent** (custom widget, `studio/src/SoldStrip.tsx`): orders this week by who sold them (an outside AI
-  agent over MCP, Lena's sales chat, made to order), and the newest MCP sale with its PayPal status (marked SAMPLE for
-  sample orders).
+- **Agent checkouts** (custom widget, `studio/src/SoldStrip.tsx`): checkouts started this week by who started them
+  (an outside AI agent over MCP, Lena's sales chat, made to order), counted once started, paid or still awaiting the
+  buyer's approval in PayPal; and the newest MCP checkout with its PayPal status (marked SAMPLE for sample orders).
 - Studio's own widgets: a column chart (chats vs orders, `daily` source) and an AG Grid table of orders (`sales` source).
   Both custom widgets are registered with `createWidgets`, each with `ai` metadata and a `formatShape`, so Studio's
   agents can place and configure them.
@@ -262,7 +262,8 @@ while real orders, chats and buyers stay.
 Claude Code wrote code and tests with us, using PayPal's developer docs. Product photos, the 3D models and the bench
 clips are AI-generated (Higgsfield); the shop, Lena and the sample history are fictional. No car brand names or real
 logos are used: the cars are generic AI renderings of period styles, and the badges the image generator drew (a hood
-crest, grille emblems, tyre lettering) were painted out of the photos and the 3D models' textures on 9 Nov 2026.
+crest, grille emblems, tyre lettering) were painted out of the live product photos and 3D textures on 9 Nov; the
+video and gallery were captured before that.
 
 ## License
 MIT. See LICENSE.
