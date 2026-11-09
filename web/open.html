@@ -26,6 +26,11 @@
       <button data-src="text" class="on">Paste a price list</button>
       <button data-src="photo">Photo of a price list</button>
       <button data-src="url">Your website</button>
+      <button data-src="instagram">Instagram screenshots</button>
+    </div>
+    <div data-pane="instagram" hidden>
+      <label class="wide">Screenshots of up to 6 of your Instagram posts, each showing the product and its price (JPEG, PNG or WebP)<input type="file" id="r_shots" accept="image/jpeg,image/png,image/webp" multiple></label>
+      <div class="shots" id="r_shots_prev"></div>
     </div>
     <div data-pane="url" hidden>
       <label class="wide">Your shop's page with your products (https://…)<input id="r_url" type="url" inputmode="url" maxlength="2000" placeholder="https://yourshop.example.com/shop"></label>

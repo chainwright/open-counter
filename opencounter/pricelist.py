@@ -66,6 +66,13 @@ _NOT_A_PRODUCT = re.compile(r"(?:(?:sale|regular|unit|our|your|list|special|orig
                             r"starting at|compare at|you save|reg\.?|msrp|usd|us", re.I)
 
 
+def clean_description(v) -> str | None:
+    """A description as plain text, or None if empty or if it carries an instruction aimed at an AI (it is shown to
+    other agents over MCP)."""
+    t = clean_text(v or "", 250)
+    return None if not t or INSTRUCTION.search(t) else t
+
+
 def price_value(v) -> float | None:
     """A price as a float with cents, or None unless it is above $0 and up to $10,000."""
     if isinstance(v, bool) or v is None:
@@ -150,7 +157,7 @@ def finish(raw: list, source_text: str | None = None) -> tuple[list[dict], int]:
             stock = None
         items.append({"title": name, "price_usd": price,
                       "stock": stock if stock and 0 < stock <= 1000 else None,
-                      "short_description": clean_text(r.get("description") or r.get("short_description") or "", 250) or None})
+                      "short_description": clean_description(r.get("description") or r.get("short_description"))})
     if len(items) > MAX_ITEMS:
         dropped += len(items) - MAX_ITEMS
         items = items[:MAX_ITEMS]

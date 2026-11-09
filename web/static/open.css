@@ -48,3 +48,5 @@ select{background:#0B0C0E;border:1px solid var(--hair);color:#fff;border-radius:
 .smp{margin-top:8px;background:none;border:1px solid var(--hair);color:var(--cyan);border-radius:10px;padding:8px 12px;font:13px "Geist";cursor:pointer}
 textarea{width:100%;resize:vertical}
 body:not(.mode-range) .range-only,body.mode-range .one-only,.range-only[hidden]{display:none!important}
+.shots{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin-top:8px}.shots img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;border:1px solid var(--hair)}
+@media (max-width:560px){.shots{grid-template-columns:repeat(3,minmax(0,1fr))}}

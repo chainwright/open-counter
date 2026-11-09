@@ -130,6 +130,10 @@ the agent asked about. Every call and answer: [`web/static/agents_run.json`](web
     no cookies; rate-limited per network and per browser. `tests/test_webfetch.py` covers 127.0.0.1,
     169.254.169.254, `[::1]`, encoded IPs, a name with one private address, a rebinding name, redirects to private
     addresses, `http://` and to Instagram, huge bodies and a gzip bomb. Our own range pages carry the same JSON-LD.
+  - **From Instagram, by screenshots only:** Instagram doesn't let other sites read its pages and we don't scrape it,
+    so an Instagram address is never fetched; the page says so and opens the screenshot tab. She adds screenshots of
+    up to 6 posts; the same vision model reads the product, price and caption from each (never usernames, likes or
+    hashtags), with the same image caps, nothing stored, and a caption that tries to instruct an AI is dropped.
 
 ## How it works
 ```mermaid

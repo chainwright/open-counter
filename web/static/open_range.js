@@ -10,10 +10,12 @@
   };
   NOTES.photo = "NVIDIA Nemotron VL (on Nebius) reads the prices in your photo. The photo is read once and not kept. A photo has no typed text to check prices against, so check every price before you open.";
   NOTES.url = "Our server opens that one page once (public https pages only, up to 2 MB, no cookies). Products come from the page's own product data when it has it; otherwise NVIDIA Nemotron reads the page's text, and a price is kept only if it's written on the page.";
-  let board = "";
+  NOTES.instagram = "Instagram doesn't let other sites read its pages, and we don't scrape it. So the Instagram route is screenshots: NVIDIA Nemotron VL (on Nebius) reads the product, price and caption from each one. Screenshots are read once and not kept. Check every price before you open.";
+  let board = "", shots = [];
   const READERS = {
     text: () => ({ url: "/api/open/parse", body: { text: $("r_text").value } }),
     photo: () => { if (!board) throw new Error("Add a photo of your price list first."); return { url: "/api/open/parse_image", body: { kind: "photo", images: [board] } }; },
+    instagram: () => { if (!shots.length) throw new Error("Add screenshots of your posts first."); return { url: "/api/open/parse_image", body: { kind: "instagram", images: shots } }; },
     url: () => { const u = $("r_url").value.trim(); if (!u) throw new Error("Add your shop's address first."); return { url: "/api/open/parse_url", body: { url: u } }; },
   };
   window.ocRange = { NOTES, READERS };   // later sources register here
@@ -70,7 +72,8 @@
   }
   window.ocRange.show = show;
 
-  const LABELS = { text: "price list", photo: "photo of a price list", url: "website" };
+  const LABELS = { text: "price list", photo: "photo of a price list", url: "website", instagram: "Instagram screenshots" };
+  window.ocRange.onInstagram = () => { setSrc("instagram"); $("r_hint").textContent = "Instagram doesn't let other sites read its pages. Add screenshots of your posts here instead."; };
   window.ocRange.LABELS = LABELS;
   $("r_read").addEventListener("click", async () => {
     const make = READERS[src]; if (!make) return;
@@ -97,6 +100,13 @@
     $("r_hint").textContent = board ? "" : "That file isn't an image we can read.";
   }
   $("r_board").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) useBoard(f); });
+  $("r_shots").addEventListener("change", async (e) => {
+    const files = [...e.target.files];
+    $("r_hint").textContent = files.length > 6 ? "Up to 6 screenshots: the first 6 are used." : "";
+    shots = (await Promise.all(files.slice(0, 6).map((f) => toDataUrl(f, 1400).catch(() => "")))).filter(Boolean);
+    $("r_shots_prev").textContent = "";
+    shots.forEach((s) => { const i = document.createElement("img"); i.src = s; i.alt = ""; $("r_shots_prev").appendChild(i); });
+  });
   $("r_board_sample").addEventListener("click", async () => useBoard(await fetch("/static/open/pricelist.jpg").then((r) => r.blob())));
   $("r_photo").addEventListener("change", async (e) => { const f = e.target.files[0]; photo = f ? await toDataUrl(f).catch(() => "") : ""; });
 

@@ -177,7 +177,7 @@ def publish_many(rows: list, ships_from: str, maker: str, shop_name: str, image_
         if not 0 < stock <= 1000 or isinstance(r.get("stock"), bool):
             raise ValueError(f"{title}: how many you have, 1 to 1000.")
         clean.append({"title": title, "price_usd": price, "stock": stock,
-                      "short_description": pricelist.clean_text(r.get("short_description") or r.get("description") or "", 250) or None})
+                      "short_description": pricelist.clean_description(r.get("short_description") or r.get("description"))})
     payee = (paypal_email or "").strip()[:120]
     if payee and not EMAIL.match(payee):
         raise ValueError("Your PayPal email doesn't look like an email address.")
