@@ -274,6 +274,10 @@ def purge_test_data() -> dict:
         test_orders = set(KNOWN_TEST_ORDERS) | {oid for k in test_chats for oid in convs[k].get("orders", [])}
         orders = shop.orders()
         test_orders |= {o["id"] for o in orders if TEST_ID.match(o.get("visitor") or "")}
+        # an order placed at a test counter (e.g. over its MCP door, which has no visitor id) is test traffic too
+        test_slugs = {k for k, c in shop._json("counters.json", {}).items()
+                      if not c.get("sample") and TEST_ID.match(c.get("visitor") or "")}
+        test_orders |= {o["id"] for o in orders if o.get("counter") in test_slugs}
         test_orders -= {o["id"] for o in orders if o.get("sample")}
         # call-backs carry the chat's own words; only a distinctive opening (not "hi") is used to find them
         said = [t["user"][:60] for k in test_chats for t in convs[k].get("turns", [])[:1] if len(t.get("user", "")) >= 12]

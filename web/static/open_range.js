@@ -8,7 +8,12 @@
   const NOTES = {
     text: "NVIDIA Nemotron (on Nebius) reads your list; if it's busy, simple rules read it instead. A price is kept only if you wrote that number. You check every line before anything opens.",
   };
-  const READERS = { text: () => ({ url: "/api/open/parse", body: { text: $("r_text").value } }) };
+  NOTES.photo = "NVIDIA Nemotron VL (on Nebius) reads the prices in your photo. The photo is read once and not kept. A photo has no typed text to check prices against, so check every price before you open.";
+  let board = "";
+  const READERS = {
+    text: () => ({ url: "/api/open/parse", body: { text: $("r_text").value } }),
+    photo: () => { if (!board) throw new Error("Add a photo of your price list first."); return { url: "/api/open/parse_image", body: { kind: "photo", images: [board] } }; },
+  };
   window.ocRange = { NOTES, READERS };   // later sources register here
   let src = "text", photo = "", source = "price list";
 
@@ -57,12 +62,13 @@
     const by = r.read_by === "rules" ? "simple rules (no AI)" : r.read_by;
     $("r_by").textContent = `${(r.items || []).length} item${(r.items || []).length === 1 ? "" : "s"} read from your ${label} by ${by}` +
       (r.dropped ? `; ${r.dropped} line${r.dropped > 1 ? "s" : ""} left out (no usable name or price, or over 12 items)` : "") +
-      `. Fix anything that isn't right${(r.items || []).length ? "" : ", or add lines by hand"}.` + (r.note ? " " + r.note : "");
+      `. Fix anything that isn't right${(r.items || []).length ? "" : ", or add lines by hand"}.` +
+      (r.check_prices ? " These prices were read from an image: check each one." : "") + (r.note ? " " + r.note : "");
     $("r2").hidden = false; $("r2").scrollIntoView({ behavior: "smooth", block: "start" });
   }
   window.ocRange.show = show;
 
-  const LABELS = { text: "price list" };
+  const LABELS = { text: "price list", photo: "photo of a price list" };
   window.ocRange.LABELS = LABELS;
   $("r_read").addEventListener("click", async () => {
     const make = READERS[src]; if (!make) return;
@@ -77,12 +83,19 @@
     show(r, LABELS[src] || "price list");
   });
 
-  async function toDataUrl(blob) {
-    const bmp = await createImageBitmap(blob); const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  async function toDataUrl(blob, max = 1280) {
+    const bmp = await createImageBitmap(blob); const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
     cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height); return cv.toDataURL("image/jpeg", 0.86);
   }
   window.ocRange.toDataUrl = toDataUrl;
+  async function useBoard(blob) {
+    board = await toDataUrl(blob, 1600).catch(() => "");
+    $("r_board_prev").src = board || ""; $("r_board_prev").hidden = !board;
+    $("r_hint").textContent = board ? "" : "That file isn't an image we can read.";
+  }
+  $("r_board").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) useBoard(f); });
+  $("r_board_sample").addEventListener("click", async () => useBoard(await fetch("/static/open/pricelist.jpg").then((r) => r.blob())));
   $("r_photo").addEventListener("change", async (e) => { const f = e.target.files[0]; photo = f ? await toDataUrl(f).catch(() => "") : ""; });
 
   $("r_open").addEventListener("click", async () => {

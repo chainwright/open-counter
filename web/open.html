@@ -24,6 +24,12 @@
   <section class="step range-only" id="r1"><b>1</b><div><h2>Bring in your range</h2>
     <div class="srcs" id="srcs">
       <button data-src="text" class="on">Paste a price list</button>
+      <button data-src="photo">Photo of a price list</button>
+    </div>
+    <div data-pane="photo" hidden>
+      <label class="wide">A photo of your price list, menu or price board (JPEG, PNG or WebP)<input type="file" id="r_board" accept="image/jpeg,image/png,image/webp"></label>
+      <button class="smp" id="r_board_sample" type="button">Try a sample price board</button>
+      <img id="r_board_prev" class="preview" alt="" hidden>
     </div>
     <div data-pane="text">
       <label class="wide">Your price list: one item per line, or separated by commas<textarea id="r_text" rows="6" maxlength="6000" placeholder="Brass bell 6cm $24&#10;Oak coaster set of 4 $32&#10;Linen napkin pair $18.50"></textarea></label>

@@ -385,6 +385,29 @@ async def open_parse(req: Request):
     return await asyncio.to_thread(pricelist.from_text, text, _budget_keys(req))
 
 
+@app.post("/api/open/parse_image")
+async def open_parse_image(req: Request):
+    """A photo of a price list or menu (kind "photo"), or up to six screenshots of Instagram posts (kind
+    "instagram") → items for the maker to check. The images are read in memory and not kept."""
+    stop = _open_guard(req)
+    if stop:
+        return stop
+    body = await req.body()
+    if len(body) > 14_000_000:
+        return JSONResponse({"error": "Those images are too big: up to about 2 MB each."}, status_code=413)
+    try:
+        b = json.loads(body)
+        kind = "photo" if b.get("kind") == "photo" else "instagram" if b.get("kind") == "instagram" else ""
+        if not kind:
+            raise ValueError("Say what the images are.")
+        return await asyncio.to_thread(pricelist.from_images, b.get("images"), kind, _budget_keys(req))
+    except shopper.OverBudget as e:
+        return _busy(e)
+    except (ValueError, AttributeError, TypeError) as e:
+        msg = str(e) if isinstance(e, ValueError) and not isinstance(e, json.JSONDecodeError) else "Send the images as JSON."
+        return JSONResponse({"error": msg}, status_code=400)
+
+
 @app.post("/api/open/publish_many")
 async def open_publish_many(req: Request):
     """Open a counter with the items the maker confirmed. Every value is checked again in onboard.publish_many."""

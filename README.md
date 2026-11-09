@@ -114,6 +114,11 @@ the agent asked about. Every call and answer: [`web/static/agents_run.json`](web
   `start_checkout` for any item, `order_status`); Lena's `/mcp/` keeps its nine tools. Reading a list is rate-limited
   per network and per browser. Code: `opencounter/pricelist.py`, `opencounter/counter_door.py`; tests:
   `tests/test_range.py`.
+  - **From a photo of a price list or menu:** the pinned vision model `nvidia/Nemotron-3.5-Super-VL` (the one
+    image-input model on Nebius Token Factory) reads it into the same table. JPEG, PNG or WebP only, about 3 MB and
+    30 MP at most (checked from the header before decoding), re-encoded in memory and never stored; it becomes the
+    counter's photo only if she adds it as one. A photo has no typed text to hold prices against, so the page asks
+    her to check each price. `/open` has a drawn sample board to try.
 
 ## How it works
 ```mermaid
