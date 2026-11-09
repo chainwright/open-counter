@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import html
 import ipaddress
 import json
@@ -202,8 +203,12 @@ def _announce(kind: str, o: dict):
 
 
 @app.get("/api/health")
-def health():
-    return {"ok": True, "paypal": paypal.configured()}
+def health(req: Request):
+    out = {"ok": True, "paypal": paypal.configured()}
+    if _who(req)[1]:   # TEMPORARY deploy check (fix round 3), Lena's key only: which header gave the network, as a hash
+        ip, src = _client_ip_source(req)
+        out["net"] = {"source": src, "key": hashlib.sha256(ip.encode()).hexdigest()[:12]}
+    return out
 
 
 @app.get("/media/{name}")
