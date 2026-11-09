@@ -1,0 +1,8 @@
+{
+ "mcpServers": {
+  "open-counter": {
+   "type": "http",
+   "url": "https://open-counter.onrender.com/mcp/"
+  }
+ }
+}

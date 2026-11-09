@@ -1,0 +1,181 @@
+{
+ "title": "An AI agent (Claude, via Claude Code headless) buys one car over MCP",
+ "label": "Recorded on 9 Nov 2026 · sandbox · not live",
+ "recorded_on": "2026-11-09",
+ "environment": "PayPal sandbox (no real money)",
+ "endpoint": "https://open-counter.onrender.com/mcp/",
+ "client": "Claude Code 2.1.321 headless (model claude-opus-5-5; its only tools: this MCP server)",
+ "honesty": "An AI agent (Claude, via Claude Code headless) chose the calls; approval was a scripted sandbox buyer login.",
+ "transcript": "docs/runs/2026-11-09-claude-code-mcp-purchase/",
+ "steps": [
+  {
+   "kind": "prompt",
+   "step": "The shopper asks the agent",
+   "started_utc": null,
+   "answered_utc": null,
+   "note": "turn 1: 2026-11-09 21:38:16 UTC to 21:38:30 UTC",
+   "response": {
+    "prompt": "Find a green fastback under $70 that ships to Denver and start the checkout."
+   }
+  },
+  {
+   "kind": "agent_mcp",
+   "step": "search_counter",
+   "method": "tools/call",
+   "started_utc": null,
+   "answered_utc": null,
+   "note": "turn 1: 2026-11-09 21:38:16 UTC to 21:38:30 UTC",
+   "command": "search_counter({\"query\": \"green fastback\", \"max_price_usd\": 70})  # chosen by the model",
+   "response": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n  \"shop\": \"Small Garage\",\n  \"results\": [\n    {\n      \"id\": \"sg-014\",\n      \"title\": \"Green American Fastback, 1968\",\n      \"price_usd\": 59.0,\n      \"stock\": 2,\n      \"scale\": \"1:43\",\n      \"length_mm\": 108,\n      \"materials\": \"resin body, photo-etched brass trim, turned aluminium wheels\",\n      \"paint\": \"deep highland green, mixed by hand (our code 68-G)\",\n      \"build_hours\": 26,\n      \"edition\": \"No. 14\",\n      \"notes\": \"Opening-free display model. Comes on a black wood plinth with a dust cover. Not a toy, not for children under 14.\",\n      \"photo_url\": \"https://open-counter.onrender.com/media/green_fastback.jpg?v=372626af23d0e\",\n      \"model_url\": \"https://open-counter.onrender.com/media/green_fastback.glb?v=2509786af23d0e\",\n      \"paypal_catalog_product\": \"OC-SG-014\",\n      \"page_url\": \"https://open-counter.onrender.com/c/small-garage#sg-014\",\n      \"availability\": \"2 in stock; any car can also be made to order (use quote_commission)\",\n      \"matched\": [\n        \"green\",\n        \"fastback\"\n      ]\n    },\n    {\n      \"id\": \"sg-015\",\n      \"title\": \"Highland Blue Fastback, 1967\",\n      \"price_usd\": 59.0,\n      \"stock\": 1,\n      \"scale\": \"1:43\",\n      \"length_mm\": 107,\n      \"materials\": \"resin body, photo-etched brass trim\",\n      \"paint\": \"dark highland blue metallic (our code 67-B)\",\n      \"build_hours\": 28,\n      \"edition\": \"No. 15–16\",\n      \"notes\": \"Display model on plinth with dust cover. Not a toy, not for children under 14.\",\n      \"photo_url\": \"https://open-counter.onrender.com/media/blue_fastback.jpg?v=4c7eb6af23d0e\",\n      \"model_url\": \"https://open-counter.onrender.com/media/blue_fastback.glb?v=29c4046af23d0e\",\n      \"paypal_catalog_product\": \"OC-SG-015\",\n      \"page_url\": \"https://open-counter.onrender.com/c/small-garage#sg-015\",\n      \"availability\": \"1 in stock; any car can also be made to order (use quote_commission)\",\n      \"matched\": [\n        \"fastback\"\n      ]\n    }\n  ],\n  \"note\": \"Only items listed here exist. Anything not in a listing is unknown: ask the maker.\"\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  {
+   "kind": "agent_mcp",
+   "step": "delivery_estimate",
+   "method": "tools/call",
+   "started_utc": null,
+   "answered_utc": null,
+   "note": "turn 1: 2026-11-09 21:38:16 UTC to 21:38:30 UTC",
+   "command": "delivery_estimate({\"us_state\": \"CO\"})  # chosen by the model",
+   "response": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n  \"ok\": true,\n  \"today\": \"Monday 2026-11-09\",\n  \"ships_on\": \"Tuesday 2026-11-10\",\n  \"arrives_earliest\": \"Friday 2026-11-13\",\n  \"arrives_latest\": \"Tuesday 2026-11-17\",\n  \"carrier\": \"USPS Ground Advantage\",\n  \"note\": \"Estimate from the carrier's published ranges, not a guarantee.\",\n  \"shipping_policy\": \"Paid orders from stock ship 1 business day after payment, on the next shipping day (Mon, Tue, Wed, Thu, Fri); the tracking number comes by email when it ships. ships_on assumes payment today.\"\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  {
+   "kind": "agent_mcp",
+   "step": "start_checkout",
+   "method": "tools/call",
+   "started_utc": null,
+   "answered_utc": null,
+   "note": "turn 1: 2026-11-09 21:38:16 UTC to 21:38:30 UTC",
+   "command": "start_checkout({\"us_state\": \"CO\", \"item_id\": \"sg-014\", \"quantity\": 1, \"what_the_shopper_asked\": \"Find a green fastback under $70 that ships to Denver and start the checkout.\"})  # chosen by the model",
+   "response": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n  \"ok\": true,\n  \"order_id\": \"OC-18CD6CD1\",\n  \"approve_url\": \"https://www.sandbox.paypal.com/checkoutnow?token=0FB605538J1498548\",\n  \"you_asked_for\": \"Find a green fastback under $70 that ships to Denver and start the checkout.\",\n  \"you_are_approving\": \"1 × Green American Fastback, 1968 at $59.00 + $6.50 shipping = $65.50, from Small Garage (Lena Morris, Columbus, OH)\",\n  \"delivery\": \"ships 2026-11-10, estimated arrival 2026-11-13 to 2026-11-17 (USPS Ground Advantage; estimate, not a guarantee)\",\n  \"ship_to\": \"\",\n  \"receipt\": {\n    \"rows\": [\n      {\n        \"name\": \"Green American Fastback, 1968\",\n        \"qty\": 1,\n        \"unit\": 59.0,\n        \"sum\": 59.0\n      }\n    ],\n    \"extra\": [\n      {\n        \"name\": \"Shipping\",\n        \"sum\": 6.5\n      }\n    ],\n    \"total\": 65.5,\n    \"lock\": \"9fa517b8\"\n  },\n  \"next_step\": \"Show both lines to the person, then open approve_url. Nothing is charged until they approve in PayPal.\"\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  {
+   "kind": "agent",
+   "step": "The agent answers the shopper",
+   "started_utc": null,
+   "answered_utc": null,
+   "note": "turn 1: 2026-11-09 21:38:16 UTC to 21:38:30 UTC",
+   "response": {
+    "said": "I found one and started the checkout. It hasn't been paid yet, and you won't be charged until you approve it in PayPal.\n\n**Green American Fastback, 1968** (item sg-014) from Small Garage\n- It's a 1:43 scale display model made of resin, 108 mm long. The paint is deep highland green, and it comes on a black wood plinth with a dust cover.\n- Price is $59.00, plus $6.50 shipping to Colorado, for **$65.50 total**. That's under your $70 limit even with shipping.\n- If you pay today, it ships Tuesday, Nov 10 by USPS Ground Advantage. It should reach Denver between Nov 13 and Nov 17. That's an estimate, not a guarantee.\n\n**Order OC-18CD6CD1**\n- **You asked for:** \"Find a green fastback under $70 that ships to Denver and start the checkout.\"\n- **You are approving:** 1 × Green American Fastback, 1968 at $59.00 + $6.50 shipping = $65.50, from Small Garage (Lena Morris, Columbus, OH)\n\n**Approve in PayPal:** https://www.sandbox.paypal.com/checkoutnow?token=0FB605538J1498548\n\nI didn't give the shop an address, so PayPal will ship to the address on your PayPal account. Make sure it's your Denver address before you approve. The link goes to PayPal's sandbox (test) site, so this may be a test checkout rather than a real purchase."
+   }
+  },
+  {
+   "kind": "person",
+   "step": "Buyer approves in PayPal",
+   "who": "a scripted login as the PayPal sandbox buyer",
+   "url": "https://www.sandbox.paypal.com/checkoutnow?token=0FB605538J1498548",
+   "started_utc": "2026-11-09T21:38:38Z",
+   "answered_utc": "2026-11-09T21:38:44Z",
+   "response": {
+    "note": "A script logged in as the sandbox buyer and pressed PayPal's pay button. Nothing is charged before this."
+   }
+  },
+  {
+   "kind": "app",
+   "step": "Return page captures",
+   "url": "https://open-counter.onrender.com/thanks/OC-18CD6CD1",
+   "started_utc": "2026-11-09T21:38:44Z",
+   "answered_utc": "2026-11-09T21:38:48Z",
+   "response": {
+    "page_said": [
+     "SMALL GARAGE · ORDER OC-18CD6CD1",
+     "It's yours. Congratulations!",
+     "",
+     "Paid $65.50 through PayPal. Lena has your order.",
+     ""
+    ]
+   }
+  },
+  {
+   "kind": "paypal",
+   "step": "PayPal's own record (GET /v2/checkout/orders/{id})",
+   "started_utc": null,
+   "answered_utc": null,
+   "response": {
+    "paypal_order_id": "0FB605538J1498548",
+    "paypal_order_status": "COMPLETED",
+    "capture_id": "2B9863740U9168337",
+    "capture_status": "COMPLETED",
+    "amount": {
+     "currency_code": "USD",
+     "value": "65.50"
+    },
+    "capture_create_time": "2026-11-09T21:38:46Z",
+    "custom_id": "OC-18CD6CD1",
+    "ship_to_state": "CA"
+   },
+   "note": "Read from PayPal after the run, to show the capture id"
+  },
+  {
+   "kind": "prompt",
+   "step": "The shopper asks the agent",
+   "started_utc": null,
+   "answered_utc": null,
+   "note": "turn 2: 2026-11-09 21:38:53 UTC to 21:39:00 UTC",
+   "response": {
+    "prompt": "I approved it in PayPal. Is it paid now?"
+   }
+  },
+  {
+   "kind": "agent_mcp",
+   "step": "order_status",
+   "method": "tools/call",
+   "started_utc": null,
+   "answered_utc": null,
+   "note": "turn 2: 2026-11-09 21:38:53 UTC to 21:39:00 UTC",
+   "command": "order_status({\"order_id\": \"OC-18CD6CD1\"})  # chosen by the model",
+   "response": {
+    "content": [
+     {
+      "type": "text",
+      "text": "{\n  \"id\": \"OC-18CD6CD1\",\n  \"title\": \"Green American Fastback, 1968\",\n  \"qty\": 1,\n  \"total_usd\": 65.5,\n  \"status\": \"paid\",\n  \"tracking\": null,\n  \"estimate\": {\n    \"ok\": true,\n    \"today\": \"Monday 2026-11-09\",\n    \"ships_on\": \"Tuesday 2026-11-10\",\n    \"arrives_earliest\": \"Friday 2026-11-13\",\n    \"arrives_latest\": \"Tuesday 2026-11-17\",\n    \"carrier\": \"USPS Ground Advantage\",\n    \"note\": \"Estimate from the carrier's published ranges, not a guarantee.\",\n    \"shipping_policy\": \"Paid orders from stock ship 1 business day after payment, on the next shipping day (Mon, Tue, Wed, Thu, Fri); the tracking number comes by email when it ships. ships_on assumes payment today.\"\n  }\n}"
+     }
+    ],
+    "isError": false
+   }
+  },
+  {
+   "kind": "agent",
+   "step": "The agent answers the shopper",
+   "started_utc": null,
+   "answered_utc": null,
+   "note": "turn 2: 2026-11-09 21:38:53 UTC to 21:39:00 UTC",
+   "response": {
+    "said": "Yes, it's paid. The shop now shows order **OC-18CD6CD1** as paid: one Green American Fastback, 1968, for $65.50 total.\n\n- **Ships:** Tuesday, Nov 10, by USPS Ground Advantage\n- **Arrives in Denver:** between Fri, Nov 13 and Tue, Nov 17 (an estimate, not a guarantee)\n- **Tracking:** not available yet. You'll get the tracking number by email when it ships.\n\nIt will go to the address on your PayPal account. The payment went through PayPal's sandbox (test) site, so this may be a test order rather than a real purchase."
+   }
+  }
+ ],
+ "result": {
+  "order_id": "OC-18CD6CD1",
+  "paypal_order_id": "0FB605538J1498548",
+  "capture_id": "2B9863740U9168337",
+  "amount_usd": "65.50",
+  "asked_utc": "2026-11-09T21:38:16Z",
+  "captured_utc": "2026-11-09T21:38:46Z",
+  "status": "paid"
+ },
+ "readme_label": "Logged run 2: an AI agent over MCP → paid"
+}

@@ -89,23 +89,26 @@
 
   // ---- replay of the recorded run ----
   var run = null, at = 0;
-  var KIND = { mcp: "OUTSIDE MCP CLIENT → MCP", person: "BUYER'S LOGIN IN PAYPAL (SCRIPTED)", app: "OPEN COUNTER", paypal: "PAYPAL'S RECORD" };
+  var KIND = { mcp: "OUTSIDE MCP CLIENT → MCP", person: "BUYER'S LOGIN IN PAYPAL (SCRIPTED)", app: "OPEN COUNTER", paypal: "PAYPAL'S RECORD",
+    prompt: "THE SHOPPER, TO THE AI AGENT", agent: "AI AGENT (CLAUDE), IN ITS OWN WORDS", agent_mcp: "AI AGENT (CLAUDE) → MCP, ITS OWN CHOICE" };
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function hm(iso) { return iso ? iso.replace("T", " ").replace("Z", " UTC") : ""; }
   function show(i) {
     at = Math.max(0, Math.min(i, run.steps.length - 1));
     var s = run.steps[at];
     var resp = s.response;
-    var txt = s.kind === "mcp" ? readable({ result: resp }) : JSON.stringify(resp, null, 2);
+    var isMcp = s.kind === "mcp" || s.kind === "agent_mcp";
+    var txt = isMcp ? readable({ result: resp }) : s.kind === "agent" ? resp.said : s.kind === "prompt" ? resp.prompt : JSON.stringify(resp, null, 2);
     if (s.step === "tools/list") {   // nine full schemas are long; names first, schemas below
       txt = "tools: " + resp.tools.map(function (t) { return t.name; }).join(", ") + "\n\n" + JSON.stringify(resp, null, 2);
     }
     var times = s.started_utc ? hm(s.started_utc) + (s.answered_utc && s.answered_utc !== s.started_utc ? " → " + hm(s.answered_utc).slice(11) : "") : (s.note || "");
     $("#rstep").innerHTML = '<div class="rstep"><div class="who">' + (at + 1) + " / " + run.steps.length + " · " + esc(KIND[s.kind] || s.kind) +
       "</div><h3>" + esc(s.step) + '</h3><div class="t">' + esc(times) + "</div>" +
-      (s.command ? "<b class=\"who\">COMMAND</b><pre>" + esc(s.command) + "</pre>" : "") +
+      (s.command ? "<b class=\"who\">" + (s.kind === "agent_mcp" ? "CALL" : "COMMAND") + "</b><pre>" + esc(s.command) + "</pre>" : "") +
       (s.url ? '<b class="who">PAGE</b><pre>' + esc(s.url) + "</pre>" : "") +
-      '<b class="who">' + (s.kind === "mcp" ? "ANSWER (content[].text shown parsed)" : "WHAT HAPPENED") + "</b><pre>" + esc(txt) + "</pre></div>";
+      '<b class="who">' + (isMcp ? "ANSWER (content[].text shown parsed)" : s.kind === "agent" ? "THE AGENT SAID" : s.kind === "prompt" ? "THE SHOPPER TYPED" : "WHAT HAPPENED") +
+      "</b><pre>" + esc(txt) + "</pre></div>";
     document.querySelectorAll("#rdots button").forEach(function (d, k) {
       d.classList.toggle("on", k === at); d.classList.toggle("past", k < at);
     });
@@ -116,23 +119,34 @@
   function result() {
     var r = run.result;
     var cells = [["ORDER", r.order_id], ["PAYPAL ORDER", r.paypal_order_id], ["CAPTURE", r.capture_id],
-      ["AMOUNT", "$" + r.amount_usd + " · " + r.status], ["CHECKOUT STARTED", hm(r.checkout_started_utc)], ["CAPTURED", hm(r.captured_utc)]];
+      ["AMOUNT", "$" + r.amount_usd + " · " + r.status],
+      r.asked_utc ? ["SHOPPER ASKED THE AGENT", hm(r.asked_utc)] : ["CHECKOUT STARTED", hm(r.checkout_started_utc)], ["CAPTURED", hm(r.captured_utc)]];
     $("#rresult").innerHTML = '<div class="ids">' + cells.map(function (c) {
       return "<div><span>" + esc(c[0]) + "</span><code>" + esc(c[1]) + "</code></div>";
-    }).join("") + '</div><p class="fine">The same ids are logged in the project README (Logged run: outside MCP client → paid).</p>';
+    }).join("") + '</div><p class="fine">The same ids are logged in the project README (' + esc(run.readme_label || "Logged run: outside MCP client → paid") + ")" +
+      (run.transcript ? ", and the full transcript is in the repo at " + esc(run.transcript) : "") + ".</p>";
     $("#rresult").hidden = false;
   }
-  fetch("/static/agents_run.json", { cache: "no-cache" }).then(function (r) { return r.json(); }).then(function (d) {
-    run = d;
-    $("#rlabel").textContent = d.label.toUpperCase();
-    $("#rintro").textContent = "A real run on the live app, replayed step by step: " + d.client + " against " + d.endpoint +
-      ", the sandbox buyer approving in PayPal, and the capture. Nothing on this page calls the server again.";
-    $("#rdots").innerHTML = d.steps.map(function (s, k) {
-      return '<button aria-label="Step ' + (k + 1) + ": " + esc(s.step) + '">' + (k + 1) + "</button>";
-    }).join("");
-    document.querySelectorAll("#rdots button").forEach(function (b, k) { b.addEventListener("click", function () { show(k); }); });
-    show(0);
-  }).catch(function () { $("#rintro").textContent = "The recorded run couldn't be loaded."; });
+  function load(file) {
+    $("#rresult").hidden = true; $("#rstep").textContent = ""; run = null;
+    document.querySelectorAll("#rruns button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-run") === file); });
+    fetch("/static/" + file, { cache: "no-cache" }).then(function (r) { return r.json(); }).then(function (d) {
+      run = d;
+      $("#rlabel").textContent = d.label.toUpperCase();
+      $("#rintro").textContent = "A real run on the live app, replayed step by step: " + d.client + " against " + d.endpoint +
+        ", the sandbox buyer approving in PayPal, and the capture. " + (d.honesty ? d.honesty + " " : "") +
+        "Nothing on this page calls the server again.";
+      $("#rdots").innerHTML = d.steps.map(function (s, k) {
+        return '<button aria-label="Step ' + (k + 1) + ": " + esc(s.step) + '">' + (k + 1) + "</button>";
+      }).join("");
+      document.querySelectorAll("#rdots button").forEach(function (b, k) { b.addEventListener("click", function () { show(k); }); });
+      show(0);
+    }).catch(function () { $("#rintro").textContent = "The recorded run couldn't be loaded."; });
+  }
+  document.querySelectorAll("#rruns button").forEach(function (b) {
+    b.addEventListener("click", function () { load(b.getAttribute("data-run")); });
+  });
+  load("agents_run_claude.json");
   $("#rprev").addEventListener("click", function () { if (run) show(at - 1); });
   $("#rnext").addEventListener("click", function () { if (run) show(at + 1); });
   $("#rall").addEventListener("click", function () { if (run) show(run.steps.length - 1); });

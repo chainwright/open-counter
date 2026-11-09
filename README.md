@@ -58,6 +58,20 @@ newest MCP checkout, paid. PayPal's address on file for the test buyer is in CA,
 the agent asked about. Every call and answer: [`web/static/agents_run.json`](web/static/agents_run.json), replayed at
 [`/agents`](https://open-counter.onrender.com/agents).
 
+**Logged run 2: an AI agent over MCP → paid** (live sandbox, 9 Nov 2026, UTC). An AI agent (Claude, via Claude Code
+headless) chose the calls; approval was a scripted sandbox buyer login. Claude Code 2.1.321 ran
+`claude -p "Find a green fastback under $70 that ships to Denver and start the checkout."` with
+`--strict-mcp-config --mcp-config` naming only `https://open-counter.onrender.com/mcp/` and `--tools ''`, so its only
+tools were our nine (model `claude-opus-5-5`). Starting at 21:38:16, the model called `search_counter` ("green
+fastback", max $70), `delivery_estimate` (CO) and `start_checkout` (`sg-014`, quantity 1, CO), then showed the shopper
+both lines and the approve link. That made order `OC-18CD6CD1` ($59.00 + $6.50 = $65.50) and PayPal order
+`0FB605538J1498548`. A script logged in as the sandbox buyer and approved at 21:38:44; the return page captured it
+(capture `2B9863740U9168337`, `COMPLETED`, 21:38:46). In a second turn of the same session ("I approved it in PayPal. Is
+it paid now?") the model called `order_status` and answered that it is paid. The full transcripts (stream-json, local
+folder paths replaced), the command, the approval log and PayPal's order record:
+[`docs/runs/2026-11-09-claude-code-mcp-purchase/`](docs/runs/2026-11-09-claude-code-mcp-purchase/); replayed at
+[`/agents`](https://open-counter.onrender.com/agents) as the first recording.
+
 ## Try it in two minutes
 - **Shop:** https://open-counter.onrender.com · chat with the shop's sales agent in section 01, turn any car in 3D.
 - **Lena's back office (open, no login):** https://open-counter.onrender.com/maker

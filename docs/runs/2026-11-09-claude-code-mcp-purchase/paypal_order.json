@@ -1,0 +1,13 @@
+{
+ "paypal_order_id": "0FB605538J1498548",
+ "paypal_order_status": "COMPLETED",
+ "capture_id": "2B9863740U9168337",
+ "capture_status": "COMPLETED",
+ "amount": {
+  "currency_code": "USD",
+  "value": "65.50"
+ },
+ "capture_create_time": "2026-11-09T21:38:46Z",
+ "custom_id": "OC-18CD6CD1",
+ "ship_to_state": "CA"
+}

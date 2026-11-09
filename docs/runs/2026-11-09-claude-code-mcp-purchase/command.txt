@@ -1,0 +1,8 @@
+# turn 1 (the shopper's request); turn 2 resumes the same session after the buyer approved in PayPal
+claude -p "Find a green fastback under $70 that ships to Denver and start the checkout." \
+  --strict-mcp-config --mcp-config mcp.json --tools '' --allowedTools mcp__open-counter \
+  --setting-sources '' --output-format stream-json --verbose --max-budget-usd 2
+claude -p "I approved it in PayPal. Is it paid now?" --resume <session id from turn1.jsonl> <same flags>
+# --tools '' removes every built-in tool and --strict-mcp-config every other MCP server: the agent's only tools are
+# the nine tools of https://open-counter.onrender.com/mcp/. The model chose each call.
+# turn 1: 2026-11-09T21:38:16Z to 2026-11-09T21:38:30Z; turn 2: 2026-11-09T21:38:53Z to 2026-11-09T21:39:00Z
