@@ -175,3 +175,19 @@ def test_a_sale_through_lenas_own_chat_is_not_called_a_sale_to_an_ai_agent(c):
     assert "SOLD TO AN AI AGENT" not in (web_dir / "static/app.js").read_text()
     toast = (web_dir / "static/maker.js").read_text()
     assert 'o.channel === "mcp" ? "SOLD TO AN<br>AI AGENT" : "SOLD THROUGH<br>HER AI AGENT"' in toast
+
+
+def test_the_news_list_takes_lenas_key_only_in_a_header_compared_in_constant_time(c, monkeypatch):
+    """Judge panel 09.11 F-07: the key was in the query string (kept by proxies and logs) and compared with ==."""
+    import hmac
+    monkeypatch.setenv("MAKER_KEY", "lena-secret")
+    assert c.get("/api/maker/news-list.csv?key=lena-secret").status_code == 403    # never from the address
+    assert c.get("/api/maker/news-list.csv", headers={"x-maker-key": "wrong"}).status_code == 403
+    r = c.get("/api/maker/news-list.csv", headers={"x-maker-key": "lena-secret"})
+    assert r.status_code == 200 and r.text.startswith("name,email")
+    seen = []
+    monkeypatch.setattr(hmac, "compare_digest", lambda a, b: seen.append(1) or a == b)
+    c.get("/api/maker/news-list.csv", headers={"x-maker-key": "lena-secret"})
+    assert seen
+    monkeypatch.delenv("MAKER_KEY")
+    assert c.get("/api/maker/news-list.csv", headers={"x-maker-key": ""}).status_code == 403   # no key set: nobody

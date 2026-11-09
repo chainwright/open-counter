@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import html
 import ipaddress
 import json
@@ -77,7 +78,8 @@ def _who(req: Request) -> tuple[str, bool]:
     (lessons, shipping its own orders) stays with it. Lena's key (MAKER_KEY) can do everything."""
     v = re.sub(r"[^A-Za-z0-9_-]", "", req.headers.get("x-visitor", ""))[:40]
     key = os.environ.get("MAKER_KEY", "")
-    return v, bool(key) and req.headers.get("x-maker-key", "") == key
+    given = req.headers.get("x-maker-key", "")
+    return v, bool(key) and hmac.compare_digest(given.encode(), key.encode())   # constant time (judge panel 09.11)
 
 
 def _initials(name: str | None) -> str:
@@ -1107,10 +1109,10 @@ def maker_requests(req: Request):
 
 
 @app.get("/api/maker/news-list.csv")
-def news_list(key: str = ""):
-    """Everyone who said yes to news in chat, full details, for Lena only (MAKER_KEY)."""
-    want = os.environ.get("MAKER_KEY", "")
-    if not want or key != want:
+def news_list(req: Request):
+    """Everyone who said yes to news in chat, full details, for Lena only: her key (MAKER_KEY) in the x-maker-key
+    header, never in the address, where proxies and logs keep it (judge panel 09.11)."""
+    if not _who(req)[1]:
         raise HTTPException(403, "Lena's key needed")
     import csv, io
     buf = io.StringIO()

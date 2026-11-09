@@ -227,7 +227,15 @@ window.OC = (() => {
   document.getElementById("export").addEventListener("click", () => {
     const key = prompt("Lena's key"); if (!key) return;
     try { localStorage.setItem("oc_maker_key", key); } catch (e) {}   // her screen shows full names from now on
-    location.href = "/api/maker/news-list.csv?key=" + encodeURIComponent(key);
+    // the key goes in a header, never in the address (proxies and logs keep addresses; judge panel 09.11)
+    fetch("/api/maker/news-list.csv", { headers: { "x-maker-key": key } }).then((r) => {
+      if (!r.ok) { alert("That isn't Lena's key."); return null; }
+      return r.blob();
+    }).then((b) => {
+      if (!b) return;
+      const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "small-garage-news-list.csv";
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }).catch(() => {});
   });
 
 
