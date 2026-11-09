@@ -71,7 +71,7 @@
 .sw-pay strong { font-size: clamp(28px, 2.6vw, 40px); }
 .ss-v { font-size: clamp(36px, 3.6vw, 60px); }
 /* the AI panel's empty state says who answers (Studio has no empty-state option, so it rides on the starters list) */
-.ag-studio-ai-prompt-starters::before { content: "Ask about your shop. Studio's lead agent hands shop questions to Lena's shop analyst, which can ask Studio's page and widget agents to build a panel.";
+.ag-studio-ai-prompt-starters::before { content: "Ask about your shop. Studio's lead agent hands shop questions to Lena's shop analyst, and a request for a new panel to Studio's page and widget agents.";
   display: block; margin: 0 4px 10px; font: italic 14px/1.4 "Newsreader", Georgia, serif; color: #4A4238; white-space: normal; }
 @media (max-width: 900px) {
   .sw { padding: 12px 12px; } .sw-table { font-size: 13px; } .sw-table th:nth-child(1), .sw-table td:nth-child(1) { width: 24%; } .sw-table th:nth-child(2), .sw-table td:nth-child(2) { width: 22%; }

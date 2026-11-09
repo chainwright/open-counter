@@ -65,7 +65,7 @@ tests with PayPal stubbed; it has no sandbox run.
   colours and the quantity if they're missing), then quotes the total, the build time and the ship date from Lena's
   rules (ten or more cars also get a volume discount). It's paid with a **PayPal invoice: 50% deposit now, the balance
   before shipping.** On PayPal's invoice page, *Partial amount* pays just the deposit.
-- Any outside agent gets the same nine tools through the MCP server, with the same rules.
+- Any outside agent gets the same nine tools through the MCP server, with the same prices, stock and dates.
 
 **For the maker**
 - **Back office** with one period filter (today … year) over every tab: orders, numbered chats by day with the
@@ -153,8 +153,9 @@ answers one question: *where did my agent get stuck, did my lesson fix it, and w
 
 **What's on the page** (`studio/src/main.tsx`)
 - **Where my agent got stuck** (custom widget, `studio/src/StuckWidget.tsx`): what the shopper asked, the agent's
-  original reply struck through in red pencil, Lena's lesson, and a ✓ or ✗ for every later chat the lesson applied to,
-  with the paid value of orders from those chats. Rows with no lesson yet have **Draft a lesson**: the server streams
+  original reply struck through in red pencil, Lena's lesson, and a ✓ or ✗ for every later chat that asked the same
+  thing, with the paid value of orders from those chats. Rows with no lesson yet (one per question, with how many chats
+  asked it) have **Draft a lesson**: the server streams
   the model's tokens as AG-UI events (`TEXT_MESSAGE_START / _CONTENT / _END`, then `RUN_FINISHED` with whether the
   shop's matcher understands it), and the cell draws each token as it arrives (`studio/src/lessonStream.ts`).
   **Accept** saves it as a lesson; the next matching chat draws its ✓ live. All numbers come from
@@ -172,9 +173,9 @@ answers one question: *where did my agent get stuck, did my lesson fix it, and w
 - AG's five built-in agents (Lead, Planning, Data, Page, Widget) all run through our own model adapter
   (`directLlmRunner({... adapter})`), plus a sixth, **Lena's shop analyst** (`id: 'shop'`), with two tools defined by
   `api.defineAiTool`: `agent_misses` and `agent_sales`, which call the shop's endpoints.
-- The Lead hands shop questions to the analyst through Studio's own `delegate_to`. The analyst hands widget work to
-  Studio's Page agent (to add a panel) or Widget agent (to change one). So the chat shows Lead → Lena's shop analyst
-  for a question, and Lead → analyst → Page/Widget agent when Lena asks for a panel.
+- The Lead hands shop questions to the analyst through Studio's own `delegate_to`. So the chat shows Lead → Lena's
+  shop analyst for a shop question, and Lead → Page agent → Widget agent when Lena asks for a new panel; the analyst
+  can also hand its own widgets to them.
 
 **How the adapter works**
 ```mermaid

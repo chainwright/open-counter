@@ -4,9 +4,9 @@ import { shopAdapter } from './adapter';
 
 // The studio's AI: AG's five built-in agents plus ours, "Lena's shop analyst", all on Nemotron through our server.
 // Ours knows the shop (its agent's mistakes and lessons, who sold this week's orders) through two tools that call the
-// shop's own endpoints, so every number is computed in code. The Lead hands it shop questions; it hands widget work on
-// to Studio's Page agent (to add one) or Widget agent (to change one) — so the chat panel shows Lead → Lena's shop
-// analyst for a question, and Lead → Lena's shop analyst → Page/Widget agent when Lena asks for a panel.
+// shop's own endpoints, so every number is computed in code. The Lead hands it shop questions, and it can hand its own
+// widgets to Studio's Page agent (to add one) or Widget agent (to change one). What the logged runs show (8 Nov): Lead →
+// Lena's shop analyst for a shop question, and Lead → Page agent → Widget agent when Lena asks for a new panel.
 
 const adapter = shopAdapter();
 const visitor = () => localStorage.getItem('oc_visitor') || '';
