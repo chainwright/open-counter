@@ -205,9 +205,13 @@ def _announce(kind: str, o: dict):
 @app.get("/api/health")
 def health(req: Request):
     out = {"ok": True, "paypal": paypal.configured()}
-    if _who(req)[1]:   # TEMPORARY deploy check (fix round 3), Lena's key only: which header gave the network, as a hash
+    # TEMPORARY deploy check (fix round 3), removed after the live check: only for whoever holds a one-time token
+    # (its hash is here, the token is not): which header gave the network share, as a hash, and the hop count
+    if hashlib.sha256(req.headers.get("x-oc-check", "").encode()).hexdigest() == "c7b3b84d335922ef856b62e382e32a78ba24edac511d530f1903b4ba203e731e":
         ip, src = _client_ip_source(req)
-        out["net"] = {"source": src, "key": hashlib.sha256(ip.encode()).hexdigest()[:12]}
+        out["net"] = {"source": src, "key": hashlib.sha256(ip.encode()).hexdigest()[:12],
+                      "xff_hops": len([h for h in req.headers.get("x-forwarded-for", "").split(",") if h.strip()]),
+                      "cf_header": bool(req.headers.get("cf-connecting-ip"))}
     return out
 
 
