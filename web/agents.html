@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>For AI agents — Open Counter</title>
-<meta name="description" content="Connect any MCP client to Lena's counter: the address, config snippets, a live read-only console and a recorded purchase from an outside agent.">
+<meta name="description" content="Connect any MCP client to Lena's counter: the address, config snippets, a live read-only console and a recorded purchase by an outside MCP client.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/open.css">
@@ -57,7 +57,7 @@
   <span class="k">FOR AI AGENTS AND THE PEOPLE WHO BUILD THEM</span>
   <h1>Connect your agent<br>to Lena's counter.</h1>
   <p class="lead">Any MCP client can read Small Garage and start a PayPal checkout. Prices, stock and delivery dates come
-    from the shop's code, and nothing is charged until a person approves in PayPal.</p>
+    from the shop's code, and nothing is charged until the buyer approves in PayPal.</p>
   <p class="path">Judge path: <a href="#console">call the real MCP server below</a> ·
     <a href="#replay">step through a recorded purchase</a> · <a href="/studio/">see it in Lena's studio</a></p>
 
@@ -107,12 +107,12 @@
 
   <section class="step"><b>4</b><div><h2>How paying works</h2>
     <p><code>start_checkout</code> returns a PayPal approval link and two lines the agent must show the person:
-      what they asked for, and what they're approving (items, shipping, total, ship date). Only a person can pay, in
-      PayPal's own window. The money is captured after that, and stock is checked again at capture. Made-to-order
+      what they asked for, and what they're approving (items, shipping, total, ship date). Only the buyer's PayPal login can approve it,
+      in PayPal's own window. The money is captured after that, and stock is checked again at capture. Made-to-order
       builds get a PayPal invoice instead: 50% deposit now, the balance before shipping.</p>
   </div></section>
 
-  <section class="step" id="replay"><b>5</b><div><h2>An outside agent buys, end to end</h2>
+  <section class="step" id="replay"><b>5</b><div><h2>An outside MCP client buys, end to end</h2>
     <p><span class="rec" id="rlabel">RECORDED · SANDBOX · NOT LIVE</span></p>
     <p class="fine" id="rintro">Loading the recorded run…</p>
     <div class="btns">

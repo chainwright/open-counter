@@ -89,7 +89,7 @@
 
   // ---- replay of the recorded run ----
   var run = null, at = 0;
-  var KIND = { mcp: "OUTSIDE AGENT → MCP", person: "THE PERSON, IN PAYPAL", app: "OPEN COUNTER", paypal: "PAYPAL'S RECORD" };
+  var KIND = { mcp: "OUTSIDE MCP CLIENT → MCP", person: "BUYER'S LOGIN IN PAYPAL (SCRIPTED)", app: "OPEN COUNTER", paypal: "PAYPAL'S RECORD" };
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function hm(iso) { return iso ? iso.replace("T", " ").replace("Z", " UTC") : ""; }
   function show(i) {

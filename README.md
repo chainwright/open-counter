@@ -1,6 +1,6 @@
 # Open Counter
 
-**A one-person maker's shop that any AI shopping agent can buy from. Paid through PayPal, approved by a human, and
+**A one-person maker's shop that any AI shopping agent can buy from. Paid through PayPal, approved by the buyer in PayPal, and
 run by a sales agent the maker teaches herself.**
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/chainwright/open-counter)
@@ -52,7 +52,7 @@ restart, so these two order ids no longer show there; the PayPal invoice ids abo
 (`npx @modelcontextprotocol/inspector --cli https://open-counter.onrender.com/mcp/ --transport http`), called
 `tools/list`, `search_counter` ("green"), `delivery_estimate` (CO) and `start_checkout` (`sg-014`, quantity 1) at
 20:55:25–20:55:33. That made order `OC-DDAED237` ($59.00 + $6.50 shipping = $65.50) and PayPal order
-`7CH35233YB660681A`. The sandbox buyer approved in PayPal at 20:56:00, the return page captured it (capture
+`7CH35233YB660681A`. The sandbox buyer approved in PayPal at 20:56:00 (the approval was a scripted login as the sandbox buyer), the return page captured it (capture
 `1YL21413K6318972K`, `COMPLETED`, 20:56:02), `order_status` over MCP then said `paid`, and Lena's studio shows it as the
 newest MCP checkout, paid. PayPal's address on file for the test buyer is in CA, so the order follows CA, not the CO
 the agent asked about. Every call and answer: [`web/static/agents_run.json`](web/static/agents_run.json), replayed at
@@ -178,7 +178,7 @@ LLM choosing them. If the Toolkit fails, is missing or takes over 20 s, the same
 client, and the order records which path served it (`invoice_via`, `balance_via`: `paypal-agent-toolkit` or
 `rest-fallback`). Tests: `tests/test_paypal_toolkit.py` (Toolkit answers; Toolkit raises, hangs or is missing → REST).
 Checked against the sandbox on 9 Nov: invoice `INV2-VV7G-JLS2-JXCV-3QTR` read as `PARTIALLY_PAID` ($92.25) and a
-reminder sent, both through the Toolkit. Everything else in the table above (orders, capture, tracking, refunds,
+reminder sent, both through the Toolkit (checked by us; not logged in the repo). Everything else in the table above (orders, capture, tracking, refunds,
 catalog, webhooks, invoice create and send) is our own REST client in `opencounter/paypal.py`. The Docker image installs
 the Toolkit with `--no-deps` (`requirements-paypal-toolkit.txt`): its core needs only `pydantic` and `requests`, and its
 declared LangChain/CrewAI/OpenAI Agents extras would add about 500 packages we never import.
