@@ -1,6 +1,6 @@
 # Open Counter: the saved run, re-checked with today's checks
 
-No model was called. Saved transcripts (`evals/transcripts.json`) re-checked on 2026-10-31: **32/33 cases pass**. 0 case(s) changed their script since and need a live run: none.
+No model was called. Saved transcripts (`evals/transcripts.json`) re-checked on 2026-11-08: **32/33 cases pass**. 0 case(s) changed their script since and need a live run: none.
 
 | Case | Result | Failed checks |
 |---|---|---|
@@ -10,7 +10,7 @@ No model was called. Saved transcripts (`evals/transcripts.json`) re-checked on 
 | stock: several cars, one order | ✅ | — |
 | stock: changed cart replaces the order | ✅ | — |
 | stock: details spread over four messages | ✅ | — |
-| colour and year only (Roma's chat) | ❌ | says a price, no stalling |
+| colour and year only (Roma's chat) | ❌ | names the car, says a price |
 | stock: over the stock goes to made to order | ✅ | — |
 | deadline: on time | ✅ | — |
 | deadline: too late is said | ✅ | — |
