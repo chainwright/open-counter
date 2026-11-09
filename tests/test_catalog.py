@@ -42,7 +42,9 @@ def test_every_listing_and_sample_counter_is_registered_once_and_shown_on_its_ca
     done = catalog.sync()
     assert done["sg-014"] == "OC-SG-014" and done["sg-015"] == "OC-SG-015" and done["clay-kiln-s1"] == "OC-CLAY-KILN-S1"
     creates = [c for c in pp.calls if c[0] == "POST"]
-    assert len(creates) == 4 + 3 and not any(c[2]["id"] == "OC-SG-015" for c in creates)   # found, not duplicated
+    assert len(creates) == 4 + 3 + 5 and not any(c[2]["id"] == "OC-SG-015" for c in creates)   # found, not duplicated
+    rng = c_ = TestClient(web.app).get("/c/pine-pewter-s4.json").json()   # the sample range: one product per item
+    assert [x["paypal_catalog_product"] for x in rng["listings"]] == [f"OC-PINE-PEWTER-S4-{n}" for n in range(1, 6)]
     c = TestClient(web.app)
     card = c.get("/c/small-garage.json").json()
     assert {x["id"]: x["paypal_catalog_product"] for x in card["listings"]}["sg-014"] == "OC-SG-014"

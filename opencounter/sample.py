@@ -230,6 +230,7 @@ def build(now: float | None = None):
                               "listing": {"id": slug + "-1", "title": title, "short_description": desc, "materials": mats,
                                           "made_by_hand": True, "price_usd": float(price), "stock": stock,
                                           "keywords": [], "paypal_catalog_product": None}}
+        counters[RANGE_SLUG] = range_counter(now)
         shop._save_json("counters.json", counters)
         # Some of this week's stock sales came from outside AI agents over MCP (the studio's "sold to an agent" strip):
         # the newest paid stock orders of the last 7 days, every other one, so both channels show in the week.
@@ -241,6 +242,43 @@ def build(now: float | None = None):
         shop._save_json("conversations.json", convs)
         shop._save_json("customers.json", custs)
         return len(orders), len(convs)
+
+
+# A sample counter opened with a whole range (the price board on /open's "Photo of a price list" tab), so the feature
+# can be seen live without opening one (final judges 09.11). Marked SAMPLE like the others.
+RANGE_SLUG = "pine-pewter-s4"
+RANGE_ITEMS = [
+    ("Pewter tea light holder", 18.0, 8, "Cast pewter, hand-finished; fits a standard tea light."),
+    ("Pine spoon, hand-carved", 22.0, 12, "Carved from one piece of white pine and oiled with walnut oil."),
+    ("Walnut cutting board", 64.0, 3, "Black walnut, edge grain, about 16 × 10 in, finished with oil and beeswax."),
+    ("Linen tea towel", 15.0, 20, "Washed linen, hemmed by hand."),
+    ("Beeswax candle pair", 12.5, 15, "Two 8 in tapers, hand-dipped in pure beeswax."),
+]
+
+
+def range_counter(now: float) -> dict:
+    listings = [{"id": f"{RANGE_SLUG}-{n}", "title": t, "price_usd": p, "stock": s, "short_description": d,
+                 "paypal_catalog_product": None} for n, (t, p, s, d) in enumerate(RANGE_ITEMS, 1)]
+    src = shop.ROOT / "web" / "static" / "open" / "pricelist.jpg"
+    cdir = shop._path("counters")
+    cdir.mkdir(exist_ok=True)
+    if src.exists():
+        import shutil
+        shutil.copy(src, cdir / f"{RANGE_SLUG}.jpg")
+    return {"slug": RANGE_SLUG, "created": now - 86400, "sample": True, "visitor": "", "maker": "June Hale",
+            "name": "Pine & Pewter", "ships_from": "VT", "has_photo": src.exists(), "source": "photo of a price list",
+            "listings": listings, "listing": dict(listings[0])}
+
+
+def ensure_range_counter() -> bool:
+    """Lay the sample range counter down on a disk that has the rest of the sample already (no data wipe)."""
+    with shop._lock:
+        cs = shop._json("counters.json", {})
+        if RANGE_SLUG in cs:
+            return False
+        cs[RANGE_SLUG] = range_counter(time.time())
+        shop._save_json("counters.json", cs)
+        return True
 
 
 DATA_VERSION = "13"   # bump to wipe ALL demo data (also real sandbox orders) and lay the sample history down again
@@ -361,6 +399,9 @@ def refresh(now: float | None = None, max_age: float = SAMPLE_MAX_AGE_S) -> bool
             pid = ((old_counters.get(k) or {}).get("listing") or {}).get("paypal_catalog_product")
             if pid:
                 c["listing"]["paypal_catalog_product"] = pid
+            old_ids = {l["id"]: l.get("paypal_catalog_product") for l in (old_counters.get(k) or {}).get("listings") or []}
+            for l in c.get("listings") or []:
+                l["paypal_catalog_product"] = old_ids.get(l["id"]) or l.get("paypal_catalog_product")
         counters.update(live_counters)
         shop._save_json("counters.json", counters)
         af.write_text(str(now))
@@ -387,4 +428,5 @@ def ensure():
         vf.write_text(DATA_VERSION)
     else:
         refresh()
+    ensure_range_counter()   # a disk laid down before the whole-range sample existed gets it without a wipe
     purge_test_data()

@@ -75,7 +75,9 @@ folder paths replaced), the command, the approval log and PayPal's order record:
 ## Try it in two minutes
 - **Shop:** https://open-counter.onrender.com · chat with the shop's sales agent in section 01, turn any car in 3D.
 - **Lena's back office (open, no login):** https://open-counter.onrender.com/maker
-- **Open your own counter:** https://open-counter.onrender.com/open
+- **Open your own counter:** https://open-counter.onrender.com/open · **an example counter opened with a whole range**
+  (a SAMPLE maker, 5 items, from the sample price board): https://open-counter.onrender.com/c/pine-pewter-s4, with its
+  own MCP server at `/c/pine-pewter-s4/mcp/`
 - **For AI agents (MCP):** https://open-counter.onrender.com/agents · call the real MCP server from the page, and
   replay an outside agent's purchase through to capture
 - **Lena's studio (AG Studio), best on a laptop:** https://open-counter.onrender.com/studio/ · the lesson loop on one

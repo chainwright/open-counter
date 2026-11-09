@@ -562,7 +562,8 @@ def _range_page(c: dict) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(c['name'])} · Open Counter</title>{FONTS}<link rel="stylesheet" href="/static/open.css">
 <script type="application/ld+json">{ld}</script></head><body><main class="cp">
-<span class="k">OPEN COUNTER · A MAKER'S SHOP, READABLE BY ANY AI</span><h1>{e(c['name'])}</h1><p class="by">by {e(c['maker'])} · ships from {e(c['ships_from'])} · {len(ls)} items</p>
+<span class="k">OPEN COUNTER · A MAKER'S SHOP, READABLE BY ANY AI{" · SAMPLE" if c.get("sample") else ""}</span><h1>{e(c['name'])}</h1><p class="by">by {e(c['maker'])} · ships from {e(c['ships_from'])} · {len(ls)} items{" · opened from a " + e(c.get("source") or "price list") if c.get("source") else ""}</p>
+{'<p class="fine">A sample counter: a fictional maker, opened from the sample price board on <a href="/open#range">/open</a>. Its checkout is real (PayPal sandbox).</p>' if c.get("sample") else ""}
 {photo}<ul class="range">{rows}</ul>
 <form class="buy" id="buy"><label class="pick">Item<select id="it">{opts}</select></label><label>How many<input type="number" id="q" min="1" value="1"></label>
 <label>Ship to (US state)<input id="st" maxlength="2" placeholder="TX" required></label><button>Buy with PayPal</button><span id="m"></span></form>

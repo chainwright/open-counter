@@ -410,3 +410,33 @@ def test_a_counter_photo_gets_the_image_caps(pp):
         with pytest.raises(ValueError):
             onboard.publish_many(ITEMS, "OR", "Mae", "B", bad, "qa-range")
     assert not [x for x in pp if x["path"] == "/v1/catalogs/products"]   # refused before any PayPal call
+
+
+def test_a_sample_range_counter_is_laid_down_marked_and_linked_without_a_wipe(pp, door):
+    from opencounter import sample
+    sample.build()
+    c = onboard.counter(sample.RANGE_SLUG)
+    assert c["sample"] and len(c["listings"]) == 5 and c["has_photo"] and c["source"] == "photo of a price list"
+    cl = TestClient(web.app)
+    page = cl.get(f"/c/{sample.RANGE_SLUG}").text
+    assert "SAMPLE" in page and "Walnut cutting board" in page and "<select" in page
+    assert cl.get(f"/c/{sample.RANGE_SLUG}/photo.jpg").status_code == 200
+    latest = cl.get("/api/open/latest").json()
+    assert any(x["slug"] == sample.RANGE_SLUG and x["items"] == 5 for x in latest)   # every visitor sees it
+    assert f'href="/c/{sample.RANGE_SLUG}"' in cl.get("/open").text
+    url = f"/c/{sample.RANGE_SLUG}/mcp/"
+    found = call(door, url, "search_counter", {"query": "cutting board"})["results"]
+    assert [x["id"] for x in found] == [f"{sample.RANGE_SLUG}-3"]
+    # an existing disk (sample laid down before this counter existed) gets it on start, once, nothing else touched
+    cs = onboard._counters()
+    del cs[sample.RANGE_SLUG]
+    shop._save_json("counters.json", cs)
+    assert sample.ensure_range_counter() and not sample.ensure_range_counter()
+    assert set(onboard._counters()) == set(cs) | {sample.RANGE_SLUG}
+    # the hourly re-dating keeps it, and keeps its PayPal ids
+    cs = onboard._counters()
+    cs[sample.RANGE_SLUG]["listings"][0]["paypal_catalog_product"] = "OC-PINE-PEWTER-S4-1"
+    shop._save_json("counters.json", cs)
+    shop._path("sample_anchor").write_text("0")
+    assert sample.refresh()
+    assert onboard.counter(sample.RANGE_SLUG)["listings"][0]["paypal_catalog_product"] == "OC-PINE-PEWTER-S4-1"

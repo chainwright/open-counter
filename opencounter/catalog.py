@@ -48,17 +48,32 @@ def sync() -> dict:
                 if l["id"] in found:
                     l["paypal_catalog_product"] = found[l["id"]]
             shop.save_shop(s)
-    counters = {}
+    counters, items = {}, {}
     for slug, c in onboard._counters().items():
-        if c.get("sample") and not c["listing"].get("paypal_catalog_product"):
+        if not c.get("sample"):
+            continue
+        if c.get("listings"):   # a sample counter with a whole range: one product per item, under the item's id
+            for l in c["listings"]:
+                if not l.get("paypal_catalog_product"):
+                    pid = ensure_product(product_id(l["id"]), l["title"], l.get("short_description") or l["title"])
+                    if pid:
+                        items[(slug, l["id"])] = pid
+        elif not c["listing"].get("paypal_catalog_product"):
             pid = ensure_product(product_id(slug), c["listing"]["title"], c["listing"].get("short_description") or "")
             if pid:
                 counters[slug] = pid
-    if counters:
+    if counters or items:
         with shop._lock:
             cs = onboard._counters()
             for slug, pid in counters.items():
                 if slug in cs:
                     cs[slug]["listing"]["paypal_catalog_product"] = pid
+            for (slug, lid), pid in items.items():
+                c = cs.get(slug)
+                for l in (c or {}).get("listings") or []:
+                    if l["id"] == lid:
+                        l["paypal_catalog_product"] = pid
+                if c and c["listing"].get("id") == lid:
+                    c["listing"]["paypal_catalog_product"] = pid
             shop._save_json("counters.json", cs)
-    return found | counters
+    return found | counters | {lid: pid for (_, lid), pid in items.items()}
