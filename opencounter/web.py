@@ -732,11 +732,48 @@ def studio_config():
                     headers={"Cache-Control": "no-store"})
 
 
+# Studio turns per network per minute. One person's studio question is a handful of sequential turns (a new panel
+# about ten), each taking seconds; a script calling the endpoint in a loop is cut off here, before the AI budget.
+STUDIO_TURNS_PER_MIN = 30
+_studio_hits: dict[str, list[float]] = {}
+_studio_hits_lock = threading.Lock()
+
+
+def _studio_rate_ok(ip: str, now: float | None = None) -> bool:
+    now = time.time() if now is None else now
+    with _studio_hits_lock:
+        if len(_studio_hits) > 5000:   # forget networks that have been quiet for a minute
+            for k in [k for k, v in _studio_hits.items() if not v or now - v[-1] > 60]:
+                _studio_hits.pop(k)
+        hits = [t for t in _studio_hits.get(ip, []) if now - t < 60]
+        if len(hits) >= STUDIO_TURNS_PER_MIN:
+            _studio_hits[ip] = hits
+            return False
+        _studio_hits[ip] = hits + [now]
+        return True
+
+
 @app.post("/api/studio/llm")
 async def studio_llm_turn(req: Request):
-    """One model turn for Lena's sales studio (AG Studio's agents run in the page and call this, so no key is in it)."""
+    """One model turn for Lena's sales studio (AG Studio's agents run in the page and call this, so no key is in it).
+    Only Studio's own turns get through (judge panel 09.11, F-01): the studio's visitor header, a per-network rate
+    limit, a size cap and Studio's own tools only (studio_llm.check); then the day's AI budget and the studio's pool."""
+    if not _who(req)[0]:
+        return JSONResponse({"error": "Open the studio at /studio/ to talk to its agents."}, status_code=400)
+    if not _studio_rate_ok(_client_ip(req) or "?"):
+        return JSONResponse({"error": "Too many studio turns from this network in a minute. Try again in a minute."},
+                            status_code=429, headers={"Retry-After": "60"})
+    body = await req.body()
+    if len(body) > studio_llm.MAX_REQUEST_BYTES:
+        return JSONResponse({"error": "This studio turn is too long."}, status_code=413)
     try:
-        return await asyncio.to_thread(studio_llm.turn, await req.json(), _budget_keys(req) + ["pool:studio"])
+        turn = json.loads(body)
+        studio_llm.check(turn)
+    except ValueError as e:   # Refused, or not JSON at all
+        return JSONResponse({"error": str(e) if isinstance(e, studio_llm.Refused) else "A studio turn is JSON."},
+                            status_code=getattr(e, "status", 400))
+    try:
+        return await asyncio.to_thread(studio_llm.turn, turn, _budget_keys(req) + ["pool:studio"])
     except shopper.OverBudget as e:
         return JSONResponse({"error": str(e)}, status_code=429)
 

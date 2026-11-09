@@ -13,6 +13,52 @@ from . import shopper
 
 MAX_TOKENS = 2000
 
+# Only Studio's own agents may use this endpoint (judge panel 09.11, seat 04 F-01: it used to pass any visitor's
+# prompt and tools to the model). The tools a turn may offer the model: every tool AG Studio 3.0.0 defines (read from
+# its bundle: `defineAiTool`/`defineDirectTool` names, plus delegate_to and complete_task) and our analyst's two.
+# tests/test_studio_guard.py re-reads the installed bundle, so an AG Studio upgrade that adds a tool fails a test,
+# not the live studio.
+STUDIO_TOOLS = frozenset({
+    "add_page_filter", "add_widget", "add_widget_filter", "clear_plan", "configure_widget", "create_expression",
+    "create_plan", "delete_expression", "execute_query", "position_widget", "remove_page_filter", "remove_widget",
+    "remove_widget_filter", "rename_thread", "update_expression", "update_plan", "view_page", "view_plan",
+    "view_report", "view_schema", "view_widget", "delegate_to", "complete_task",
+    "agent_misses", "agent_sales"})   # studio/src/harness.ts: Lena's shop analyst
+# A whole turn as Studio sends it (instructions + history + tool schemas), as JSON. Measured 09.11 on the local
+# studio: the Lead's first turn is 19 KB, the analyst's 5–6 KB; a long thread with page and query results stays well
+# under this. About 40k tokens at most, so one turn costs at most ~$0.012 of input.
+MAX_REQUEST_BYTES = 160_000
+
+
+class Refused(ValueError):
+    """A request that isn't one of Studio's own turns: answered with `status`, and the model is never called."""
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+def check(req) -> None:
+    """Raises Refused unless `req` looks like one of Studio's own turns: a JSON object within the size cap whose tools,
+    tool choice and earlier tool calls all name Studio's own tools. Tools Studio runs itself ("provided") are never
+    sent to the model, so they aren't checked."""
+    if not isinstance(req, dict):
+        raise Refused("A studio turn is a JSON object.")
+    if len(json.dumps(req)) > MAX_REQUEST_BYTES:
+        raise Refused(f"This studio turn is too long (over {MAX_REQUEST_BYTES // 1000} KB).", 413)
+    tools = req.get("tools") or []
+    items = req.get("input") or []
+    if not isinstance(tools, list) or not isinstance(items, list):
+        raise Refused("A studio turn's tools and input are lists.")
+    names = [t.get("name") if isinstance(t, dict) else None for t in tools
+             if not (isinstance(t, dict) and t.get("kind") == "provided")]
+    names += [it.get("name") for it in items if isinstance(it, dict) and it.get("type") == "function_call"]
+    choice = req.get("toolChoice")
+    if isinstance(choice, dict):
+        names.append(choice.get("name"))
+    foreign = [str(n) for n in names if n not in STUDIO_TOOLS]
+    if foreign:
+        raise Refused("Only the studio's own tools can be used here (not: " + ", ".join(sorted(set(foreign)))[:200] + ").", 403)
+
 
 def to_messages(req: dict) -> list[dict]:
     """AG Studio's conversation items as chat messages. Consecutive tool calls go into one assistant message, as the
@@ -39,7 +85,7 @@ def to_messages(req: dict) -> list[dict]:
 def to_tools(req: dict) -> list[dict]:
     return [{"type": "function", "function": {"name": t["name"], "description": t.get("description") or "",
                                                "parameters": t.get("parameters") or {"type": "object", "properties": {}}}}
-            for t in req.get("tools") or [] if t.get("kind", "client") != "provided"]
+            for t in req.get("tools") or [] if t.get("kind", "client") != "provided" and t.get("name") in STUDIO_TOOLS]
 
 
 def to_tool_choice(req: dict):
@@ -74,7 +120,9 @@ def _ask(kw: dict, who) -> tuple[str, list, object, str]:
 
 def turn(req: dict, who=()) -> dict:
     """One turn: {text, tool_calls: [{id, name, arguments}], usage, model}. Raises shopper.OverBudget when the share is
-    spent. A turn that only announces its next step is asked once more, with a tool call required."""
+    spent, Refused when the request isn't one of Studio's own turns. A turn that only announces its next step is asked
+    once more, with a tool call required."""
+    check(req)
     shopper.check_budget(who)
     kw = {"model": shopper.MODEL, "messages": to_messages(req), "max_tokens": MAX_TOKENS, "temperature": 0.2,
           "extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
