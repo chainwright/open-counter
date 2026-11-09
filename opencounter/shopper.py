@@ -18,14 +18,14 @@ from . import counter, shop
 
 MODEL = os.environ.get("SHOPPER_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 PRICE_IN, PRICE_OUT = 0.30, 0.90  # USD per 1M tokens, Token Factory catalog
-DAILY_CAP_USD = float(os.environ.get("SHOPPER_DAILY_CAP_USD", "1.00"))
+DAILY_CAP_USD = float(os.environ.get("SHOPPER_DAILY_CAP_USD") or "1.00")
 # Under the shop's daily cap, each browser and each network gets its own share, so one burst (or one bot) can't use
 # up the day for every other visitor (judge 29.10, N9). The cap itself is the owner's money and isn't raised here.
-VISITOR_CAP_USD = float(os.environ.get("SHOPPER_VISITOR_CAP_USD", "0.15"))
-IP_CAP_USD = float(os.environ.get("SHOPPER_IP_CAP_USD", "0.30"))
+VISITOR_CAP_USD = float(os.environ.get("SHOPPER_VISITOR_CAP_USD") or "0.15")
+IP_CAP_USD = float(os.environ.get("SHOPPER_IP_CAP_USD") or "0.30")
 # The studio's agents (/api/studio/llm, five-agent turns with large prompts) get their own pool inside the day, so
 # studio use can never switch off the shop's chat for shoppers (final judges 08.11 P1-2). Default: half the day.
-STUDIO_CAP_USD = float(os.environ.get("STUDIO_DAILY_CAP_USD", str(round(DAILY_CAP_USD / 2, 2))))
+STUDIO_CAP_USD = float(os.environ.get("STUDIO_DAILY_CAP_USD") or str(round(DAILY_CAP_USD / 2, 2)))
 POOL_CAPS = {"pool:studio": STUDIO_CAP_USD}
 BUSY_STUDIO = ("Today's AI budget for the studio's agents is used up until midnight in Ohio. The shop's sales agent, "
                "the widgets and the back office still work.")

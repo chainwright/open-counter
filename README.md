@@ -3,10 +3,12 @@
 **A one-person maker's shop that any AI shopping agent can buy from. Paid through PayPal, approved by a human, and
 run by a sales agent the maker teaches herself.**
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/chainwright/open-counter)
+
 People increasingly ask an AI assistant for a gift, and those assistants buy from big stores. PayPal's agentic
-checkout exists, but it is request-access and built for platform stores. A maker who sells a few things a week is not
-on that path. Open Counter is the other half: it makes a small shop *readable* to every agent (a page, a JSON card and
-an MCP server), *payable* through PayPal, and still *hers*: nothing is charged until a person approves in PayPal, her
+checkout exists, but it is request-access, and Store Sync launched through commerce platforms like Wix and
+BigCommerce. A maker who sells a few things a week from her own page is not on that path. Open Counter is the other
+half: it makes a small shop *readable* to any agent that's given its address (a page, a JSON card and an MCP server), *payable* through PayPal, and still *hers*: nothing is charged until a person approves in PayPal, her
 rules hold in code, and she can see and correct what her agent says.
 
 The demo maker is Lena, who builds 1:43 replica cars by hand ($59 each). Any other maker can open a counter at `/open`.
@@ -17,9 +19,9 @@ Built for the PayPal AI Hackathon 2026 by Elite Product LLC.
 - Traffic from AI assistants to US retail sites grew **693%** in the 2025 holidays vs 2024 ([Adobe Analytics](https://news.adobe.com/news/2026/01/adobe-holiday-shopping-season)).
 - About **70%** of Americans could imagine using AI tools to pick Christmas gifts ([Statista, 2025](https://www.statista.com/chart/35529/ai-tools-adoption-and-applications-for-holiday-shopping)).
 - Etsy alone had **5.6 million** active sellers at the end of 2025 ([Inside Retail](https://insideretail.us/etsy-vows-sustained-growth-after-revenue-lift/)): makers like Lena.
-- PayPal's agentic checkout (Store Sync, Agent Ready) is request-access and built around platform stores
-  ([PayPal docs](https://developer.paypal.com/agentic-commerce-services/about)). Open Counter gives a one-person shop the
-  same reach with what any PayPal account already has.
+- PayPal's agentic checkout (Store Sync, Agent Ready) is request-access, and Store Sync launched through commerce
+  platforms like Wix and BigCommerce ([PayPal docs](https://developer.paypal.com/agentic-commerce-services/about)). Open
+  Counter gives a one-person shop an agent door with what any PayPal account already has.
 
 ## Does it work? Measured, not claimed
 `evals/run_evals.py` runs 33 scripted conversations against the live model (English and Russian, deadlines, discounts,
@@ -218,10 +220,22 @@ off the shop's chat. A question about the shop costs about $0.005, a new panel a
 - One search across every counter on the host: `/api/directory?q=green&max_price=60` returns matching items from
   Lena's shop and every counter opened at `/open`, each with its card and its checkout.
 - The card is a small open format: [JSON Schema](web/static/schema/open-counter-card.v1.json). Any shop can publish one
-  at a well-known URL; any agent can read it the same way. The two new ideas, in one line each:
+  at a well-known URL; any agent can read it the same way. Two ideas we put together:
   1. **A shop card any AI agent can read and buy from**, with checkout that only a person can approve in PayPal.
   2. **A sales agent the maker supervises**: she reads its chats, her assistant flags the bad answers, and her
      lessons change its next answer.
+- Why our own card and not UCP or ACP: open standards cover the same ground (Google's UCP publishes a merchant
+  profile at `/.well-known/ucp`; OpenAI's ACP runs Instant Checkout inside ChatGPT). We kept the card small for this
+  demo: it mirrors the nine MCP tools one to one, and its checkout is PayPal's own approval by a person. The card
+  doesn't make a shop show up in any assistant by itself; an agent has to be given its address. Publishing a UCP
+  profile next to the card is the next step.
+
+## Deploy your own
+The **Deploy to Render** button at the top reads [`render.yaml`](render.yaml): the Docker web service (Starter plan,
+Oregon, built from `main` on every commit) with a 1 GB persistent disk at `/var/data`, the same setup as the live demo.
+Render asks for the keys (PayPal sandbox app, Nebius, AG Studio licence, webhook id); none are in the file. Set
+`OPENCOUNTER_PUBLIC_URL` to the service's own `https://….onrender.com` address and point a PayPal sandbox webhook at
+`/paypal/webhook`.
 
 ## Run locally
 ```bash
@@ -234,7 +248,7 @@ export OPENCOUNTER_PUBLIC_URL=http://127.0.0.1:8800
 .venv/bin/python -m pytest -q tests                     # a few tests run studio/web JS in node
 ```
 Optional: `PAYPAL_WEBHOOK_ID` (webhook verification), `OPENCOUNTER_DATA` (data folder; on Render it points at a
-mounted persistent disk, `/var/data`, so data survives deploys), `MAKER_KEY` (Lena's key: global lessons, news-list export, marking call-backs done), `OPEN_COUNTER_SAMPLE_PAYEE`
+mounted persistent disk, `/var/data`, declared in `render.yaml`, so data survives deploys), `MAKER_KEY` (Lena's key: global lessons, news-list export, marking call-backs done), `OPEN_COUNTER_SAMPLE_PAYEE`
 (a second sandbox business account that the sample counters pay, so the demo shows money reaching a maker),
 `AG_STUDIO_LICENSE` (Lena's studio), `SHOPPER_DAILY_CAP_USD` / `SHOPPER_VISITOR_CAP_USD` / `SHOPPER_IP_CAP_USD` /
 `STUDIO_DAILY_CAP_USD` (AI budget, see above).

@@ -1,0 +1,44 @@
+# Render Blueprint for Open Counter: the same setup as the live demo (https://open-counter.onrender.com):
+# one Docker web service on Render's Starter plan in Oregon, built from main on every commit, with a 1 GB persistent
+# disk at /var/data so orders, chats, lessons and the day's AI spend survive deploys and restarts.
+# Keys are never in this file: Render asks for each `sync: false` value when the Blueprint is created.
+services:
+  - type: web
+    name: open-counter
+    runtime: docker
+    plan: starter            # a persistent disk needs a paid instance
+    region: oregon
+    branch: main
+    dockerfilePath: ./Dockerfile
+    autoDeployTrigger: commit
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: OPENCOUNTER_DATA          # the data folder, on the disk above
+        value: /var/data
+      - key: OPENCOUNTER_PUBLIC_URL    # this service's https URL (used in PayPal return links and the MCP card)
+        sync: false
+      - key: PAYPAL_CLIENT_ID          # PayPal sandbox REST app
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID         # webhook signature verification; without it webhooks are refused
+        sync: false
+      - key: NEBIUS_API_KEY            # NVIDIA Nemotron on Nebius: sales agent, assistant, studio agents, listing writer
+        sync: false
+      - key: AG_STUDIO_LICENSE         # Lena's studio; without it AG Studio shows its watermark
+        sync: false
+      - key: OPEN_COUNTER_SAMPLE_PAYEE # optional: a second sandbox business account the sample counters pay
+        sync: false
+      - key: SHOPPER_DAILY_CAP_USD     # AI budget (README, "AI budget"); defaults apply when left empty
+        sync: false
+      - key: SHOPPER_VISITOR_CAP_USD
+        sync: false
+      - key: SHOPPER_IP_CAP_USD
+        sync: false
+      - key: STUDIO_DAILY_CAP_USD
+        sync: false
+      - key: OPENCOUNTER_PROXY_HOPS    # optional; on Render the network is read from Cloudflare's CF-Connecting-IP
+        sync: false

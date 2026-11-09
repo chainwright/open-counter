@@ -14,7 +14,8 @@ COPY opencounter ./opencounter
 COPY web ./web
 COPY --from=studio /src/web/studio ./web/studio
 COPY demo ./demo
-ENV OPENCOUNTER_DATA=/tmp/opencounter
+# data on Render's persistent disk (render.yaml mounts it at /var/data); without a disk it lives in the container
+ENV OPENCOUNTER_DATA=/var/data
 EXPOSE 8000
 # behind Render's proxy: trust its X-Forwarded-Proto so redirects (e.g. /mcp → /mcp/) stay on https
 CMD ["sh", "-c", "uvicorn opencounter.web:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
