@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
-from . import misses, assistant, catalog, counter, onboard, paypal, shop, shopper, sample, studio_llm
+from . import misses, assistant, catalog, counter, counter_door, onboard, paypal, pricelist, shop, shopper, sample, studio_llm
 from .mcp_server import mcp
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +38,7 @@ mcp_app = mcp.streamable_http_app(
         allowed_hosts=[_host, "127.0.0.1:*", "localhost:*"],
         allowed_origins=[counter.PUBLIC_URL, "http://127.0.0.1:*", "http://localhost:*"]))
 _listeners: set[asyncio.Queue] = set()
+door_app = counter_door.asgi(counter.PUBLIC_URL, _host)   # each maker's counter: /c/<slug>/mcp/ (mounted at the end)
 
 
 @contextlib.asynccontextmanager
@@ -52,6 +53,9 @@ async def lifespan(_app):
         lc = getattr(mcp_app.router, "lifespan_context", None)
         if lc:
             await stack.enter_async_context(lc(mcp_app))
+        dl = getattr(door_app.router, "lifespan_context", None)
+        if dl:
+            await stack.enter_async_context(dl(door_app))
         yield
 
 
@@ -223,16 +227,21 @@ def counter_json(slug: str):
         c = onboard.counter(slug)
         if not c:
             raise HTTPException(404)
-        l = c["listing"]
+        photo = f"{counter.PUBLIC_URL}/c/{slug}/photo.jpg" if c.get("has_photo", True) else None
+        many = bool(c.get("listings"))
         return {"shop": c["name"], "maker": c["maker"], "ships_from": c["ships_from"], "ships_to": "US",
-                "opened_with": "Open Counter (listing words written by NVIDIA Nemotron VL from the maker's photo)",
+                "opened_with": (f"Open Counter (the maker's whole range, from her {c.get('source') or 'price list'}; "
+                                "she checked every item and price before it opened)" if many else
+                                "Open Counter (listing words written by NVIDIA Nemotron VL from the maker's photo)"),
                 "listings": [{**{k: l.get(k) for k in ("id", "title", "price_usd", "stock", "category", "materials", "size",
                                                         "colour", "made_by_hand", "short_description", "keywords")},
-                              "photo_url": f"{counter.PUBLIC_URL}/c/{slug}/photo.jpg",
-                              "paypal_catalog_product": l.get("paypal_catalog_product")}],
-                "checkout": {"how": "POST JSON {quantity, us_state}; returns a PayPal approval link a person must open",
+                              **({"photo_url": photo} if photo else {}),
+                              "paypal_catalog_product": l.get("paypal_catalog_product")} for l in onboard.items(c)],
+                "checkout": {"how": ("POST JSON {item_id, quantity, us_state}" if many else "POST JSON {quantity, us_state}")
+                                    + "; returns a PayPal approval link a person must open",
                              "url": f"{counter.PUBLIC_URL}/api/c/{slug}/checkout",
-                             "payment_goes_to": onboard.paid_to(c)}}
+                             "payment_goes_to": onboard.paid_to(c)},
+                "mcp": f"{counter.PUBLIC_URL}/c/{slug}/mcp/"}
     return {"$schema": f"{counter.PUBLIC_URL}/static/schema/open-counter-card.v1.json"} | counter.about_counter() | {
         "listings": counter.search_counter()["results"], "mcp": f"{counter.PUBLIC_URL}/mcp/"}
 
@@ -261,13 +270,13 @@ def directory(q: str = "", max_price: float | None = None):
                      "paypal_catalog_product": x.get("paypal_catalog_product"),
                      "checkout": f"{counter.PUBLIC_URL}/mcp/ (start_checkout)"})
     for c in onboard.latest(50):
-        l = c["listing"]
-        hits.append({"counter": c["name"], "card": f"{counter.PUBLIC_URL}/c/{c['slug']}.json", "id": l.get("id"),
-                     "title": l.get("title"), "price_usd": l.get("price_usd"), "stock": l.get("stock"),
-                     "text": " ".join(str(l.get(k, "")) for k in ("title", "category", "colour", "materials",
-                                                                    "short_description", "keywords")).lower(),
-                     "paypal_catalog_product": l.get("paypal_catalog_product"),
-                     "checkout": f"{counter.PUBLIC_URL}/api/c/{c['slug']}/checkout"})
+        for l in onboard.items(c):
+            hits.append({"counter": c["name"], "card": f"{counter.PUBLIC_URL}/c/{c['slug']}.json", "id": l.get("id"),
+                         "title": l.get("title"), "price_usd": l.get("price_usd"), "stock": l.get("stock"),
+                         "text": " ".join(str(l.get(k, "")) for k in ("title", "category", "colour", "materials",
+                                                                        "short_description", "keywords")).lower(),
+                         "paypal_catalog_product": l.get("paypal_catalog_product"),
+                         "checkout": f"{counter.PUBLIC_URL}/api/c/{c['slug']}/checkout"})
     out = []
     for h in hits:
         score = sum(w in h["text"] for w in words)
@@ -319,7 +328,7 @@ async def counter_checkout(slug: str, req: Request):
         raise HTTPException(503, "Checkout is offline right now.")
     try:
         out = await asyncio.to_thread(onboard.checkout, slug, b.get("quantity", 1), str(b.get("us_state") or ""),
-                                      _who(req)[0])
+                                      _who(req)[0], str(b.get("item_id") or "")[:60])
     except (ValueError, TypeError) as e:
         raise HTTPException(400, str(e))
     except paypal.PayPalError:
@@ -328,9 +337,80 @@ async def counter_checkout(slug: str, req: Request):
     return out
 
 
+OPEN_READS_PER_MIN = 6   # price lists, photos, pages and screenshots read per network per minute (each may call a model)
+_open_hits: dict[str, list[float]] = {}
+
+
+def _open_rate_ok(key: str, now: float | None = None) -> bool:
+    now = time.time() if now is None else now
+    with _studio_hits_lock:
+        if len(_open_hits) > 5000:
+            for k in [k for k, v in _open_hits.items() if not v or now - v[-1] > 60]:
+                _open_hits.pop(k)
+        hits = [t for t in _open_hits.get(key, []) if now - t < 60]
+        if len(hits) >= OPEN_READS_PER_MIN:
+            _open_hits[key] = hits
+            return False
+        _open_hits[key] = hits + [now]
+        return True
+
+
+def _open_guard(req: Request) -> JSONResponse | None:
+    """The whole-range readers: a visitor id and a per-network and per-visitor rate limit, before any work."""
+    v = _who(req)[0]
+    if not v:
+        return JSONResponse({"error": "Open this from the /open page."}, status_code=400)
+    if not (_open_rate_ok("ip:" + (_client_ip(req) or "?")) and _open_rate_ok("v:" + v)):
+        return JSONResponse({"error": "That's a lot of lists in a minute. Try again in a minute."}, status_code=429,
+                            headers={"Retry-After": "60"})
+    return None
+
+
+@app.post("/api/open/parse")
+async def open_parse(req: Request):
+    """A pasted price list → items for the maker to check. Nothing is opened or registered here."""
+    stop = _open_guard(req)
+    if stop:
+        return stop
+    body = await req.body()
+    if len(body) > 40_000:
+        return JSONResponse({"error": "That list is too long: paste up to 12 items."}, status_code=413)
+    try:
+        b = json.loads(body)
+        text = str(b.get("text") or "")
+    except (ValueError, AttributeError):
+        return JSONResponse({"error": "Send the list as JSON."}, status_code=400)
+    if not text.strip():
+        return JSONResponse({"error": "Paste your price list first."}, status_code=400)
+    return await asyncio.to_thread(pricelist.from_text, text, _budget_keys(req))
+
+
+@app.post("/api/open/publish_many")
+async def open_publish_many(req: Request):
+    """Open a counter with the items the maker confirmed. Every value is checked again in onboard.publish_many."""
+    if not _who(req)[0]:
+        raise HTTPException(400, "Open this from the /open page.")
+    body = await req.body()
+    if len(body) > 8_200_000:
+        raise HTTPException(413, "The photo is too big (up to about 6 MB).")
+    try:
+        b = json.loads(body)
+        c = await asyncio.to_thread(onboard.publish_many, b.get("items"), str(b.get("ships_from") or ""),
+                                    str(b.get("maker") or ""), str(b.get("shop_name") or ""), str(b.get("image") or ""),
+                                    _who(req)[0], str(b.get("paypal_email") or ""), str(b.get("source") or "price list"))
+    except (ValueError, TypeError, AttributeError, OSError) as e:
+        raise HTTPException(400, str(e) if isinstance(e, ValueError) and not isinstance(e, json.JSONDecodeError)
+                            else "Check the items and the photo.")
+    return {"slug": c["slug"], "page": f"{counter.PUBLIC_URL}/c/{c['slug']}", "json": f"{counter.PUBLIC_URL}/c/{c['slug']}.json",
+            "mcp": f"{counter.PUBLIC_URL}/c/{c['slug']}/mcp/", "payment_goes_to": onboard.paid_to(c),
+            "items": [{"id": l["id"], "title": l["title"], "price_usd": l["price_usd"], "stock": l["stock"],
+                       "paypal_catalog_product": l.get("paypal_catalog_product")} for l in c["listings"]]}
+
+
 @app.get("/api/open/latest")
 def open_latest(req: Request):
-    return [{"slug": c["slug"], "name": c["name"], "title": c["listing"]["title"], "price_usd": c["listing"]["price_usd"],
+    return [{"slug": c["slug"], "name": c["name"], "price_usd": c["listing"]["price_usd"], "items": len(onboard.items(c)),
+             "title": c["listing"]["title"] + (f" + {len(onboard.items(c)) - 1} more" if len(onboard.items(c)) > 1 else ""),
              "sample": bool(c.get("sample")), "paypal_catalog_product": c["listing"].get("paypal_catalog_product")}
             for c in onboard.latest(8, _who(req)[0])]
 
@@ -353,6 +433,8 @@ def counter_page(slug: str):
     c = onboard.counter(slug)
     if not c:
         raise HTTPException(404)
+    if c.get("listings"):
+        return _range_page(c)
     e, l = html.escape, c["listing"]
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(c['name'])} · Open Counter</title>{FONTS}<link rel="stylesheet" href="/static/open.css"></head><body><main class="cp">
@@ -371,6 +453,33 @@ document.getElementById("buy").addEventListener("submit", async (ev) => {{ ev.pr
   const j = await r.json(); if (r.ok && j.approve_url) location.href = j.approve_url; else m.textContent = j.detail || "Couldn't start checkout."; }});
 </script>
 <p class="agents">For AI agents: <a href="/c/{e(slug)}.json">/c/{e(slug)}.json</a>{(' · PayPal catalog product ' + e(l['paypal_catalog_product'])) if l.get('paypal_catalog_product') else ''}</p>
+<a class="back" href="/open">Open your own counter →</a></main></body></html>""")
+
+
+def _range_page(c: dict) -> HTMLResponse:
+    """A counter opened with the maker's whole range: every item, one PayPal checkout for the item a buyer picks."""
+    e, slug, ls = html.escape, c["slug"], onboard.items(c)
+    photo = (f'<img class="rp" src="/c/{e(slug)}/photo.jpg" alt="">' if c.get("has_photo") else "")
+    rows = "".join(
+        f'<li><div><b>{e(l["title"])}</b>{("<p>" + e(l["short_description"]) + "</p>") if l.get("short_description") else ""}</div>'
+        f'<span>${l["price_usd"]:.2f} · {l["stock"]} available</span></li>' for l in ls)
+    opts = "".join(f'<option value="{e(l["id"])}">{e(l["title"])} · ${l["price_usd"]:.2f}</option>' for l in ls if l["stock"] > 0)
+    paid = (f"The order names {e(c['maker'])}'s own PayPal account as the payee, so the payment goes to her; Open Counter never holds it." if onboard.payee(c) else
+            f"{e(c['maker'])} gave an email that isn't a PayPal sandbox account, so in this demo the payment goes to the Open Counter test merchant. On live PayPal it would go to her own account." if onboard.screened(c) else
+            "This maker hasn't connected a PayPal account, so in this demo the payment goes to the Open Counter test merchant.")
+    return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{e(c['name'])} · Open Counter</title>{FONTS}<link rel="stylesheet" href="/static/open.css"></head><body><main class="cp">
+<span class="k">OPEN COUNTER · A MAKER'S SHOP, READABLE BY ANY AI</span><h1>{e(c['name'])}</h1><p class="by">by {e(c['maker'])} · ships from {e(c['ships_from'])} · {len(ls)} items</p>
+{photo}<ul class="range">{rows}</ul>
+<form class="buy" id="buy"><label class="pick">Item<select id="it">{opts}</select></label><label>How many<input type="number" id="q" min="1" value="1"></label>
+<label>Ship to (US state)<input id="st" maxlength="2" placeholder="TX" required></label><button>Buy with PayPal</button><span id="m"></span></form>
+<p class="fine">PayPal sandbox, no real money. You approve in PayPal; nothing is charged before that. {paid}</p>
+<script>
+document.getElementById("buy").addEventListener("submit", async (ev) => {{ ev.preventDefault(); const m = document.getElementById("m"); m.textContent = "Opening PayPal…";
+  const r = await fetch("/api/c/{e(slug)}/checkout", {{ method: "POST", headers: {{ "content-type": "application/json" }}, body: JSON.stringify({{ item_id: document.getElementById("it").value, quantity: document.getElementById("q").value, us_state: document.getElementById("st").value }}) }});
+  const j = await r.json(); if (r.ok && j.approve_url) location.href = j.approve_url; else m.textContent = j.detail || "Couldn't start checkout."; }});
+</script>
+<p class="agents">For AI agents: <a href="/c/{e(slug)}.json">/c/{e(slug)}.json</a> · MCP <code>{e(counter.PUBLIC_URL)}/c/{e(slug)}/mcp/</code>{" · each item is a PayPal catalog product" if all(l.get("paypal_catalog_product") for l in ls) else ""}</p>
 <a class="back" href="/open">Open your own counter →</a></main></body></html>""")
 
 
@@ -469,7 +578,8 @@ def _settle(oc: str) -> dict:
             return shop.update_order(oc, status="pending", capture_id=c["id"])
         ship = unit.get("shipping", {})
         lines = o.get("lines") or [{"listing_id": o["listing_id"], "qty": o["qty"]}]
-        took = (onboard.take(o["counter"], o["qty"]) if o.get("kind") == "counter"
+        took = (onboard.take(o["counter"], o["qty"], (o.get("lines") or [{}])[0].get("listing_id") or "")
+                if o.get("kind") == "counter"
                 else True if o.get("kind") == "commission" else shop.take_stock_lines(lines))
         if not took:
             try:
@@ -1190,3 +1300,7 @@ def maker():
 def agents_page():
     """For AI agents: the MCP address, config snippets, a read-only live console and a recorded purchase replay."""
     return _stamped("agents.html")
+
+
+# Last, so every /c/... route above matches first: each maker's counter's own MCP door at /c/<slug>/mcp/
+app.mount("/c", door_app)

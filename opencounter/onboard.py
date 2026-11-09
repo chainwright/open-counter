@@ -133,25 +133,115 @@ def counter(slug: str) -> dict | None:
     return _counters().get(slug)
 
 
+def items(c: dict) -> list[dict]:
+    """Every listing on a counter: a counter opened from a price list has several ("listings"); one opened from a
+    single photo has its one "listing"."""
+    return c.get("listings") or [c["listing"]]
+
+
+def item(c: dict, item_id: str = "") -> dict | None:
+    """One listing by id; without an id, the counter's first (the single-product counter's only) listing."""
+    if not item_id:
+        return items(c)[0]
+    return next((l for l in items(c) if l.get("id") == item_id), None)
+
+
+MAX_ITEMS = 12
+SOURCES = ("price list", "photo of a price list", "website", "Instagram screenshots")   # what the card says it came from
+
+
+def publish_many(rows: list, ships_from: str, maker: str, shop_name: str, image_b64: str = "", visitor: str = "",
+                 paypal_email: str = "", source: str = "price list") -> dict:
+    """Open a counter with the maker's whole range at once (several items from a price list, a photo of one, a web
+    page or screenshots, after she confirmed them). Every value is checked again here, whatever the page sent:
+    1 to MAX_ITEMS items, a name, a price above $0 and up to $10,000, stock 1 to 1000. Each item is registered as a
+    PayPal Catalog Product, the same call publish() makes for one."""
+    from . import pricelist
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("Add at least one item with a price.")
+    if len(rows) > MAX_ITEMS:
+        raise ValueError(f"Up to {MAX_ITEMS} items per counter.")
+    clean = []
+    for r in rows:
+        r = r if isinstance(r, dict) else {}
+        title = pricelist.clean_name(r.get("title") or r.get("name") or "")
+        if not title:
+            raise ValueError("Every item needs a name.")
+        price = pricelist.price_value(r.get("price_usd"))
+        if price is None:
+            raise ValueError(f"{title}: a price above $0 and up to $10,000.")
+        try:
+            stock = int(r.get("stock") or 0)
+        except (TypeError, ValueError):
+            stock = 0
+        if not 0 < stock <= 1000 or isinstance(r.get("stock"), bool):
+            raise ValueError(f"{title}: how many you have, 1 to 1000.")
+        clean.append({"title": title, "price_usd": price, "stock": stock,
+                      "short_description": pricelist.clean_text(r.get("short_description") or r.get("description") or "", 250) or None})
+    payee = (paypal_email or "").strip()[:120]
+    if payee and not EMAIL.match(payee):
+        raise ValueError("Your PayPal email doesn't look like an email address.")
+    st = (ships_from or "").strip().upper()[:2]
+    if st not in shop.US_STATES:
+        raise ValueError("Ships from: a US state code, like OH.")
+    slug = re.sub(r"[^a-z0-9]+", "-", (shop_name or maker or "maker").lower()).strip("-")[:30] + "-" + uuid.uuid4().hex[:4]
+    has_photo = False
+    if image_b64:
+        raw = base64.b64decode(image_b64.split(",", 1)[-1])
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
+        im.thumbnail((1200, 1200))
+        pdir = shop._path("counters")
+        pdir.mkdir(exist_ok=True)
+        im.save(pdir / f"{slug}.jpg", "JPEG", quality=86)
+        has_photo = True
+    listings = []
+    for n, x in enumerate(clean, 1):
+        product_id = None
+        if paypal.configured():
+            try:
+                p = paypal._call("POST", "/v1/catalogs/products",
+                                 {"name": x["title"], "description": (x["short_description"] or x["title"])[:250],
+                                  "type": "PHYSICAL"}, request_id=f"catalog-{slug}-{n}")
+                product_id = p.get("id")
+            except paypal.PayPalError:
+                product_id = None
+        listings.append({"id": f"{slug}-{n}", **x, "paypal_catalog_product": product_id})
+    c = {"slug": slug, "created": time.time(), "visitor": visitor, "maker": (maker or "").strip()[:60] or "A maker",
+         "name": (shop_name or "").strip()[:60] or "My counter", "ships_from": st, "payee_email": payee,
+         "has_photo": has_photo, "source": source if source in SOURCES else "price list", "listings": listings, "listing": dict(listings[0])}
+    with shop._lock:
+        all_ = _counters()
+        all_[slug] = c
+        if len(all_) > MAX_COUNTERS:   # a public demo: keep the newest
+            for k in sorted(all_, key=lambda k: all_[k]["created"])[:len(all_) - MAX_COUNTERS]:
+                del all_[k]
+        shop._save_json("counters.json", all_)
+    return c
+
+
 def latest(n: int = 12, visitor: str = "") -> list[dict]:
     """The sample counters plus the ones this browser opened (visitors' uploads aren't shown to other people)."""
     cs = [c for c in _counters().values() if c.get("sample") or (visitor and c.get("visitor") == visitor)]
     return sorted(cs, key=lambda c: -c["created"])[:n]
 
 
-def take(slug: str, qty: int) -> bool:
-    """Stock for a counter's listing, taken at capture (all or nothing)."""
+def take(slug: str, qty: int, item_id: str = "") -> bool:
+    """Stock for a counter's listing, taken at capture (all or nothing). item_id picks one of several listings."""
     with shop._lock:
         all_ = _counters()
         c = all_.get(slug)
-        if not c or c["listing"]["stock"] < qty:
+        l = item(c, item_id) if c else None
+        if not l or l["stock"] < qty:
             return False
-        c["listing"]["stock"] -= qty
+        l["stock"] -= qty
+        if c.get("listings") and c["listing"].get("id") == l["id"]:
+            c["listing"]["stock"] = l["stock"]   # the first item's copy kept for older readers
         shop._save_json("counters.json", all_)
         return True
 
 
-def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
+def checkout(slug: str, qty: int, state: str, visitor: str = "", item_id: str = "", channel: str = "counter-page",
+             asked_for: str = "") -> dict:
     """A buyer orders from a maker's counter: same rules as Lena's (stock, US state, PayPal approval by a person).
     The money goes to the maker's own PayPal account (the order's payee) when she gave one. If PayPal refuses that
     account in the sandbox (a made-up email on the public demo), the order is paid to the Open Counter demo merchant
@@ -160,7 +250,9 @@ def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
     c = counter(slug)
     if not c:
         raise ValueError("No such counter.")
-    l = c["listing"]
+    l = item(c, str(item_id or ""))
+    if not l:
+        raise ValueError(f"No item '{str(item_id)[:40]}' at this counter.")
     qty, st = shop.whole_qty(qty, l["title"]), (state or "").strip().upper()
     if not 1 <= qty <= l["stock"]:
         raise ValueError(f"Choose 1 to {l['stock']}.")
@@ -172,7 +264,8 @@ def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
          "title": l["title"], "qty": qty, "unit_usd": l["price_usd"], "shipping_usd": ship,
          "lines": [{"listing_id": l["id"], "title": l["title"], "qty": qty, "unit_usd": l["price_usd"]}],
          "total_usd": round(l["price_usd"] * qty + ship, 2), "ship_state": st, "estimate": est,
-         "asked_for": f"{qty} × {l['title']} from {c['name']}", "channel": "counter-page", "visitor": visitor,
+         "asked_for": (str(asked_for or "")[:400] or f"{qty} × {l['title']} from {c['name']}"), "channel": channel,
+         "visitor": visitor,
          "status": "awaiting_approval", "created": time.time(), "events": [["created", time.time()]]}
     with shop._lock:
         all_ = shop.orders()
@@ -197,7 +290,7 @@ def checkout(slug: str, qty: int, state: str, visitor: str = "") -> dict:
     shop.update_order(o["id"], paypal_order_id=pp["id"], approve_url=link, payee_email=to, paid_to=paid_to_,
                       **({"payee_note": note} if note else {}))
     return {"order_id": o["id"], "approve_url": link, "total_usd": o["total_usd"], "paid_to": paid_to_,
-            **({"note": note} if note else {})}
+            "item_id": l["id"], "title": l["title"], "qty": qty, **({"note": note} if note else {})}
 
 
 def _public_url() -> str:

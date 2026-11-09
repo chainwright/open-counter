@@ -16,7 +16,49 @@
   <p class="lead">Lena is one maker. There are millions like her. Take one photo, write one sentence, and your shop becomes
     readable to every AI shopping agent. Price and stock are yours to set; the AI only writes the words.</p>
 
-  <section class="step"><b>1</b><div><h2>Your product photo</h2>
+  <div class="modes" id="modes" role="tablist">
+    <button class="on" data-mode="one" role="tab" aria-selected="true">One product, from a photo</button>
+    <button data-mode="range" role="tab" aria-selected="false">Your whole range at once</button>
+  </div>
+
+  <section class="step range-only" id="r1"><b>1</b><div><h2>Bring in your range</h2>
+    <div class="srcs" id="srcs">
+      <button data-src="text" class="on">Paste a price list</button>
+    </div>
+    <div data-pane="text">
+      <label class="wide">Your price list: one item per line, or separated by commas<textarea id="r_text" rows="6" maxlength="6000" placeholder="Brass bell 6cm $24&#10;Oak coaster set of 4 $32&#10;Linen napkin pair $18.50"></textarea></label>
+      <button class="smp" id="r_sample" type="button">Try a sample list</button>
+    </div>
+    <p class="fine" id="r_srcnote"></p>
+    <button class="go" id="r_read">Read my range</button><span class="hint" id="r_hint"></span>
+  </div></section>
+
+  <section class="step range-only" id="r2" hidden><b>2</b><div><h2>Check every item</h2>
+    <p class="fine" id="r_by"></p>
+    <table class="items"><thead><tr><td class="fine">Item</td><td class="fine n">Price, USD</td><td class="fine n">How many</td><td class="x"></td></tr></thead><tbody id="r_rows"></tbody></table>
+    <button class="smp" id="r_add" type="button">+ Add a line</button>
+    <div class="grid" style="margin-top:14px">
+      <label>Your name<input id="r_maker" placeholder="Mae Holt"></label>
+      <label>Shop name<input id="r_shop" placeholder="Bell &amp; Board"></label>
+      <label>Ships from (state)<input id="r_from" maxlength="2" placeholder="OR"></label>
+      <label>One photo of your work (optional)<input id="r_photo" type="file" accept="image/*"></label>
+      <label class="wide">Your PayPal email, where buyers pay you<input id="r_pp" type="email" autocomplete="email" placeholder="you@business.example.com">
+        <span class="fine">Sandbox demo: only a sandbox business account (…@business.example.com) can be paid. Any other email, or none, and demo payments go to the Open Counter test merchant.</span></label>
+    </div>
+    <button class="go" id="r_open">Open my counter</button><span class="hint" id="r_phint"></span>
+  </div></section>
+
+  <section class="done range-only" id="r3" hidden>
+    <span class="k">YOUR COUNTER IS OPEN</span>
+    <h2 id="r_dname"></h2>
+    <p>Every item is a PayPal Catalog product, and any AI agent can find and buy each one:</p>
+    <ul><li>Shop page: <a id="r_dpage" target="_blank"></a></li><li>Agent card (JSON): <a id="r_djson" target="_blank"></a></li>
+      <li>Its own MCP server: <code id="r_dmcp"></code></li></ul>
+    <ul class="range" id="r_ditems"></ul>
+    <p class="fine" id="r_dpaid"></p>
+  </section>
+
+  <section class="step one-only"><b>1</b><div><h2>Your product photo</h2>
     <div class="samples" id="samples">
       <button data-src="/static/open/mug.jpg"><img src="/static/open/mug.jpg" alt="Stoneware mug"><span>Mug</span></button>
       <button data-src="/static/open/candle.jpg"><img src="/static/open/candle.jpg" alt="Soy candle"><span>Candle</span></button>
@@ -26,7 +68,7 @@
     <img id="preview" class="preview" alt="" hidden>
   </div></section>
 
-  <section class="step"><b>2</b><div><h2>About you and the price</h2>
+  <section class="step one-only"><b>2</b><div><h2>About you and the price</h2>
     <div class="grid">
       <label>Your name<input id="maker" placeholder="Rosa Diaz"></label>
       <label>Shop name<input id="shopname" placeholder="Clay & Kiln"></label>
@@ -40,7 +82,7 @@
     <button class="go" id="draft" disabled>Write my listing with AI</button><span class="hint" id="dhint"></span>
   </div></section>
 
-  <section class="step" id="s3" hidden><b>3</b><div><h2>Check what the AI wrote</h2>
+  <section class="step one-only" id="s3" hidden><b>3</b><div><h2>Check what the AI wrote</h2>
     <p class="fine" id="model"></p>
     <div class="grid">
       <label class="wide">Title<input id="t_title"></label>
@@ -51,7 +93,7 @@
     <button class="go" id="publish">Open my counter</button><span class="hint" id="phint"></span>
   </div></section>
 
-  <section class="done" id="s4" hidden>
+  <section class="done one-only" id="s4" hidden>
     <span class="k">YOUR COUNTER IS OPEN</span>
     <h2 id="dname"></h2>
     <p>Any AI shopping agent can now read it. Three addresses, same facts:</p>
@@ -64,5 +106,6 @@
   <section class="recent"><span class="k">COUNTERS OPENED RECENTLY</span><div id="recent"></div></section>
 </main>
 <script src="/static/open.js"></script>
+<script src="/static/open_range.js"></script>
 </body>
 </html>

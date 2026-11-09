@@ -102,6 +102,18 @@ the agent asked about. Every call and answer: [`web/static/agents_run.json`](web
   `refund_due` and her back office says to refund from her PayPal. In this demo nothing reaches her outside that page. NVIDIA Nemotron VL writes the listing
   words; the maker sets price and stock; the product is registered in PayPal Catalog Products and gets its own
   agent-readable card.
+- **Your whole range at once (`/open`, second mode):** a maker pastes her price list ("Brass bell 6cm $24, Oak
+  coaster set of 4 $32 …" or one item per line). NVIDIA Nemotron on Nebius reads it, on the same budget as the shop's
+  agent; when the model is busy or over budget, a rule parser reads "name … $price" lines instead. Code checks every
+  item: a price is kept only if the maker wrote that number (a model can't invent or change one), above $0 and up to
+  $10,000; names are plain text, 60 characters at most, with markup and instructions to an AI taken out; 12 items at
+  most. She sees every line in a table, fixes or removes what's wrong, adds stock and, if she likes, one photo; the
+  server checks every value again when she opens the counter (`onboard.publish_many`). Each item is registered as its
+  own PayPal Catalog Product. The counter's page lists every item with one PayPal checkout for the item a buyer picks,
+  and the counter gets **its own MCP server at `/c/<slug>/mcp/`** (`about_counter`, `search_counter`,
+  `start_checkout` for any item, `order_status`); Lena's `/mcp/` keeps its nine tools. Reading a list is rate-limited
+  per network and per browser. Code: `opencounter/pricelist.py`, `opencounter/counter_door.py`; tests:
+  `tests/test_range.py`.
 
 ## How it works
 ```mermaid

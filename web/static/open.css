@@ -33,3 +33,18 @@ input,textarea{background:#0B0C0E;border:1px solid var(--hair);color:#fff;border
 .buy{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:6px 0 8px}.buy label{flex:0 1 150px}
 .buy button{background:#FFC439;color:#003087;border:0;border-radius:22px;padding:12px 20px;font:italic 800 16px Verdana,sans-serif;cursor:pointer}
 .buy span{font:12.5px "Geist Mono";color:var(--cyan)}
+/* whole range: counter page and the /open confirm table */
+.rp{width:100%;max-height:320px;object-fit:cover;border-radius:14px;margin:18px 0 4px}
+.range{list-style:none;padding:0;margin:18px 0}.range li{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:12px 14px;margin-top:8px;background:var(--soot);border:1px solid var(--hair);border-radius:12px}
+.range li b{font-weight:600}.range li p{color:#C9CDD1;font-size:13.5px;line-height:1.45;margin-top:4px}.range li span{font:13px "Geist Mono";color:var(--lamp);white-space:nowrap}
+select{background:#0B0C0E;border:1px solid var(--hair);color:#fff;border-radius:10px;padding:10px;font:15px "Geist";max-width:100%}
+.buy .pick{flex:1 1 220px}
+.modes{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}.modes button{background:var(--soot);border:1px solid var(--hair);color:var(--paper);border-radius:999px;padding:9px 14px;font:500 13.5px "Geist";cursor:pointer}
+.modes button.on{border-color:var(--lamp);box-shadow:0 0 0 1px var(--lamp);color:var(--lamp)}
+.srcs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.srcs button{background:#0B0C0E;border:1px solid var(--hair);color:#C9CDD1;border-radius:8px;padding:7px 11px;font:13px "Geist";cursor:pointer}.srcs button.on{border-color:var(--cyan);color:var(--cyan)}
+.items{width:100%;border-collapse:collapse;margin-top:6px}.items td{padding:4px 3px;vertical-align:top}.items input{width:100%;padding:8px}.items .n{width:86px}.items .x{width:34px}
+.items .x button{background:none;border:1px solid var(--hair);color:var(--mute);border-radius:8px;width:30px;height:34px;cursor:pointer}
+@media (max-width:560px){.items .n{width:64px}.items input{font-size:14px;padding:7px}.range li{flex-direction:column;gap:4px}}
+.smp{margin-top:8px;background:none;border:1px solid var(--hair);color:var(--cyan);border-radius:10px;padding:8px 12px;font:13px "Geist";cursor:pointer}
+textarea{width:100%;resize:vertical}
+body:not(.mode-range) .range-only,body.mode-range .one-only,.range-only[hidden]{display:none!important}
