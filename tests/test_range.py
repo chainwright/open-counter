@@ -440,3 +440,29 @@ def test_a_sample_range_counter_is_laid_down_marked_and_linked_without_a_wipe(pp
     shop._path("sample_anchor").write_text("0")
     assert sample.refresh()
     assert onboard.counter(sample.RANGE_SLUG)["listings"][0]["paypal_catalog_product"] == "OC-PINE-PEWTER-S4-1"
+
+
+def test_order_status_follows_the_address_paypal_shipped_to_not_the_state_the_agent_asked(pp, monkeypatch, door):
+    """Logged run 2: the agent asked for CO (Denver); PayPal shipped to the sandbox buyer's CA address. order_status must
+    say CA and give CA's estimate, so the agent can't tell the shopper "Arrives in Denver"."""
+    from opencounter import counter
+    seen = []
+    real = shop.delivery_estimate
+
+    def est(state, *a, **k):
+        seen.append(state)
+        out = real(state, *a, **k)
+        return {**out, "arrives_latest": out.get("arrives_latest", "") + (" (west)" if state == "CA" else "")}
+    monkeypatch.setattr(shop, "delivery_estimate", est)
+    c = onboard.publish_many(ITEMS, "OR", "Mae", "B", "", "v-real")
+    out = onboard.checkout(c["slug"], 1, "CO", "", item_id=c["slug"] + "-1", channel="mcp")
+    assert counter.order_status(out["order_id"])["ships_to_state"] == "CO"   # before payment: the state asked
+    monkeypatch.setattr(paypal, "capture", lambda pid, oc: {"purchase_units": [{"payments": {"captures": [{"id": "CAP9", "status": "COMPLETED"}]},
+                                                                                "shipping": {"name": {"full_name": "John Doe"}, "address": {"admin_area_1": "CA", "admin_area_2": "San Jose"}}}]})
+    web._settle(out["order_id"])
+    st = counter.order_status(out["order_id"])
+    assert st["status"] == "paid" and st["ships_to_state"] == "CA" and st["estimate"]["for_state"] == "CA"
+    assert st["estimate"]["arrives_latest"].endswith("(west)") and seen[-1] == "CA"   # re-derived for CA at capture
+    assert "in CA, not CO" in st["note"]
+    by_door = call(door, f"/c/{c['slug']}/mcp/", "order_status", {"order_id": out["order_id"]})
+    assert by_door["ships_to_state"] == "CA" and "not CO" in by_door["note"]

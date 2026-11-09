@@ -648,7 +648,8 @@
      }
     ],
     "isError": false
-   }
+   },
+   "fact_note": "PayPal shipped to the sandbox buyer's address on file, in CA, not to the CO the client asked about (see the README); after capture the order's estimate follows PayPal's address."
   }
  ],
  "result": {

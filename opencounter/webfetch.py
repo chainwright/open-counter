@@ -7,7 +7,7 @@ This is an outbound call whose target a visitor types, so it is guarded like one
   the certificate checked against the host name), so a DNS answer that changes between the check and the connect
   (DNS rebinding) can't send it anywhere else;
 - at most 3 redirects, each one checked from scratch the same way;
-- 8 seconds in all, 2 MB at most (counted after any gzip), text/html only, no cookies sent or kept.
+- about 8 seconds (a deadline checked between reads, plus socket timeouts), 2 MB at most (counted after any gzip), text/html only, no cookies sent or kept.
 Products come from the page's schema.org JSON-LD (Product / Offer) first; without it, the page's visible text goes
 to the same price-list reader as a pasted list (a price is kept only if it is written on the page).
 """

@@ -165,7 +165,8 @@
    "note": "turn 2: 2026-11-09 21:38:53 UTC to 21:39:00 UTC",
    "response": {
     "said": "Yes, it's paid. The shop now shows order **OC-18CD6CD1** as paid: one Green American Fastback, 1968, for $65.50 total.\n\n- **Ships:** Tuesday, Nov 10, by USPS Ground Advantage\n- **Arrives in Denver:** between Fri, Nov 13 and Tue, Nov 17 (an estimate, not a guarantee)\n- **Tracking:** not available yet. You'll get the tracking number by email when it ships.\n\nIt will go to the address on your PayPal account. The payment went through PayPal's sandbox (test) site, so this may be a test order rather than a real purchase."
-   }
+   },
+   "fact_note": "Not what happened: PayPal shipped to the sandbox buyer's address on file in CA (PayPal's record, step 8), not to Denver. The agent had told the shopper to check the address in PayPal before approving; the scripted login didn't. order_status gave the estimate re-derived for CA at capture (the same dates as CO that week) but didn't say which state it was for, so the agent assumed Denver. order_status now says the state and flags the change (fixed after this run)."
   }
  ],
  "result": {

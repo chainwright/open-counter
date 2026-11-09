@@ -102,3 +102,12 @@ def test_the_ai_agent_replay_is_its_transcript_and_says_who_chose_and_who_approv
     blob = "".join(p.read_text() for p in RUN_DIR.iterdir()).lower() + json.dumps(CLAUDE_RUN).lower()
     assert "/users/" not in blob and "password" not in blob and "bearer" not in blob and "sb-" not in blob
     assert "agents_run_claude.json" in JS and 'data-run="agents_run_claude.json"' in (ROOT / "web" / "agents.html").read_text()
+
+
+def test_both_replays_say_paypal_shipped_to_ca_and_the_heading_claims_no_more_than_a_recording():
+    html = (ROOT / "web" / "agents.html").read_text()
+    assert "<h2>A recorded MCP purchase, end to end</h2>" in html and "An outside MCP client buys" not in html
+    assert "Arrives in Denver" in CLAUDE_RUN["steps"][-1]["response"]["said"]   # what the agent said, unedited
+    assert "in CA" in CLAUDE_RUN["steps"][-1]["fact_note"] and "in CA" in RUN["steps"][-1]["fact_note"]
+    assert "fact_note" in JS
+    assert "the agent's Denver dates did not apply" in (ROOT / "README.md").read_text()

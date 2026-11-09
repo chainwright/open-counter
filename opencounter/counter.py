@@ -235,7 +235,15 @@ def order_status(order_id: str) -> dict:
     if not o:
         return {"error": f"No order '{order_id}'."}
     out = {k: o.get(k) for k in ("id", "title", "qty", "total_usd", "status", "tracking")}
-    out["estimate"] = o["estimate"]
+    st = o.get("ship_state") or ""
+    # After capture, the estimate follows the address PayPal holds for the buyer (web._settle); say which state it is
+    # for, so an agent doesn't repeat the state it asked about (final judges 09.11: "Arrives in Denver" for a CA order)
+    out["ships_to_state"] = st
+    out["estimate"] = {**(o.get("estimate") or {}), "for_state": st}
+    asked = o.get("agent_state")
+    if asked and st and asked != st:
+        out["note"] = (f"PayPal ships to the address on the buyer's PayPal account, in {st}, not {asked} as the agent "
+                       f"asked; the delivery estimate is for {st}.")
     return out
 
 

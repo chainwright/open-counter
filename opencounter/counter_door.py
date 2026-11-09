@@ -89,8 +89,11 @@ def order_status(ctx: Context, order_id: str) -> dict:
     o = shop.order(order_id) if order_id else None
     if not o or o.get("counter") != c["slug"]:
         return {"error": f"No order '{str(order_id)[:40]}' at this counter."}
+    from . import counter
+    full = counter.order_status(o["id"])
     return {"order_id": o["id"], "status": o["status"], "total_usd": o["total_usd"],
-            "lines": [{"title": x["title"], "qty": x["qty"]} for x in o.get("lines", [])]}
+            "lines": [{"title": x["title"], "qty": x["qty"]} for x in o.get("lines", [])],
+            **{k: full[k] for k in ("ships_to_state", "estimate", "note") if k in full}}
 
 
 def asgi(public_url: str, host: str):

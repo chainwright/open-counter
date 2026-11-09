@@ -67,7 +67,11 @@ fastback", max $70), `delivery_estimate` (CO) and `start_checkout` (`sg-014`, qu
 both lines and the approve link. That made order `OC-18CD6CD1` ($59.00 + $6.50 = $65.50) and PayPal order
 `0FB605538J1498548`. A script logged in as the sandbox buyer and approved at 21:38:44; the return page captured it
 (capture `2B9863740U9168337`, `COMPLETED`, 21:38:46). In a second turn of the same session ("I approved it in PayPal. Is
-it paid now?") the model called `order_status` and answered that it is paid. The full transcripts (stream-json, local
+it paid now?") the model called `order_status` and answered that it is paid. PayPal shipped to the test buyer's CA
+address, so the agent's Denver dates did not apply: `order_status` gave the estimate re-derived for CA at capture (the
+same dates as CO that week) without saying which state it was for, and the agent said "Arrives in Denver" (it had
+told the shopper to check the address in PayPal; the scripted login didn't). Since then `order_status` names the state
+an order ships to and says when PayPal's address differs from the state the agent asked about. The full transcripts (stream-json, local
 folder paths replaced), the command, the approval log and PayPal's order record:
 [`docs/runs/2026-11-09-claude-code-mcp-purchase/`](docs/runs/2026-11-09-claude-code-mcp-purchase/); replayed at
 [`/agents`](https://open-counter.onrender.com/agents) as the first recording.
@@ -121,7 +125,7 @@ folder paths replaced), the command, the approval log and PayPal's order record:
 - **Your whole range at once (`/open`, second mode):** a maker pastes her price list ("Brass bell 6cm $24, Oak
   coaster set of 4 $32 …" or one item per line). NVIDIA Nemotron on Nebius reads it, on the same budget as the shop's
   agent; when the model is busy or over budget, a rule parser reads "name … $price" lines instead. Code checks every
-  item: a price is kept only if the maker wrote that number (a model can't invent or change one), above $0 and up to
+  item: a price is kept only if that number appears in what she pasted, above $0 and up to
   $10,000; names are plain text, 60 characters at most, with markup and instructions to an AI taken out; 12 items at
   most. She sees every line in a table, fixes or removes what's wrong, adds stock and, if she likes, one photo; the
   server checks every value again when she opens the counter (`onboard.publish_many`). Each item is registered as its
@@ -142,7 +146,7 @@ folder paths replaced), the command, the approval log and PayPal's order record:
     credentials in the URL; every address the host resolves to must be public (private, loopback, link-local, cloud
     metadata, CGNAT, multicast and reserved ranges refused, IPv4-mapped IPv6 included) and the connection goes to the
     checked address with the certificate checked against the host name, so a DNS answer that changes afterwards
-    (rebinding) is never used; at most 3 redirects, each checked from scratch; 8 s, 2 MB (also after gzip), HTML only,
+    (rebinding) is never used; at most 3 redirects, each checked from scratch; a time limit of about 8 s, 2 MB (also after gzip), HTML only,
     no cookies; rate-limited per network and per browser. `tests/test_webfetch.py` covers 127.0.0.1,
     169.254.169.254, `[::1]`, encoded IPs, a name with one private address, a rebinding name, redirects to private
     addresses, `http://` and to Instagram, huge bodies and a gzip bomb. Our own range pages carry the same JSON-LD.

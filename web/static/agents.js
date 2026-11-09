@@ -1,5 +1,6 @@
-// /agents: copy buttons, a live read-only MCP console (plain fetch JSON-RPC to /mcp/) and a replay of one recorded
-// outside-agent purchase (agents_run.json). No model is called from this page and no order can be made from it.
+// /agents: copy buttons, a live read-only MCP console (plain fetch JSON-RPC to /mcp/) and replays of two recorded MCP
+// purchases (agents_run_claude.json: Claude Code headless; agents_run.json: MCP Inspector CLI). No model is called from
+// this page and no order can be made from it.
 (function () {
   "use strict";
   var LIVE = "https://open-counter.onrender.com";
@@ -108,7 +109,8 @@
       (s.command ? "<b class=\"who\">" + (s.kind === "agent_mcp" ? "CALL" : "COMMAND") + "</b><pre>" + esc(s.command) + "</pre>" : "") +
       (s.url ? '<b class="who">PAGE</b><pre>' + esc(s.url) + "</pre>" : "") +
       '<b class="who">' + (isMcp ? "ANSWER (content[].text shown parsed)" : s.kind === "agent" ? "THE AGENT SAID" : s.kind === "prompt" ? "THE SHOPPER TYPED" : "WHAT HAPPENED") +
-      "</b><pre>" + esc(txt) + "</pre></div>";
+      "</b><pre>" + esc(txt) + "</pre>" +
+      (s.fact_note ? '<b class="who">NOTE (OURS, ADDED AFTER THE RUN)</b><p class="fine">' + esc(s.fact_note) + "</p>" : "") + "</div>";
     document.querySelectorAll("#rdots button").forEach(function (d, k) {
       d.classList.toggle("on", k === at); d.classList.toggle("past", k < at);
     });
