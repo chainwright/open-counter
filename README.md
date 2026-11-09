@@ -128,7 +128,10 @@ flowchart LR
   shopper's language, and reads Lena's lessons in every chat.
 - **AI budget.** One daily cap for the whole demo (`SHOPPER_DAILY_CAP_USD`, default $1.00/day), and inside it a share
   per browser (`SHOPPER_VISITOR_CAP_USD`, $0.15) and per network (`SHOPPER_IP_CAP_USD`, $0.30). The network is the
-  address Render's proxy saw (the last `X-Forwarded-For` hop, `OPENCOUNTER_PROXY_HOPS`), which a client can't set.
+  visitor's address as Cloudflare reports it in front of Render (`CF-Connecting-IP`, read only on Render), which a
+  client can't set; elsewhere the last `X-Forwarded-For` hop (`OPENCOUNTER_PROXY_HOPS`). Checked live on 8 Nov: the
+  key is the visitor's own address, a client-sent `CF-Connecting-IP` is refused by Cloudflare, and a client-sent
+  `X-Forwarded-For` or `True-Client-IP` changes nothing.
   The budget is checked only when a turn needs the model: answers written in code (the made-to-order year question,
   quote and invoice, a cart made in code, safety answers) work even when the day is spent. The studio has its own pool
   (`STUDIO_DAILY_CAP_USD`).
