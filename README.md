@@ -45,7 +45,8 @@ PayPal invoice `INV2-VV7G-JLS2-JXCV-3QTR`. The buyer chose *Partial amount* on P
 $92.25 deposit with the sandbox buyer; the invoice read "Partially paid", the order moved to `deposit_paid` within
 seconds, and the balance reminder went out through PayPal from Lena's back office. (An earlier run the same day:
 `OC-2C9A66AA`, invoice `INV2-2WXK-33LT-AN9D-FKRN`.) The automatic refund (last car sold during approval) is covered by
-tests with PayPal stubbed; it has no sandbox run.
+tests with PayPal stubbed; it has no sandbox run. The demo clears test-run orders from Lena's back office on every
+restart, so these two order ids no longer show there; the PayPal invoice ids above are the lasting record.
 
 **Logged run: outside MCP client → paid** (live sandbox, 9 Nov 2026, UTC). An outside client, MCP Inspector CLI 0.17.2
 (`npx @modelcontextprotocol/inspector --cli https://open-counter.onrender.com/mcp/ --transport http`), called
