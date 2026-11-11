@@ -57,8 +57,19 @@ LESSON_SYSTEM = """You read one chat between a small shop's AI sales agent and a
 the shop. The agent got something wrong in it. Write ONE lesson for the agent, max 200 characters, in exactly this form:
 If someone asks about <the situation, in the shopper's words>, say <what to tell them>
 (optionally followed by ", and offer <Lena's call back / to email them>"). Speak about the shop as Lena ("say Lena …"),
-not "we". Use only the shop's facts below — no card brands or claims the facts don't state; never change
-prices, discounts, stock, delivery times or rules. Reply with the lesson sentence only, no quotes, no preamble."""
+not "we". <what to tell them> is one plain clause the shopper could read word for word: a positive fact about how the
+shop works, not what the agent can't do, no "you", no tool or function names (the facts mention leave_contact and
+others: never write those; say "offer Lena's call back" instead). Use only the shop's facts below — no card brands or
+claims the facts don't state; never change prices, discounts, stock, delivery times or rules. Reply with the lesson
+sentence only, no quotes, no preamble."""
+
+
+def tidy_lesson(text: str) -> str:
+    """A drafted lesson without tool names ("… contact them via leave_contact" → "… contact them"), whatever the
+    model wrote: the studio shows it to Lena and, once accepted, it is what the agent is held to."""
+    t = shopper._VIA_IDENT.sub("", (text or "").strip().strip('"'))
+    t = shopper.IDENT.sub("", t)
+    return re.sub(r"\s+([,.;!?])", r"\1", re.sub(r"\s{2,}", " ", t)).strip()
 
 
 def draft_stream(chat_id: str, who=()):
@@ -107,7 +118,7 @@ def review(days: int = 14, limit: int = 20, who=(), chat_ids: list[str] | None =
     out = []
     for f in found if isinstance(found, list) else []:
         c = ids.get(str(f.get("chat", "")))
-        lesson = str(f.get("lesson", "")).strip()[:240]
+        lesson = tidy_lesson(str(f.get("lesson", "")))[:240]
         if c and lesson:
             out.append({"chat": c["id"], "no": c.get("no"), "problem": str(f.get("problem", ""))[:200], "lesson": lesson,
                         "asked": c["turns"][0]["user"][:120] if c["turns"] else ""})

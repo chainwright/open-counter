@@ -923,19 +923,49 @@ def _as_said(clause: str) -> str:
     return (c[:1].upper() + c[1:]).rstrip(".") + "." if c else ""
 
 
-def _apply_lessons(reply: str, lessons: list[dict], ru: bool) -> str:
+# A lesson is written to the agent, and a model-drafted one can carry words meant for the agent, not the shopper: a
+# tool name ("offer to have Lena contact them via leave_contact") or a remark to the agent ("say Lena accepts payments
+# …, and you cannot process direct credit card payments outside of PayPal": live take 10.11, where that clause led the
+# shopper's reply and read as a refusal). Only the words for the shopper are enforced: what she said to say is split
+# into clauses, a tool name and the "via <tool>" around it are cut, and a later clause addressed to the agent ("you
+# …") or still holding agent talk is left out. The lesson is still applied and logged as followed.
+IDENT = re.compile(r"`?\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b(?:\(\))?`?")
+_VIA_IDENT = re.compile(r",?\s*\b(?:via|using|through|with|by calling|by using|by)\s+(?:the\s+)?"
+                        + IDENT.pattern + r"(?:\s+(?:tool|function))?", re.I)
+_CLAUSES = re.compile(r",?\s+(?:and|but|so)\s+(?=(?:you|your|we|they|i|lena|she|it|that|there|the|this|no)\b)|"
+                      r"\s*;\s*|\s*[—–]\s*|\s+-\s+", re.I)
+
+
+def lesson_says(clause: str) -> list[str]:
+    """The shopper-facing clauses of what a lesson says to say (see IDENT above), each as raw lesson words."""
+    out = []
+    for i, c in enumerate(_CLAUSES.split(_VIA_IDENT.sub("", clause or ""))):
+        c = re.sub(r"^\s*(?:(?:and|but|so|also|then)\s+)?(?:that\s+(?=(?:lena|she|we|they|the|it|there|every|all|"
+                   r"a|an|cards?|paypal)\b))?", "", (c or "").strip(" ,;"), flags=re.I).strip()
+        if not c or IDENT.search(c) or (i and re.match(r"you(?:r|'re|'ll)?\b", c, re.I)):
+            continue
+        if INTERNAL.search(_as_said(c)) or SELF_TALK.search(c) or TOOL_NAME.search(c):
+            continue
+        out.append(c)
+    return out
+
+
+def _apply_lessons(reply: str, lessons: list[dict], ru: bool, after: bool = False) -> str:
     """Lena's lessons that this question calls for, checked in code against the reply: what she said to say leads
     the answer if the reply skipped it, and an offer she asked for (her call back, an email when something
-    changes) is added if missing. A lesson's own words are English, so in Russian only the offers are added."""
+    changes) is added if missing. A lesson's own words are English, so in Russian only the offers are added.
+    after=True (an answer written by code from the shop's rules): the shop's own answer comes first, and what the
+    lesson adds follows it as its own sentence, never in front of it."""
     lead, tail = [], []
     for n in lessons:
         _, do = shop.split_lesson(n["note"])
         say = re.search(r"\b(?:say|tell (?:them|the person|people|the shopper)|answer|reply)\s+(?:that\s+)?(.+?)"
                         r"(?=,?\s+(?:and|then)\s+(?:offer|ask|take|invite|suggest|give|send|let)\b|[.;!]|$)", do, re.I)
         if say and not ru:
-            s = _as_said(say.group(1))
-            if s and not _covers(reply + " " + " ".join(lead), s):
-                lead.append(s)
+            for c in lesson_says(say.group(1)):
+                s = _as_said(c)
+                if s and not _covers(reply + " " + " ".join(lead), s):
+                    lead.append(s)
         offers = re.search(r"\b(offer|take|ask (?:for|them for)|collect|get|invite|предлож|возьми|попроси)", do, re.I)
         said = reply + " " + " ".join(tail)
         if offers and re.search(r"e-?mail|почт", do, re.I) and not re.search(r"e-?mail|почт", said, re.I):
@@ -943,7 +973,8 @@ def _apply_lessons(reply: str, lessons: list[dict], ru: bool) -> str:
         if (offers and re.search(r"phone|call ?back|number|телефон|перезвон", do, re.I)
                 and not re.search(r"phone|number|call|телефон|номер|позвон|перезвон", said, re.I)):
             tail.append(PHONE_OFFER_RU if ru else PHONE_OFFER)
-    return " ".join(x for x in (" ".join(lead), reply.strip(), " ".join(tail)) if x).strip()
+    parts = (reply.strip(), " ".join(lead), " ".join(tail)) if after else (" ".join(lead), reply.strip(), " ".join(tail))
+    return " ".join(x for x in parts if x).strip()
 
 
 def _lesson_steps(lessons: list[dict]) -> list[dict]:
@@ -1097,21 +1128,27 @@ def pay_answer(q: dict, ru: bool, ask: str = "car") -> str:
     ask "car" (nothing priced yet), "details" (a cart waits for the person's details) or "" (nothing)."""
     names = [(ru_ if ru else en) for en, ru_ in q["other"]]
     no = (", ".join(names[:-1]) + (" или " if ru else " or ") + names[-1]) if len(names) > 1 else "".join(names)
+    nxt = pay_next(ask, ru)
     if ru:
         lead = ("Да, картой можно. " if q["card"] else "") + (f"{no[:1].upper() + no[1:]} не принимаем. " if no else "")
-        nxt = {"car": " Напишите, какую машинку, сколько и в какой штат США, и я подготовлю оплату.",
-               "details": " Чтобы оформить заказ в PayPal, пришлите одним сообщением имя и фамилию, телефон, email и "
-                          "адрес с ZIP."}.get(ask, "")
         return (lead + "Все заказы оплачиваются через PayPal: кнопка PayPal под чеком открывает окно PayPal, где можно "
                 "заплатить с баланса PayPal или кредитной либо дебетовой картой. Там, где PayPal предлагает гостевую "
                 "оплату, картой можно заплатить и без аккаунта PayPal." + nxt)
     lead = ("Yes, a card works. " if q["card"] else "") + (f"We don't take {no} here. " if no else "")
-    nxt = {"car": " Tell me which car, how many and which US state, and I'll get the PayPal checkout ready.",
-           "details": " To create the PayPal order, send your first and last name, phone, email and street address "
-                      "with city and ZIP in one message."}.get(ask, "")
     return (lead + "Every order is paid through PayPal: the PayPal button under the receipt opens PayPal's window, where "
             "you can pay with your PayPal balance or a credit or debit card. Where PayPal offers guest checkout, a card "
             "works there without a PayPal account." + nxt)
+
+
+def pay_next(ask: str, ru: bool) -> str:
+    """The order's next step after the payment answer (with a leading space), or '' (see pay_answer)."""
+    if ru:
+        return {"car": " Напишите, какую машинку, сколько и в какой штат США, и я подготовлю оплату.",
+                "details": " Чтобы оформить заказ в PayPal, пришлите одним сообщением имя и фамилию, телефон, email и "
+                           "адрес с ZIP."}.get(ask, "")
+    return {"car": " Tell me which car, how many and which US state, and I'll get the PayPal checkout ready.",
+            "details": " To create the PayPal order, send your first and last name, phone, email and street address "
+                       "with city and ZIP in one message."}.get(ask, "")
 
 
 # A stock checkout is made only for cars the person (or the shop, in an earlier answer) actually named: a fresh chat
@@ -1202,9 +1239,10 @@ def _for_shopper(reply: str) -> str:
     return " ".join(out).strip()
 
 
-def _code_answer(reply: str, steps: list[dict], lessons: list[dict], ru: bool) -> dict:
-    """An answer written by code from the shop's rules (no model call), with Lena's matching lessons applied."""
-    reply = _apply_lessons(reply, lessons, ru)
+def _code_answer(reply: str, steps: list[dict], lessons: list[dict], ru: bool, then: str = "") -> dict:
+    """An answer written by code from the shop's rules (no model call), with Lena's matching lessons applied after
+    the shop's own words; `then` (the order's next step) closes the reply."""
+    reply = _apply_lessons(reply, lessons, ru, after=True) + then
     steps = steps + _lesson_steps(lessons)
     return {"reply": reply, "steps": steps, "checkout": None, "usd": 0.0, "model": "rule",
             "memo": "; ".join(f"{st['label']}: {st['result']}" for st in steps), "lessons": [n["id"] for n in lessons]}
@@ -1431,7 +1469,7 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
                           "offers guest checkout)", "ms": 0}
         made = any("waiting for your approval" in (m.get("memo") or "") for m in messages if m["role"] == "assistant")
         nxt = "" if made else "details" if _cart_waiting(messages) else "car"
-        return _code_answer(pay_answer(pay_q, ru, ask=nxt), [step], taught_now, ru)
+        return _code_answer(pay_answer(pay_q, ru, ask=""), [step], taught_now, ru, then=pay_next(nxt, ru))
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
     shelf = "; ".join(f"{x['id']} = {x['title']}, ${x['price_usd']:.0f}, {x['stock']} in stock"
                       for x in shop.shop()["listings"])

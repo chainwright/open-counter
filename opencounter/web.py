@@ -1197,7 +1197,7 @@ async def maker_draft_lesson_stream(req: Request):
         except shopper.OverBudget:
             yield "data: " + json.dumps({"type": "RUN_ERROR", "message": "Today's AI budget is used up."}) + "\n\n"
             return
-        text = text.strip().strip('"')
+        text = assistant.tidy_lesson(text)   # the finished sentence replaces the streamed text in the widget
         yield "data: " + json.dumps({"type": "TEXT_MESSAGE_END", "messageId": mid}) + "\n\n"
         yield "data: " + json.dumps({"type": "RUN_FINISHED", "lesson": text,
                                      "usable": bool(shop.split_lesson(text)[0])}) + "\n\n"
