@@ -131,6 +131,37 @@ def test_a_data_disk_seeded_with_the_old_shelf_follows_the_new_seed_without_losi
     assert shop.listing("sg-014")["paypal_catalog_product"] == "OC-SG-014" and shop.orders()[0]["id"] == "OC-REAL"
 
 
+def test_the_restock_reaches_the_live_disk_without_a_new_data_version(tmp_path, monkeypatch):
+    # 10.11: the 9 Nov MCP purchases left 1 green fastback, so "2 green and 3 yellow to Chicago" (the description's
+    # first example and the video's one take) no longer made a receipt. The seed version moves the shelf to 3 green and
+    # 2 blue on the next start; DATA_VERSION stays, so the logged 9 Nov orders and chats are kept.
+    import time
+
+    from opencounter import sample
+    monkeypatch.setattr(shop, "DATA", tmp_path / "live")
+    shop.seed(force=True)
+    sample.build()
+    shop._path("data_version").write_text(sample.DATA_VERSION)
+    shop._path("sample_anchor").write_text(str(time.time()))
+    live = json.loads(shop._path("shop.json").read_text())
+    live["version"] = 3
+    for x in live["listings"]:
+        x["stock"] = {"sg-014": 1, "sg-015": 1}.get(x["id"], x["stock"])
+        x["paypal_catalog_product"] = "OC-" + x["id"].upper()
+    shop._path("shop.json").write_text(json.dumps(live))
+    mcp = {"id": "OC-DDAED237", "status": "paid", "channel": "mcp", "paypal_order_id": "7CH35233YB660681A"}
+    shop._save_orders(shop.orders() + [mcp])
+    chats = len(shop.conversations())
+    shop._seed_checked.discard(str(shop.DATA))                       # a fresh process, as after a deploy
+    sample.ensure()
+    shelf = {x["id"]: x["stock"] for x in shop.shop()["listings"]}
+    assert shelf["sg-014"] == 3 and shelf["sg-015"] == 2 and shelf["sg-009"] >= 3
+    assert shop.listing("sg-014")["paypal_catalog_product"] == "OC-SG-014"
+    assert shop.order("OC-DDAED237") and len(shop.conversations()) == chats
+    assert shop._path("data_version").read_text() == sample.DATA_VERSION == "13"
+    assert shop.order_lines("", 0, [{"item_id": "sg-014", "quantity": 2}, {"item_id": "sg-009", "quantity": 3}])
+
+
 def test_made_to_order_lead_time_price_and_discount():
     d = date(2026, 10, 27)
     spec = lambda n: [{"model": "rear-engine coupe", "year": "1973", "body_colour": "yellow",

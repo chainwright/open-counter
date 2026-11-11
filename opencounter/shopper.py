@@ -740,6 +740,13 @@ def _must_say(reply: str, last_user: str, steps: list[dict], checkout: dict | No
             and not re.search(r"discount|fixed|скидк|фиксир", reply, re.I)):
         reply = ("Цены фиксированные; скидки есть только на сборку под заказ: 10% от 10 машинок и 15% от 25. " if ru else
                  "Prices are fixed; the only discounts are on made-to-order builds: 10% from 10 cars, 15% from 25. ") + reply
+    pq = pay_question(last_user)
+    if pq and "guest checkout" not in reply and "гостевую" not in reply:
+        # how to pay, asked inside an order ("2 green to Chicago, can I pay by card?"): the shop's answer, by code;
+        # the model's own sentences about payment methods are dropped (it is never the source of that fact)
+        rest = [x for x in re.split(r"(?<=[.!?])\s+", reply.strip())
+                if not (_PAY_CARD.search(x) or any(rx.search(x) for rx, _, _ in _PAY_OTHER))]
+        reply = pay_answer(pq, ru, ask="") + (" " + " ".join(rest) if rest else "")
     if checkout:
         # the order exists: a sentence still asking for the details, or a bare "Your order is ready!" next to the
         # receipt line below, reads as a glitch (live check 3 Nov: both reached the shopper)
@@ -1047,6 +1054,115 @@ def _scrub_safety(reply: str, asked_safety: bool = False) -> str:
     return " ".join(keep).strip()
 
 
+# How to pay is a shop fact, answered in code (second opinion 10.11: "Can I pay with a credit card instead of PayPal?",
+# the question the judge walkthrough sends people to type, went to the model and 3 of 3 fresh chats invented a car and
+# a checkout). The chat's PayPal button opens PayPal's own window: PayPal balance or a card there, and a card without a
+# PayPal account where PayPal offers guest checkout. Nothing else is taken.
+_PAY_CARD = re.compile(r"\b(?:credit|debit|bank)\s*cards?\b|\b(?:visa|master\s?card|amex|american express)\b|"
+                       r"(?<!birthday )(?<!gift )(?<!greeting )(?<!thank-you )(?<!thank you )(?<!business )(?<!note )\bcards?\b|"
+                       r"(?:don.?t|do not|doesn.?t)\s+have\s+(?:a\s+)?paypal|\bno paypal\b|without (?:a\s+)?paypal|"
+                       r"\bкарт(?:ой|у|а|очк\w*)\b|кредитк\w*|без (?:аккаунта )?paypal", re.I)
+_PAY_OTHER = [(re.compile(rx, re.I), en, ru) for rx, en, ru in (
+    (r"apple\s?pay", "Apple Pay", "Apple Pay"), (r"google\s?pay|\bgpay\b", "Google Pay", "Google Pay"),
+    (r"\bvenmo\b", "Venmo", "Venmo"), (r"\bzelle\b", "Zelle", "Zelle"), (r"cash\s?app", "Cash App", "Cash App"),
+    (r"\bcash\b(?!\s?app)|cash on delivery|наличн\w*", "cash", "наличные"),
+    (r"bank (?:transfer|wire)|wire transfer|\bwire\b|\bach\b|банковск\w* перевод\w*|переводом", "bank transfers",
+     "банковский перевод"),
+    (r"crypto\w*|bitcoin|\bbtc\b|\beth\b|usdt|крипт\w*|биткоин\w*", "crypto", "криптовалюту"),
+    (r"\b(?:a|by|with)\s+(?:check|cheque)\b|\bcheques?\b|money order", "checks", "чеки"),
+    (r"gift ?cards?", "gift cards", "подарочные карты"))]
+_PAY_CONTEXT = re.compile(r"\bpa(?:y|id|ying|yment|yments)\b|\baccept|\btake\b|\btakes\b|checkout|instead of paypal|"
+                          r"paypal account|option|оплат|плат|принима", re.I)
+_PAY_HOW = re.compile(r"payment (?:methods?|options?)|ways? to pay|how (?:do|can|would|should) i pay|how to pay|"
+                      r"what (?:can|do) (?:i|you) (?:pay|accept)|способ\w* оплат|как (?:можно )?оплатить|чем (?:можно )?"
+                      r"оплатить", re.I)
+
+
+def pay_question(text: str) -> dict | None:
+    """'Can I pay with a credit card instead of PayPal?', 'Do you take Apple Pay?', 'How do I pay?': which methods the
+    person asked about (card: True/False, other: the methods we don't take). None if it isn't about how to pay."""
+    t = text or ""
+    other = [(en, ru) for rx, en, ru in _PAY_OTHER if rx.search(t)]
+    card = bool(_PAY_CARD.search(re.sub(r"gift ?cards?", " ", t, flags=re.I)))
+    if (card or other) and (_PAY_CONTEXT.search(t) or "?" in t):
+        return {"card": card, "other": other}
+    if _PAY_HOW.search(t):
+        return {"card": False, "other": []}
+    return None
+
+
+def pay_answer(q: dict, ru: bool, ask: str = "car") -> str:
+    """The shop's answer about paying, written by code: PayPal's window takes a PayPal balance or a card, a card
+    without a PayPal account where PayPal offers guest checkout, and nothing else. Then the next step of the order:
+    ask "car" (nothing priced yet), "details" (a cart waits for the person's details) or "" (nothing)."""
+    names = [(ru_ if ru else en) for en, ru_ in q["other"]]
+    no = (", ".join(names[:-1]) + (" или " if ru else " or ") + names[-1]) if len(names) > 1 else "".join(names)
+    if ru:
+        lead = ("Да, картой можно. " if q["card"] else "") + (f"{no[:1].upper() + no[1:]} не принимаем. " if no else "")
+        nxt = {"car": " Напишите, какую машинку, сколько и в какой штат США, и я подготовлю оплату.",
+               "details": " Чтобы оформить заказ в PayPal, пришлите одним сообщением имя и фамилию, телефон, email и "
+                          "адрес с ZIP."}.get(ask, "")
+        return (lead + "Все заказы оплачиваются через PayPal: кнопка PayPal под чеком открывает окно PayPal, где можно "
+                "заплатить с баланса PayPal или кредитной либо дебетовой картой. Там, где PayPal предлагает гостевую "
+                "оплату, картой можно заплатить и без аккаунта PayPal." + nxt)
+    lead = ("Yes, a card works. " if q["card"] else "") + (f"We don't take {no} here. " if no else "")
+    nxt = {"car": " Tell me which car, how many and which US state, and I'll get the PayPal checkout ready.",
+           "details": " To create the PayPal order, send your first and last name, phone, email and street address "
+                      "with city and ZIP in one message."}.get(ask, "")
+    return (lead + "Every order is paid through PayPal: the PayPal button under the receipt opens PayPal's window, where "
+            "you can pay with your PayPal balance or a credit or debit card. Where PayPal offers guest checkout, a card "
+            "works there without a PayPal account." + nxt)
+
+
+# A stock checkout is made only for cars the person (or the shop, in an earlier answer) actually named: a fresh chat
+# that asked only how to pay got a checkout for a car nobody mentioned (second opinion 10.11, "Red American
+# Convertible, 1965"). A brand name counts as naming a car: the agent offers the closest replica for it.
+_RU_CAR = {"green": r"зел[её]н", "blue": r"син|голуб", "orange": r"оранж", "yellow": r"ж[её]лт", "red": r"красн",
+           "fastback": r"фастб[эе]к", "coupe": r"купе", "coupé": r"купе", "convertible": r"кабриол", "german": r"немец"}
+
+
+def _names_listing(x: dict, text: str) -> bool:
+    t = (text or "").lower()
+    if x["id"].lower() in t:
+        return True
+    words = re.findall(r"[a-zé]{3,}", x["title"].lower())
+    year = re.search(r"(19)(\d\d)", x["title"])
+    # '1965', "'65", 'the red 65'; never the 65 of "$65.50", "65%" or "65 cars"
+    if year and re.search(rf"(?<!\d){year.group(0)}(?!\d)|['’‘]{year.group(2)}\b|"
+                          rf"(?<![\d$.,-])\b{year.group(2)}\b(?![.,]\d|\s*(?:%|\$|cars?|pcs|ones?))", t):
+        return True
+    return any(re.search(rf"\b{re.escape(w)}(?:s|es)?\b", t) or (w in _RU_CAR and re.search(_RU_CAR[w], t))
+               for w in words)
+
+
+def _args_of(tc) -> dict:
+    try:
+        a = json.loads(tc.function.arguments or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return a if isinstance(a, dict) else {}
+
+
+def cart_named(args: dict, typed: str, shop_said: str = "") -> bool:
+    """Every car in this start_checkout call was named in the chat: by the person (colour, body style, year, a brand
+    they want a replica of) or by the shop's own earlier answer. An item the shop can't resolve is left to the tool."""
+    raw = args.get("items") or [{"item_id": args.get("item_id", "")}]
+    said = (typed or "") + " / " + (shop_said or "")
+    if not any(str((it or {}).get("item_id", "") if isinstance(it, dict) else it).strip() for it in raw):
+        # no car in the call at all: fine only if the chat named one (the tool then asks which); else ask in code
+        return bool(BRANDS.search(typed or "")) or any(_names_listing(x, said) for x in shop.shop()["listings"])
+    ids = []
+    for it in raw:
+        try:   # which listing each line means (quantity 1: stock and quantity are the tool's own checks)
+            ids += [ln["listing_id"] for ln in shop.order_lines(str((it or {}).get("item_id", "")), 1)]
+        except (ValueError, TypeError, KeyError, AttributeError):
+            continue
+    if BRANDS.search(typed or ""):
+        return True
+    by_id = {x["id"]: x for x in shop.shop()["listings"]}
+    return all(_names_listing(by_id[i], said) for i in ids if i in by_id)
+
+
 # Words written for the agent (tool reasons, nudges, raw field names) never reach the shopper: they are rewritten for
 # the person in the step list, and cut from the reply (live check 08.11: the step line "Before quoting, ask for the
 # year…" and a reply with "us_state TX" were shown to the shopper).
@@ -1304,6 +1420,18 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
         step = {"tool": "item_details", "label": LABELS["item_details"], "args": {},
                 "result": "safety and age: quoted from the listings only", "ms": 0}
         return _code_answer(_safety_answer(last_user, ru), [step], taught_now, ru)
+    pay_q = pay_question(last_user)
+    if pay_q and not (parse_made_to_order(last_user) or _qty_in(last_user) or PHONE.search(last_user)
+                      or EMAIL_IN.search(last_user) or ZIP_IN.search(last_user)):
+        # how to pay: a shop fact, answered in code before any model (no car is picked, no checkout is started);
+        # Lena's matching lessons still apply and are logged, so her studio row draws its tick
+        ru = bool(re.search(r"[а-яё]", last_user, re.I))
+        step = {"tool": "about_counter", "label": LABELS["about_counter"], "args": {},
+                "result": "payment: through PayPal (PayPal balance or a card; a card without an account where PayPal "
+                          "offers guest checkout)", "ms": 0}
+        made = any("waiting for your approval" in (m.get("memo") or "") for m in messages if m["role"] == "assistant")
+        nxt = "" if made else "details" if _cart_waiting(messages) else "car"
+        return _code_answer(pay_answer(pay_q, ru, ask=nxt), [step], taught_now, ru)
     # The live shelf with ids, every turn: across turns the model otherwise forgets ids and invents one.
     shelf = "; ".join(f"{x['id']} = {x['title']}, ${x['price_usd']:.0f}, {x['stock']} in stock"
                       for x in shop.shop()["listings"])
@@ -1673,6 +1801,18 @@ def run(messages: list[dict], visitor: str = "", who=()) -> dict:
             if len(reply.strip()) < 25 and not checkout:   # "Sure!" alone answers nothing
                 reply = _fallback_reply(steps or ([] if taught_now else _earlier_steps(messages)), bool(re.search(r"[а-яё]", lang_text, re.I)), last_user, taught_now)
             reply = _must_say(reply, last_user, steps or _earlier_steps(messages), checkout, lang_text)
+            break
+        shop_said = " / ".join(m["content"] for m in messages if m["role"] == "assistant")
+        unnamed = [tc for tc in msg.tool_calls if tc.function.name == "start_checkout"
+                   and not cart_named(_args_of(tc), typed, shop_said)]
+        if unnamed and not checkout:
+            # a checkout for a car nobody named in this chat: never made. Ask which car instead (by code)
+            ru = bool(re.search(r"[а-яё]", lang_text, re.I))
+            steps.append({"tool": "start_checkout", "label": "checking the cart", "args": _args_of(unnamed[0]),
+                          "result": "no car named yet: no order made, asked which car and how many", "ms": 0})
+            pq = pay_question(last_user)
+            reply = ((pay_answer(pq, ru, ask="") + " ") if pq else "") + _shelf_answer(ru)
+            by_code = True
             break
         convo.append({"role": "assistant", "content": msg.content or "",
                       "tool_calls": [tc.model_dump() for tc in msg.tool_calls]})
